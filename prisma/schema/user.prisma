@@ -1,0 +1,270 @@
+// ─────────────────────────────────────────────────────────────
+// USER MODELS
+// SuperAdmin, SchoolUser, ParentUser, ParentDevice,
+// ParentNotificationPref, ParentStudent, Session,
+// BlacklistToken, DeviceLoginLog, OtpAuditLog
+// ─────────────────────────────────────────────────────────────
+
+model SuperAdmin {
+  id                     String                  @id @default(uuid())
+  name                   String
+  email                  String                  @unique
+  password_hash          String
+  is_active              Boolean                 @default(true)
+  last_login_at          DateTime?
+  created_at             DateTime                @default(now())
+  updated_at             DateTime                @updatedAt
+  dashboardNotifications DashboardNotification[]
+  sessions               Session[]
+
+  @@index([email])
+}
+
+model SchoolUser {
+  id                     String                  @id @default(uuid())
+  school_id              String
+  email                  String                  @unique
+  password_hash          String
+  name                   String?
+  role                   SchoolRole              @default(ADMIN)
+  is_primary             Boolean                 @default(false)
+  is_active              Boolean                 @default(true)
+  must_change_password   Boolean                 @default(true)
+  invited_by             String?
+  invite_sent_at         DateTime?
+  invite_accepted_at     DateTime?
+  last_login_at          DateTime?
+  created_at             DateTime                @default(now())
+  updated_at             DateTime                @updatedAt
+  dashboardNotifications DashboardNotification[]
+  school                 School                  @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  sessions               Session[]
+
+  @@index([school_id])
+  @@index([is_primary])
+}
+
+model ParentUser {
+  id                 String                  @id @default(uuid())
+  email              String?                 @unique
+  phone              String                  @unique
+  phone_index        String?                 @unique
+  name               String?
+  avatar_url         String?
+  preferred_language String                  @default("en")
+  preferred_theme    AppTheme                @default(SYSTEM)
+  is_phone_verified  Boolean                 @default(false)
+  is_email_verified  Boolean                 @default(false)
+  status             UserStatus              @default(ACTIVE)
+  last_login_at      DateTime?
+  deleted_at         DateTime?
+  created_at         DateTime                @default(now())
+  updated_at         DateTime                @updatedAt
+  active_student_id  String?
+  deviceLoginLogs    DeviceLoginLog[]
+  notifications      Notification[]
+  devices            ParentDevice[]
+  editLogs           ParentEditLog[]
+  notificationPrefs  ParentNotificationPref?
+  children           ParentStudent[]
+  sessions           Session[]
+  activeStudent      Student?                @relation("ActiveStudent", fields: [active_student_id], references: [id])
+
+  @@index([phone_index])
+}
+
+model ParentDevice {
+  id                 String              @id @default(uuid())
+  parent_id          String
+  platform           DevicePlatform
+  device_name        String?
+  device_model       String?
+  device_fingerprint String?             @unique
+  os_version         String?
+  app_version        String?
+  is_active          Boolean             @default(true)
+  last_seen_at       DateTime?
+  logged_out_at      DateTime?
+  logout_reason      DeviceLogoutReason?
+  created_at         DateTime            @default(now())
+  expo_push_token    String?             @unique
+  parent             ParentUser          @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_id, is_active])
+}
+
+model ParentNotificationPref {
+  id                        String     @id @default(uuid())
+  parent_id                 String     @unique
+  scan_notify_enabled       Boolean    @default(true)
+  scan_notify_push          Boolean    @default(true)
+  scan_notify_sms           Boolean    @default(false)
+  scan_notify_email         Boolean    @default(false)
+  anomaly_notify_enabled    Boolean    @default(true)
+  anomaly_notify_push       Boolean    @default(true)
+  anomaly_notify_sms        Boolean    @default(true)
+  anomaly_notify_email      Boolean    @default(true)
+  card_expiry_notify        Boolean    @default(true)
+  card_blocked_notify       Boolean    @default(true)
+  device_login_notify_email Boolean    @default(true)
+  account_change_notify     Boolean    @default(true)
+  quiet_hours_enabled       Boolean    @default(false)
+  quiet_hours_start         String?
+  quiet_hours_end           String?
+  created_at                DateTime   @default(now())
+  updated_at                DateTime   @updatedAt
+  parent                    ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+}
+
+model ParentStudent {
+  id           String     @id @default(uuid())
+  parent_id    String
+  student_id   String
+  relationship String?
+  is_primary   Boolean    @default(false)
+  linked_at    DateTime   @default(now())
+  parent       ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  student      Student    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([parent_id, student_id])
+  @@index([parent_id])
+}
+
+model Session {
+  id                 String               @id @default(uuid())
+  parent_user_id     String?
+  school_user_id     String?
+  admin_user_id      String?
+  refresh_token_hash String               @unique
+  device_id          String?
+  device_info        String?
+  user_agent         String?
+  ip_address         String?
+  is_active          Boolean              @default(true)
+  revoked_at         DateTime?
+  revoke_reason      SessionRevokeReason?
+  last_active_at     DateTime?
+  expires_at         DateTime
+  created_at         DateTime             @default(now())
+  superAdmin         SuperAdmin?          @relation(fields: [admin_user_id], references: [id], onDelete: Cascade)
+  parentUser         ParentUser?          @relation(fields: [parent_user_id], references: [id], onDelete: Cascade)
+  schoolUser         SchoolUser?          @relation(fields: [school_user_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_user_id, is_active])
+  @@index([school_user_id, is_active])
+  @@index([admin_user_id])
+  @@index([expires_at])
+}
+
+model BlacklistToken {
+  token_hash String   @id
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([expires_at])
+}
+
+model DeviceLoginLog {
+  id            String         @id @default(uuid())
+  parent_id     String
+  device_name   String?
+  device_model  String?
+  platform      DevicePlatform
+  os_version    String?
+  app_version   String?
+  ip_address    String?
+  ip_city       String?
+  ip_country    String?
+  login_at      DateTime       @default(now())
+  email_sent    Boolean        @default(false)
+  email_sent_at DateTime?
+  was_forced    Boolean        @default(false)
+  parent        ParentUser     @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_id, login_at])
+}
+
+model OtpAuditLog {
+  id           String     @id @default(uuid())
+  purpose      OtpPurpose
+  attempts     Int        @default(0)
+  max_attempts Int        @default(5)
+  verified     Boolean    @default(false)
+  verified_at  DateTime?
+  expires_at   DateTime
+  invalidated  Boolean    @default(false)
+  msg91_req_id String?
+  ip_address   String?
+  created_at   DateTime   @default(now())
+  phone_index  String
+
+  @@index([phone_index, purpose])
+  @@index([expires_at])
+}
+
+model AuthAttempt {
+  id              String   @id @default(uuid())
+  identifier      String
+  identifier_type String
+  success         Boolean  @default(false)
+  failure_reason  String?
+  ip_address      String?
+  user_agent      String?
+  created_at      DateTime @default(now())
+
+  @@index([identifier, created_at])
+  @@index([ip_address, created_at])
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AppTheme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum SchoolRole {
+  ADMIN
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+enum DeviceLogoutReason {
+  NEW_DEVICE_LOGIN
+  MANUAL_LOGOUT
+  SESSION_EXPIRED
+  ADMIN_REVOKED
+  SUSPICIOUS_ACTIVITY
+}
+
+enum SessionRevokeReason {
+  NEW_DEVICE_LOGIN
+  MANUAL_LOGOUT
+  SESSION_EXPIRED
+  ADMIN_REVOKED
+  PASSWORD_CHANGED
+  PHONE_CHANGED
+}
+
+enum OtpPurpose {
+  LOGIN
+  PHONE_VERIFY
+  CARD_BLOCK
+  CARD_REPLACEMENT
+  EMAIL_VERIFY
+  DEVICE_CHANGE
+  CHANGE_PIN
+}

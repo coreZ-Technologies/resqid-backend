@@ -1,0 +1,21 @@
+
+
+// plan name
+
+model Subscription {
+    id String @id @default(cuid())
+    schoolId String @unique
+    school School @relation(fields: [schoolId], references: [id])
+
+    planId String
+    modules String[]
+
+    studentCount Int
+    amountPaisa Int
+
+    validFrom DateTime
+    validUntil DateTime
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}

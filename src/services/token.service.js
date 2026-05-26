@@ -1,0 +1,1 @@
+// generate token for student emergency card
