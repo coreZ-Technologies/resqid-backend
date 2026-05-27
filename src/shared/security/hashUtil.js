@@ -1,4 +1,3 @@
-// TODO: Add implementation
 /**
  * hashUtil.js
  *

@@ -1,4 +1,3 @@
-// TODO: Add implementation
 /**
  * jwt.js
  *

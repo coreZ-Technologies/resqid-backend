@@ -1,4 +1,3 @@
-// TODO: Add implementation
 /**
  * scan.cache.js
  *
@@ -10,7 +9,7 @@
  */
 
 import { get, set, del } from './cache.js';
-import { logger } from '../../config/logger.js';
+import { logger } from '#config/logger.js';
 
 // ------------------------------------------------------------------
 // EMERGENCY PROFILE CACHE (post‑scan)
@@ -89,7 +88,7 @@ export async function getRecentScanTimestamps(studentId) {
   try {
     const { redis } = await import('../../config/redis.js');
     const items = await redis.lrange(`${PREFIX}:${listKey}`, 0, -1);
-    return items.map(i => JSON.parse(i));
+    return items.map((i) => JSON.parse(i));
   } catch (err) {
     logger.error('Failed to get recent scan timestamps', err);
     return [];

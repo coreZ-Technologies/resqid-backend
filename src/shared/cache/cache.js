@@ -1,18 +1,17 @@
-// TODO: Add implementation
 /**
  * cache.js
- * 
+ *
  * Generic, promise‑based cache utility.
  * Every module uses this instead of talking directly to Redis.
  * All keys are automatically prefixed with the app namespace and
  * values are serialised to/from JSON.
  */
 
-import { redis } from '../../config/redis.js';      // ioredis or redis client
-import { logger } from '../../config/logger.js';
+import { redis } from '#config/redis.js'; // ioredis or redis client
+import { logger } from '#config/logger.js';
 
-const PREFIX = 'resqid';   // change to your app name
-const DEFAULT_TTL = 300;   // 5 minutes
+const PREFIX = 'resqid'; // change to your app name
+const DEFAULT_TTL = 300; // 5 minutes
 
 // ------------------------------------------------------------------
 // Public API
@@ -29,7 +28,7 @@ export async function get(key) {
     return raw ? JSON.parse(raw) : null;
   } catch (err) {
     logger.error(`Cache GET failed for key: ${key}`, err);
-    return null;   // fail‑safe: return nothing rather than crash
+    return null; // fail‑safe: return nothing rather than crash
   }
 }
 
@@ -59,7 +58,7 @@ export async function set(key, value, ttl = DEFAULT_TTL) {
 export async function del(...keys) {
   if (keys.length === 0) return;
   try {
-    const fullKeys = keys.map(k => `${PREFIX}:${k}`);
+    const fullKeys = keys.map((k) => `${PREFIX}:${k}`);
     await redis.del(...fullKeys);
   } catch (err) {
     logger.error(`Cache DEL failed for keys: ${keys.join(', ')}`, err);

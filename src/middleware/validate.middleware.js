@@ -32,7 +32,7 @@ import { asyncHandler } from '../shared/response/asyncHandler.js';
  * Uses Zod .strict() behavior via schema definition.
  * Unknown fields cause validation failure — no extra data leaks through.
  */
-export const validate = schema =>
+export const validate = (schema) =>
   asyncHandler(async (req, _res, next) => {
     // Auto-detect schema shape:
     //   envelope shape  — z.object({ body: z.object(...), params?, query? })
@@ -79,7 +79,7 @@ export const validate = schema =>
  * Use this when a route needs simultaneous body + params or body + query
  * validation. For single-target validation use validate() instead.
  */
-export const validateAll = schemas =>
+export const validateAll = (schemas) =>
   asyncHandler(async (req, _res, next) => {
     const errors = [];
 
@@ -89,7 +89,7 @@ export const validateAll = schemas =>
 
       if (!result.success) {
         errors.push(
-          ...formatZodErrors(result.error).map(e => ({
+          ...formatZodErrors(result.error).map((e) => ({
             ...e,
             location: target,
           }))
@@ -154,7 +154,7 @@ function assignTarget(req, target, data) {
 function formatZodErrors(error) {
   const issues = error?.issues || error?.errors || [];
 
-  return issues.map(e => ({
+  return issues.map((e) => ({
     field: e.path?.join('.') ?? '',
     message: e.message,
     code: e.code,

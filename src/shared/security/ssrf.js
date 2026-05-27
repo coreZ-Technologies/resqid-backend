@@ -1,4 +1,3 @@
-// TODO: Add implementation
 /**
  * ssrf.js
  *
@@ -20,18 +19,18 @@ import dns from 'dns/promises';
 // ------------------------------------------------------------------
 const BLOCKED_RANGES = [
   // IPv4 loopback & private
-  '127.0.0.0/8',          // loopback
-  '10.0.0.0/8',           // private
-  '172.16.0.0/12',        // private
-  '192.168.0.0/16',       // private
-  '169.254.0.0/16',       // link‑local (AWS metadata, etc.)
-  '0.0.0.0/8',            // current network
-  '100.64.0.0/10',        // carrier‑grade NAT
+  '127.0.0.0/8', // loopback
+  '10.0.0.0/8', // private
+  '172.16.0.0/12', // private
+  '192.168.0.0/16', // private
+  '169.254.0.0/16', // link‑local (AWS metadata, etc.)
+  '0.0.0.0/8', // current network
+  '100.64.0.0/10', // carrier‑grade NAT
 
   // IPv6 loopback & private
-  '::1/128',              // loopback
-  'fc00::/7',             // unique local
-  'fe80::/10',            // link‑local
+  '::1/128', // loopback
+  'fc00::/7', // unique local
+  'fe80::/10', // link‑local
 ];
 
 /**
@@ -100,7 +99,12 @@ async function resolvesToBlockedIP(hostname) {
     // Also check IPv6 if resolved
     const addresses6 = await dns.resolve6(hostname).catch(() => []);
     for (const addr of addresses6) {
-      if (addr.startsWith('fc') || addr.startsWith('fd') || addr === '::1' || addr.startsWith('fe80')) {
+      if (
+        addr.startsWith('fc') ||
+        addr.startsWith('fd') ||
+        addr === '::1' ||
+        addr.startsWith('fe80')
+      ) {
         return true;
       }
     }
@@ -145,7 +149,9 @@ export async function validateUrl(urlString, options = {}) {
   // Optional domain whitelist
   if (options.allowedDomains && options.allowedDomains.length > 0) {
     const hostname = parsed.hostname.toLowerCase();
-    const allowed = options.allowedDomains.some(d => hostname === d || hostname.endsWith(`.${d}`));
+    const allowed = options.allowedDomains.some(
+      (d) => hostname === d || hostname.endsWith(`.${d}`)
+    );
     if (!allowed) {
       throw new Error(`Domain ${hostname} is not in the allowed list`);
     }

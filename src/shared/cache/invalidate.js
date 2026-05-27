@@ -1,4 +1,3 @@
-// TODO: Add implementation
 /**
  * invalidate.js
  *
@@ -8,8 +7,8 @@
  * versions of that student across modules).
  */
 
-import { redis } from '../../config/redis.js';
-import { logger } from '../../config/logger.js';
+import { redis } from '#config/redis.js';
+import { logger } from '#config/logger.js';
 
 const PREFIX = 'resqid';
 

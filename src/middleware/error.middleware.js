@@ -75,7 +75,7 @@ export function globalErrorHandler(err, req, res, next) {
   // ── 2. Zod Validation Error — schema parse failed ─────────────────────────
   if (err instanceof ZodError) {
     const errors =
-      err.errors?.map(e => ({
+      err.errors?.map((e) => ({
         field: e.path?.join('.') || 'unknown',
         message: e.message,
         code: e.code,
@@ -300,7 +300,7 @@ export function setupProcessErrorHandlers(server) {
   });
 
   // Uncaught exceptions — ALWAYS exit — process state is undefined
-  process.on('uncaughtException', err => {
+  process.on('uncaughtException', (err) => {
     logger.fatal(
       { type: 'uncaught_exception', err },
       'Uncaught exception — shutting down immediately'

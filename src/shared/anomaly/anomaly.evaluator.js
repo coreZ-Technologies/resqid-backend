@@ -13,8 +13,8 @@
  * Does NOT block the main request. Runs fire‑and‑forget.
  */
 
-import { prisma } from '../../config/prisma.js';
-import { logger } from '../../config/logger.js';
+import { prisma } from '#config/prisma.js';
+import { logger } from '#config/logger.js';
 
 // ------------------------------------------------------------------
 // CONFIGURABLE THRESHOLDS
@@ -25,8 +25,8 @@ const THRESHOLDS = {
   DUPLICATE_WINDOW_SECONDS: 30,
 
   // 2. School operating hours (24h format) – scans outside this are flagged
-  SCHOOL_HOURS_START: 6,   // 6 AM
-  SCHOOL_HOURS_END: 20,    // 8 PM
+  SCHOOL_HOURS_START: 6, // 6 AM
+  SCHOOL_HOURS_END: 20, // 8 PM
 
   // 3. Maximum distance (km) between two consecutive scans of the same student
   MAX_LOCATION_JUMP_KM: 50,
@@ -68,13 +68,13 @@ export async function evaluateScan(scan) {
 
     // Collect only fulfilled checks that returned an anomaly
     const anomalies = results
-      .filter(r => r.status === 'fulfilled' && r.value !== null)
-      .map(r => r.value);
+      .filter((r) => r.status === 'fulfilled' && r.value !== null)
+      .map((r) => r.value);
 
     // Save all detected anomalies to the database
     if (anomalies.length > 0) {
       await Promise.all(
-        anomalies.map(anomaly =>
+        anomalies.map((anomaly) =>
           prisma.scanAnomaly.create({
             data: {
               type: anomaly.type,
@@ -93,7 +93,7 @@ export async function evaluateScan(scan) {
       );
 
       logger.warn(`[ANOMALY] ${anomalies.length} anomaly(ies) for student ${studentId}`, {
-        types: anomalies.map(a => a.type),
+        types: anomalies.map((a) => a.type),
         schoolId,
       });
     }
@@ -257,8 +257,7 @@ function haversineDistance(coord1, coord2) {
   const dLng = toRad(coord2.lng - coord1.lng);
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(coord1.lat)) * Math.cos(toRad(coord2.lat)) *
-    Math.sin(dLng / 2) ** 2;
+    Math.cos(toRad(coord1.lat)) * Math.cos(toRad(coord2.lat)) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
