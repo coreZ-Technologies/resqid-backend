@@ -1,4 +1,3 @@
-// TODO: Add implementation
 // =============================================================================
 // sanitize.middleware.js — RESQID
 // STRICT MODE — NoSQL injection prevention + deep object sanitization
@@ -16,52 +15,14 @@ const NOSQL_KEY_RE = /^\$|[\$\.]/; // starts with $ OR contains $ or .
 
 // Blocked MongoDB operators (full list)
 const BLOCKED_OPERATORS = new Set([
-  '$where',
-  '$regex',
-  '$options',
-  '$and',
-  '$or',
-  '$nor',
-  '$not',
-  '$expr',
-  '$jsonSchema',
-  '$mod',
-  '$text',
-  '$search',
-  '$geoWithin',
-  '$geoIntersects',
-  '$near',
-  '$nearSphere',
-  '$elemMatch',
-  '$size',
-  '$all',
-  '$in',
-  '$nin',
-  '$exists',
-  '$type',
-  '$slice',
-  '$sort',
-  '$project',
-  '$group',
-  '$match',
-  '$lookup',
-  '$unwind',
-  '$out',
-  '$merge',
-  '$addFields',
-  '$set',
-  '$unset',
-  '$replaceRoot',
-  '$replaceWith',
-  '$graphLookup',
-  '$facet',
-  '$bucket',
-  '$bucketAuto',
-  '$sortByCount',
-  '$count',
-  '$skip',
-  '$limit',
-  '$sample',
+  '$where', '$regex', '$options', '$and', '$or', '$nor', '$not',
+  '$expr', '$jsonSchema', '$mod', '$text', '$search',
+  '$geoWithin', '$geoIntersects', '$near', '$nearSphere',
+  '$elemMatch', '$size', '$all', '$in', '$nin', '$exists', '$type',
+  '$slice', '$sort', '$project', '$group', '$match', '$lookup',
+  '$unwind', '$out', '$merge', '$addFields', '$set', '$unset',
+  '$replaceRoot', '$replaceWith', '$graphLookup', '$facet',
+  '$bucket', '$bucketAuto', '$sortByCount', '$count', '$skip', '$limit', '$sample',
 ]);
 
 function stripNoSqlKeys(obj, depth = 0, path = '') {
@@ -81,19 +42,13 @@ function stripNoSqlKeys(obj, depth = 0, path = '') {
 
     // Check for NoSQL operators
     if (NOSQL_KEY_RE.test(key)) {
-      logger.warn(
-        { key, path: currentPath, ip: global.reqIp },
-        `STRICT: NoSQL injection key blocked: "${key}"`
-      );
+      logger.warn({ key, path: currentPath }, `STRICT: NoSQL injection key blocked: "${key}"`);
       throw new Error(`Invalid character in field name: "${key}"`);
     }
 
     // Check for blocked MongoDB operators
     if (BLOCKED_OPERATORS.has(key)) {
-      logger.warn(
-        { key, path: currentPath, ip: global.reqIp },
-        `STRICT: Blocked MongoDB operator: "${key}"`
-      );
+      logger.warn({ key, path: currentPath }, `STRICT: Blocked MongoDB operator: "${key}"`);
       throw new Error(`Invalid operator in request: "${key}"`);
     }
 
@@ -105,9 +60,6 @@ function stripNoSqlKeys(obj, depth = 0, path = '') {
 // ─── NoSQL Injection Sanitizer — STRICT ───────────────────────────────────────
 
 export const sanitizeNoSql = (req, res, next) => {
-  // Store IP for logging
-  global.reqIp = req.ip;
-
   try {
     // Sanitize body
     if (req.body && typeof req.body === 'object') {
@@ -138,20 +90,16 @@ export const sanitizeNoSql = (req, res, next) => {
       },
       'STRICT: NoSQL injection blocked'
     );
-    next(ApiError.badRequest('Invalid characters detected in request'));
+    next(new ApiError(400, 'Invalid characters detected in request'));
   }
 };
 
 // ─── Deep Object Sanitizer — STRICT ───────────────────────────────────────────
 
 const DANGEROUS_KEYS = new Set([
-  '__proto__',
-  'constructor',
-  'prototype',
-  '__defineGetter__',
-  '__defineSetter__',
-  '__lookupGetter__',
-  '__lookupSetter__',
+  '__proto__', 'constructor', 'prototype',
+  '__defineGetter__', '__defineSetter__',
+  '__lookupGetter__', '__lookupSetter__',
 ]);
 const MAX_DEPTH = 10;
 const MAX_STRING_LEN = 50_000;
@@ -174,7 +122,7 @@ export const sanitizeDeep = asyncHandler(async (req, _res, next) => {
       { err: err.message, ip: req.ip, userId: req.userId, path: req.path },
       'STRICT: Deep sanitization blocked'
     );
-    throw ApiError.badRequest(err.message);
+    throw new ApiError(400, err.message); // structural errors are safe to expose
   }
   next();
 });
@@ -187,16 +135,11 @@ function deepClean(obj, depth, source = '') {
   // String validation
   if (typeof obj === 'string') {
     if (obj.length > MAX_STRING_LEN) {
-      throw new Error(
-        `String field exceeds maximum length of ${MAX_STRING_LEN} characters in ${source}`
-      );
+      throw new Error(`String field exceeds maximum length of ${MAX_STRING_LEN} characters in ${source}`);
     }
-
-    // Block null bytes and control characters
     if (obj.includes('\u0000')) {
       throw new Error(`Null byte detected in ${source}`);
     }
-
     return obj;
   }
 
@@ -211,8 +154,6 @@ function deepClean(obj, depth, source = '') {
   // Object validation
   if (obj !== null && typeof obj === 'object') {
     const keys = Object.keys(obj);
-
-    // Limit number of keys to prevent DoS
     if (keys.length > MAX_OBJECT_KEYS) {
       throw new Error(`Object exceeds maximum of ${MAX_OBJECT_KEYS} keys in ${source}`);
     }
@@ -223,12 +164,10 @@ function deepClean(obj, depth, source = '') {
       if (DANGEROUS_KEYS.has(key)) {
         throw new Error(`Prototype pollution attempt detected: "${key}" in ${source}`);
       }
-
       // Block keys with null bytes
       if (key.includes('\u0000')) {
         throw new Error(`Null byte in field name: "${key}" in ${source}`);
       }
-
       clean[key] = deepClean(value, depth + 1, `${source}.${key}`);
     }
     return clean;
