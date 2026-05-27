@@ -1,0 +1,143 @@
+// prisma/schema/core/user.prisma
+
+// ─── Super Admin ──────────────────────────────────────────────────────────────
+
+model SuperAdmin {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("super_admins")
+}
+
+// ─── School User (Admin + Teacher) ───────────────────────────────────────────
+
+model SchoolUser {
+  id           String         @id @default(cuid())
+  schoolId     String
+  school       School         @relation(fields: [schoolId], references: [id])
+
+  name         String
+  email        String         @unique
+  phone        String?
+  passwordHash String
+  role         SchoolUserRole @default(TEACHER)
+
+  isActive     Boolean        @default(true)
+  lastLoginAt  DateTime?
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  // Relations
+  sessions     UserSession[]
+
+  @@index([schoolId])
+  @@index([email])
+  @@map("school_users")
+}
+
+enum SchoolUserRole {
+  ADMIN
+  TEACHER
+}
+
+// ─── Parent User ──────────────────────────────────────────────────────────────
+
+model ParentUser {
+  id          String    @id @default(cuid())
+  name        String?
+  phone       String    @unique
+  email       String?
+
+  // OTP auth
+  otp         String?
+  otpExpiresAt DateTime?
+  otpAttempts  Int      @default(0)
+
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  students    ParentStudent[]
+  sessions    UserSession[]
+  devices     Device[]
+
+  @@index([phone])
+  @@map("parent_users")
+}
+
+// ─── Parent ↔ Student link ────────────────────────────────────────────────────
+
+model ParentStudent {
+  id        String      @id @default(cuid())
+  parentId  String
+  parent    ParentUser  @relation(fields: [parentId], references: [id])
+  studentId String
+  student   Student     @relation(fields: [studentId], references: [id])
+  relation  String      @default("PARENT")  // PARENT | GUARDIAN | SIBLING
+
+  isPrimary Boolean     @default(false)
+  createdAt DateTime    @default(now())
+
+  @@unique([parentId, studentId])
+  @@index([studentId])
+  @@map("parent_students")
+}
+
+// ─── Session ──────────────────────────────────────────────────────────────────
+
+model UserSession {
+  id                  String      @id @default(cuid())
+
+  // Polymorphic actor
+  schoolUserId        String?
+  schoolUser          SchoolUser? @relation(fields: [schoolUserId], references: [id])
+  parentUserId        String?
+  parentUser          ParentUser  @relation(fields: [parentUserId], references: [id])
+
+  refreshTokenHash    String      @unique
+  deviceFingerprint   String?
+  deviceInfo          Json?       // { device, os, browser }
+  ipAddress           String?
+
+  expiresAt           DateTime
+  revokedAt           DateTime?
+
+  createdAt           DateTime    @default(now())
+
+  @@index([schoolUserId])
+  @@index([parentUserId])
+  @@map("user_sessions")
+}
+
+// ─── Device (for push notifications) ─────────────────────────────────────────
+
+model Device {
+  id          String     @id @default(cuid())
+  parentId    String
+  parent      ParentUser @relation(fields: [parentId], references: [id])
+
+  expoPushToken String?  @unique
+  platform      String   // ios | android
+  deviceId      String
+
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([parentId])
+  @@map("devices")
+}

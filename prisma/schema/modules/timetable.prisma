@@ -1,0 +1,77 @@
+// prisma/schema/modules/timetable.prisma
+
+model Teacher {
+  id        String     @id @default(cuid())
+  schoolId  String
+  userId    String?    @unique  // links to SchoolUser if they have login
+  name      String
+  phone     String?
+  subjectIds String[]  // subjects they teach
+
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+
+  periods   Period[]
+  substitutions Substitution[] @relation("SubstituteTeacher")
+
+  @@index([schoolId])
+  @@map("teachers")
+}
+
+model Subject {
+  id       String  @id @default(cuid())
+  schoolId String
+  name     String  // "Mathematics"
+  code     String? // "MATH"
+
+  periods  Period[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId])
+  @@map("subjects")
+}
+
+model Period {
+  id          String   @id @default(cuid())
+  schoolId    String
+  teacherId   String
+  teacher     Teacher  @relation(fields: [teacherId], references: [id])
+  subjectId   String
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+
+  classGrade  String
+  section     String
+  dayOfWeek   Int      // 1=Mon 2=Tue ... 6=Sat
+  startTime   String   // "09:00"
+  endTime     String   // "09:45"
+
+  isActive    Boolean  @default(true)
+
+  substitutions Substitution[]
+
+  @@index([schoolId])
+  @@index([teacherId])
+  @@index([classGrade, section])
+  @@map("periods")
+}
+
+model Substitution {
+  id              String   @id @default(cuid())
+  schoolId        String
+  periodId        String
+  period          Period   @relation(fields: [periodId], references: [id])
+  substituteId    String
+  substitute      Teacher  @relation("SubstituteTeacher", fields: [substituteId], references: [id])
+
+  date            DateTime
+  reason          String?
+  notifiedAt      DateTime?
+
+  createdAt       DateTime @default(now())
+
+  @@index([schoolId])
+  @@index([date])
+  @@map("substitutions")
+}

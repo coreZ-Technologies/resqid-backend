@@ -1,0 +1,54 @@
+// prisma/schema/core/school.prisma
+
+model School {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique  // e.g. "SXHS-K3X9" — auto generated
+  email     String   @unique
+  phone     String
+  address   String
+  city      String
+  state     String
+  pincode   String
+  logoUrl   String?
+
+  isActive  Boolean  @default(false)  // activated by super admin
+  timezone  String   @default("Asia/Kolkata")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?  // soft delete
+
+  // Relations
+  settings      SchoolSettings?
+  users         SchoolUser[]
+  students      Student[]
+  subscriptions Subscription[]
+  orders        Order[]
+  tokens        Token[]
+
+  @@index([code])
+  @@index([isActive])
+  @@map("schools")
+}
+
+model SchoolSettings {
+  id                String  @id @default(cuid())
+  schoolId          String  @unique
+  school            School  @relation(fields: [schoolId], references: [id])
+
+  // Card settings
+  cardBgColor       String  @default("#1a73e8")
+  cardTextColor     String  @default("#ffffff")
+  cardLogoUrl       String?
+  showBloodGroup    Boolean @default(true)
+  showPhoto         Boolean @default(true)
+
+  // Attendance settings
+  lateThresholdMins Int     @default(15)  // mins after session start = late
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("school_settings")
+}
