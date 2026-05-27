@@ -1,4 +1,4 @@
-// src/utils/apiError.js
+// src/utils/apiErrorjs.
 
 export class ApiError extends Error {
   constructor(statusCode, message, errors = [], stack = '') {
