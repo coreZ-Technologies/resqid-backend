@@ -1,0 +1,40 @@
+// prisma/schema/core/student.prisma
+// CORE ONLY — no module fields here
+// Module relations are defined in their own schema files
+
+model Student {
+  id          String    @id @default(cuid())
+  schoolId    String
+  school      School    @relation(fields: [schoolId], references: [id])
+
+  // Basic info — available to ALL modules
+  name        String
+  rollNo      String?
+  photoUrl    String?
+  bloodGroup  String?
+  dateOfBirth DateTime?
+  gender      String?
+
+  // Class/section — used by attendance + timetable
+  classGrade  String?   // "10"
+  section     String?   // "A"
+
+  isActive    Boolean   @default(true)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  // Core relations
+  parents     ParentStudent[]
+  tokens      Token[]
+
+  // Module relations — defined in module schemas via opposite relation
+  // EmergencyProfile  → emergency.prisma
+  // AttendanceTaps    → attendance.prisma
+
+  @@unique([schoolId, rollNo])
+  @@index([schoolId])
+  @@index([classGrade, section])
+  @@map("students")
+}

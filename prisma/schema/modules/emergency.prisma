@@ -1,0 +1,50 @@
+// prisma/schema/modules/emergency.prisma
+
+model EmergencyProfile {
+  id        String   @id @default(cuid())
+  studentId String   @unique
+  student   Student  @relation(fields: [studentId], references: [id])
+  schoolId  String
+
+  // Medical
+  bloodGroup    String?
+  allergies     String[]
+  medications   String[]
+  conditions    String[]
+  doctorName    String?
+  doctorPhone   String?
+
+  // Card visibility — parent controls what shows on scan
+  showBloodGroup  Boolean @default(true)
+  showAllergies   Boolean @default(true)
+  showMedications Boolean @default(false)
+  showContacts    Boolean @default(true)
+
+  isComplete Boolean @default(false)  // false until parent fills profile
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  contacts   EmergencyContact[]
+
+  @@index([schoolId])
+  @@map("emergency_profiles")
+}
+
+model EmergencyContact {
+  id         String           @id @default(cuid())
+  profileId  String
+  profile    EmergencyProfile @relation(fields: [profileId], references: [id])
+
+  name       String
+  phone      String
+  relation   String           // FATHER | MOTHER | GUARDIAN etc.
+  isPrimary  Boolean          @default(false)
+  order      Int              @default(0)  // display order
+
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([profileId])
+  @@map("emergency_contacts")
+}

@@ -1,0 +1,67 @@
+// prisma/schema/modules/attendance.prisma
+
+model AttendanceSession {
+  id          String    @id @default(cuid())
+  schoolId    String
+  teacherId   String    // SchoolUser.id
+  classGrade  String
+  section     String
+  subject     String?
+
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  isActive    Boolean   @default(true)
+
+  records     AttendanceRecord[]
+  taps        AttendanceTap[]
+
+  @@index([schoolId])
+  @@index([teacherId])
+  @@index([isActive])
+  @@map("attendance_sessions")
+}
+
+model AttendanceTap {
+  id          String            @id @default(cuid())
+  sessionId   String
+  session     AttendanceSession @relation(fields: [sessionId], references: [id])
+  studentId   String
+  student     Student           @relation(fields: [studentId], references: [id])
+  schoolId    String
+
+  // Raw tap from hardware — processed into AttendanceRecord by worker
+  uidHash     String            // SHA-256 of NFC UID
+  tappedAt    DateTime          @default(now())
+  deviceId    String?           // ESP32 device ID
+  processed   Boolean           @default(false)
+
+  @@index([sessionId])
+  @@index([studentId])
+  @@index([processed])
+  @@map("attendance_taps")
+}
+
+model AttendanceRecord {
+  id          String            @id @default(cuid())
+  sessionId   String
+  session     AttendanceSession @relation(fields: [sessionId], references: [id])
+  studentId   String
+  student     Student           @relation(fields: [studentId], references: [id])
+  schoolId    String
+
+  status      AttendanceStatus  @default(PRESENT)
+  markedAt    DateTime          @default(now())
+  markedBy    String?           // teacherId if manually overridden
+
+  @@unique([sessionId, studentId])
+  @@index([schoolId])
+  @@index([studentId])
+  @@map("attendance_records")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}

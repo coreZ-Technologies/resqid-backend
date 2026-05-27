@@ -1,0 +1,120 @@
+// prisma/schema/core/plan.prisma
+
+model Plan {
+  id           String   @id  // matches PLAN_IDS constant e.g. "resqid_complete"
+  label        String
+  description  String?
+
+  // Price in paise — base price, actual locked on subscription
+  pricePerStudent Int
+
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id])
+
+  // Modules unlocked — derived from planId at creation, stored for fast lookup
+  modules   String[] // ["emergency", "attendance"]
+
+  studentCount          Int
+  pricePerStudentPaise  Int   // locked at purchase time
+  totalAmountPaise      Int   // studentCount × pricePerStudentPaise
+
+  validFrom  DateTime
+  validUntil DateTime
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Payment records
+  payments   Payment[]
+
+  @@index([schoolId])
+  @@index([validUntil])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id])
+
+  amountPaise    Int
+  currency       String        @default("INR")
+  status         PaymentStatus @default(PENDING)
+
+  // Razorpay
+  gatewayOrderId   String?  @unique
+  gatewayPaymentId String?  @unique
+
+  paidAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([subscriptionId])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+// ─── Order ────────────────────────────────────────────────────────────────────
+
+model Order {
+  id        String      @id @default(cuid())
+  schoolId  String
+  school    School      @relation(fields: [schoolId], references: [id])
+
+  status    OrderStatus @default(DRAFT)
+  quantity  Int
+  totalAmountPaise Int
+
+  shippingAddress Json?
+  trackingNumber  String?
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  items     OrderItem[]
+
+  @@index([schoolId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id       String  @id @default(cuid())
+  orderId  String
+  order    Order   @relation(fields: [orderId], references: [id])
+  tokenId  String  @unique
+  token    Token   @relation(fields: [tokenId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  PROCESSING
+  PRINTED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}

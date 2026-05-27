@@ -1,0 +1,48 @@
+// prisma/schema/modules/communication.prisma
+
+model Announcement {
+  id        String   @id @default(cuid())
+  schoolId  String
+  authorId  String   // SchoolUser.id
+
+  title     String
+  body      String
+  imageUrl  String?
+
+  // Targeting
+  targetAll     Boolean  @default(true)
+  targetGrades  String[] // ["10", "11"] — empty = all
+
+  publishedAt   DateTime?
+  expiresAt     DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([publishedAt])
+  @@map("announcements")
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  schoolId   String
+
+  // Sender — school staff
+  senderId   String   // SchoolUser.id
+
+  // Recipient — parent
+  parentId   String
+  studentId  String   // context — which child this is about
+
+  body       String
+  isRead     Boolean  @default(false)
+  readAt     DateTime?
+
+  createdAt  DateTime @default(now())
+
+  @@index([schoolId])
+  @@index([parentId])
+  @@index([studentId])
+  @@map("messages")
+}

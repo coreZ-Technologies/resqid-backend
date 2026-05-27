@@ -1,0 +1,34 @@
+// prisma/schema/shared/audit.prisma
+
+model AuditLog {
+  id         String   @id @default(cuid())
+
+  // Who did it
+  actorId    String?  // null = system action
+  actorType  String   // SUPER_ADMIN | SCHOOL_ADMIN | TEACHER | PARENT | SYSTEM
+
+  // What they did
+  action     String   // from AUDIT_ACTION constants e.g. "student.created"
+
+  // What was affected
+  targetId   String?
+  targetType String?  // "Student" | "Token" | "School" etc.
+
+  // Scope
+  schoolId   String?  // null for platform-level actions
+
+  // Context
+  ipAddress  String?
+  device     String?
+  os         String?
+  browser    String?
+  metadata   Json?    // any extra data
+
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([schoolId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

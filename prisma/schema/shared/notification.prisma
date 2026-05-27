@@ -1,0 +1,62 @@
+// prisma/schema/shared/notification.prisma
+
+model Notification {
+  id         String             @id @default(cuid())
+
+  // Recipient — polymorphic
+  parentId   String?
+  schoolUserId String?
+
+  schoolId   String?
+  title      String
+  body       String
+  type       String             // from EVENTS constants
+  data       Json?              // deep link payload
+
+  channel    NotificationChannel
+  status     NotificationStatus  @default(PENDING)
+
+  sentAt     DateTime?
+  readAt     DateTime?
+  failReason String?
+
+  createdAt  DateTime           @default(now())
+
+  @@index([parentId])
+  @@index([schoolUserId])
+  @@index([status])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id           String  @id @default(cuid())
+  parentId     String  @unique
+
+  smsEnabled   Boolean @default(true)
+  emailEnabled Boolean @default(false)
+  pushEnabled  Boolean @default(true)
+
+  // Per-event preferences
+  onScan       Boolean @default(true)
+  onAttendance Boolean @default(true)
+  onEmergency  Boolean @default(true)
+  onAnnouncement Boolean @default(true)
+
+  updatedAt    DateTime @updatedAt
+
+  @@map("notification_preferences")
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  PUSH
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
