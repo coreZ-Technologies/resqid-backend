@@ -1,4 +1,3 @@
-// TODO: Add implementation
 // =============================================================================
 // error.middleware.js — RESQID
 // Global error handler — last line of defence
@@ -180,7 +179,8 @@ export function globalErrorHandler(err, req, res, next) {
 
   return errorResponse(res, {
     statusCode: 500,
-    message: err.message, // Show real message in dev only
+    // Generic message in production — never leak implementation details
+    message: IS_PROD ? 'An unexpected error occurred' : err.message,
     requestId,
   });
 }
