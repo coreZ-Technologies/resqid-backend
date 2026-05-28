@@ -96,4 +96,72 @@ model ScanRateLimit {
   @@unique([identifier, identifierType])
   @@index([identifier])
   @@map("scan_rate_limits")
+}// ─────────────────────────────────────────────────────────────
+// token.prisma
+//
+// Physical and digital tokens assigned to a student.
+// A single student can have multiple active tokens:
+//   • RFID card   → used by the attendance module
+//   • QR badge    → used by the emergency module
+//   • NFC sticker → future expansion
+//
+// Every scan (attendance tap / emergency QR) references the token
+// that was used, giving a full audit trail from hardware to record.
+// ─────────────────────────────────────────────────────────────
+
+// ─── Enums ──────────────────────────────────────────────────
+
+enum TokenType {
+  RFID
+  QR
+  NFC
+}
+
+enum TokenStatus {
+  ACTIVE
+  INACTIVE
+  REVOKED
+  LOST
+  EXPIRED
+}
+
+// ─── Token ──────────────────────────────────────────────────
+
+model Token {
+  id          String      @id @default(cuid())
+
+  // ── Ownership ─────────────────────────────────────────────
+  studentId   String
+  student     Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId    String
+  school      School      @relation(fields: [schoolId], references: [id])
+
+  // ── Identifier ────────────────────────────────────────────
+  type        TokenType
+  rfidUid     String?     @unique   // e.g. "A1B2C3D4" – unique RFID hardware UID
+  qrCode      String?     @unique   // e.g. "RESQID:STU-123" – unique QR payload
+
+  // ── Lifecycle ─────────────────────────────────────────────
+  status      TokenStatus @default(ACTIVE)
+  issuedAt    DateTime    @default(now())
+  expiresAt   DateTime?   // e.g. end of the school year
+  revokedAt   DateTime?   // set when status becomes REVOKED or LOST
+  revokedBy   String?     // User.id of the admin who revoked it
+
+  // ── Human‑readable label ──────────────────────────────────
+  label       String?     // "Main RFID Card", "Emergency QR Badge"
+
+  // ── Extras ────────────────────────────────────────────────
+  metadata    Json?       // batch number, hardware version, etc.
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // ── Relations ─────────────────────────────────────────────
+  scans       Scan[]      // all scans that used this token
+
+  @@index([studentId])
+  @@index([schoolId, type])
+  @@index([rfidUid])
+  @@index([qrCode])
 }

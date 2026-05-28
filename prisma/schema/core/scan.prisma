@@ -1,0 +1,93 @@
+// ─────────────────────────────────────────────────────────────
+// scan.prisma
+// Records every physical/digital interaction with a student’s token.
+// Supports:
+//   • RFID taps        → attendance tracking
+//   • QR scans         → emergency initiation / identity check
+//   • Manual entries   → admin overrides
+// ─────────────────────────────────────────────────────────────
+
+// ─── Enums ────────────────────────────────────────────────────
+
+enum ScanType {
+  RFID_TAP              // attendance via hardware reader
+  QR_EMERGENCY          // emergency scan by guard/staff
+  QR_ID_CHECK           // identity verification (non‑emergency)
+  MANUAL_ENTRY          // manually recorded by school admin
+}
+
+enum ScanStatus {
+  SUCCESS
+  FAILED
+  BLOCKED               // blocked by security middleware
+  ANOMALOUS             // flagged as anomaly after processing
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ─── Main Scan Record ────────────────────────────────────────
+
+model Scan {
+  id           String    @id @default(cuid())
+  studentId    String
+  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId     String
+  school       School    @relation(fields: [schoolId], references: [id])
+  tokenId      String?   // which token was used (null for manual entries)
+  token        Token?    @relation(fields: [tokenId], references: [id])
+
+  type         ScanType
+  status       ScanStatus @default(SUCCESS)
+
+  timestamp    DateTime  @default(now())
+  locationLat  Float?    // GPS latitude  (for emergency scans)
+  locationLng  Float?    // GPS longitude
+  initiatedBy  String?   // User.id – who performed the scan (guard / admin)
+
+  // Device context
+  deviceId     String?   // hardware device ID (RFID reader)
+  deviceIp     String?   // IP address of the scanning device / client
+  userAgent    Json?     // parsed user agent { browser, os, device }
+
+  metadata     Json?     // extensible payload (e.g., tap duration, error code)
+
+  anomalies    ScanAnomaly[]   // anomalies detected for this scan
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([studentId, timestamp])
+  @@index([schoolId, timestamp])
+  @@index([deviceId, timestamp])
+  @@index([initiatedBy])
+}
+
+// ─── Anomaly Records ─────────────────────────────────────────
+
+model ScanAnomaly {
+  id           String    @id @default(cuid())
+  scanId       String
+  scan         Scan      @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  studentId    String
+  schoolId     String
+
+  type         String    // e.g. "DUPLICATE_SCAN", "OFF_HOURS", "LOCATION_JUMP"
+  severity     Severity  @default(MEDIUM)
+  description  String
+
+  metadata     Json?     // extra details (e.g. distance, previous scan id)
+
+  detectedAt   DateTime  @default(now())
+  resolvedAt   DateTime? // when an admin reviewed/resolved it
+  resolvedBy   String?   // User.id who resolved it
+  resolution   String?   // "ACCEPTED", "REJECTED", "INVESTIGATING"
+
+  @@index([studentId, detectedAt])
+  @@index([schoolId, detectedAt])
+  @@index([severity])
+}

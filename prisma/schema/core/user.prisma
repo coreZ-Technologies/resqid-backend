@@ -1,6 +1,27 @@
-// prisma/schema/core/user.prisma
+// #file: prisma/schema/user.prisma
 
-// ─── Super Admin ──────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// user.prisma
+//
+// Identity models for every authenticated actor in RESQID.
+// Roles are split into separate tables for cleaner design:
+//   • SuperAdmin          – platform owner
+//   • SchoolUser          – admin, teacher, guard (belongs to a school)
+//   • ParentUser          – parent / guardian (OTP‑based auth)
+//
+// Sessions are polymorphic (one table for all actor types).
+// Devices store Expo push tokens for notification delivery.
+// ─────────────────────────────────────────────────────────────
+
+// ─── Enums ──────────────────────────────────────────────────
+
+enum SchoolUserRole {
+  ADMIN
+  TEACHER
+  GUARD
+}
+
+// ─── Super Admin ────────────────────────────────────────────
 
 model SuperAdmin {
   id           String    @id @default(cuid())
@@ -14,10 +35,12 @@ model SuperAdmin {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  sessions     UserSession[]
+
   @@map("super_admins")
 }
 
-// ─── School User (Admin + Teacher) ───────────────────────────────────────────
+// ─── School User (Admin, Teacher, Guard) ────────────────────
 
 model SchoolUser {
   id           String         @id @default(cuid())
@@ -35,9 +58,8 @@ model SchoolUser {
 
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
-  deletedAt    DateTime?
+  deletedAt    DateTime?      // soft delete
 
-  // Relations
   sessions     UserSession[]
 
   @@index([schoolId])
@@ -45,41 +67,36 @@ model SchoolUser {
   @@map("school_users")
 }
 
-enum SchoolUserRole {
-  ADMIN
-  TEACHER
-}
-
-// ─── Parent User ──────────────────────────────────────────────────────────────
+// ─── Parent User ────────────────────────────────────────────
 
 model ParentUser {
-  id          String    @id @default(cuid())
-  name        String?
-  phone       String    @unique
-  email       String?
+  id           String    @id @default(cuid())
+  name         String?
+  phone        String    @unique
+  email        String?
 
-  // OTP auth
-  otp         String?
+  // OTP‑based login
+  otp          String?
   otpExpiresAt DateTime?
-  otpAttempts  Int      @default(0)
+  otpAttempts  Int       @default(0)
 
-  isActive    Boolean   @default(true)
-  lastLoginAt DateTime?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   // Relations
-  students    ParentStudent[]
-  sessions    UserSession[]
-  devices     Device[]
+  students     ParentStudent[]
+  sessions     UserSession[]
+  devices      Device[]
 
   @@index([phone])
   @@map("parent_users")
 }
 
-// ─── Parent ↔ Student link ────────────────────────────────────────────────────
+// ─── Parent ↔ Student Link (many‑to‑many) ──────────────────
 
 model ParentStudent {
   id        String      @id @default(cuid())
@@ -87,7 +104,7 @@ model ParentStudent {
   parent    ParentUser  @relation(fields: [parentId], references: [id])
   studentId String
   student   Student     @relation(fields: [studentId], references: [id])
-  relation  String      @default("PARENT")  // PARENT | GUARDIAN | SIBLING
+  relation  String      @default("PARENT")   // PARENT | GUARDIAN | SIBLING
 
   isPrimary Boolean     @default(false)
   createdAt DateTime    @default(now())
@@ -97,46 +114,49 @@ model ParentStudent {
   @@map("parent_students")
 }
 
-// ─── Session ──────────────────────────────────────────────────────────────────
+// ─── Session (polymorphic) ──────────────────────────────────
 
 model UserSession {
-  id                  String      @id @default(cuid())
+  id                String      @id @default(cuid())
 
-  // Polymorphic actor
-  schoolUserId        String?
-  schoolUser          SchoolUser? @relation(fields: [schoolUserId], references: [id])
-  parentUserId        String?
-  parentUser          ParentUser  @relation(fields: [parentUserId], references: [id])
+  // Actor – one of these three must be set (enforced at app level)
+  superAdminId      String?
+  superAdmin        SuperAdmin? @relation(fields: [superAdminId], references: [id])
+  schoolUserId      String?
+  schoolUser        SchoolUser? @relation(fields: [schoolUserId], references: [id])
+  parentUserId      String?
+  parentUser        ParentUser? @relation(fields: [parentUserId], references: [id])
 
-  refreshTokenHash    String      @unique
-  deviceFingerprint   String?
-  deviceInfo          Json?       // { device, os, browser }
-  ipAddress           String?
+  refreshTokenHash  String      @unique
+  deviceFingerprint String?
+  deviceInfo        Json?       // { browser, os, device }
+  ipAddress         String?
 
-  expiresAt           DateTime
-  revokedAt           DateTime?
+  expiresAt         DateTime
+  revokedAt         DateTime?
 
-  createdAt           DateTime    @default(now())
+  createdAt         DateTime    @default(now())
 
+  @@index([superAdminId])
   @@index([schoolUserId])
   @@index([parentUserId])
   @@map("user_sessions")
 }
 
-// ─── Device (for push notifications) ─────────────────────────────────────────
+// ─── Device (for push notifications) ────────────────────────
 
 model Device {
-  id          String     @id @default(cuid())
-  parentId    String
-  parent      ParentUser @relation(fields: [parentId], references: [id])
+  id            String     @id @default(cuid())
+  parentId      String
+  parent        ParentUser @relation(fields: [parentId], references: [id])
 
-  expoPushToken String?  @unique
-  platform      String   // ios | android
-  deviceId      String
+  expoPushToken String?    @unique
+  platform      String     // ios | android
+  deviceId      String     // unique device identifier
 
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@index([parentId])
   @@map("devices")

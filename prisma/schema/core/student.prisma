@@ -1,40 +1,115 @@
-// prisma/schema/core/student.prisma
-// CORE ONLY — no module fields here
-// Module relations are defined in their own schema files
+// ─────────────────────────────────────────────────────────────
+// student.prisma
+//
+// Student entity, emergency profile & contacts.
+// Used by:
+//   • emergency module (profile lookup, emergency contacts)
+//   • attendance module (marking taps)
+//   • timetable module (class/section assignment)
+//   • token / card management
+// ─────────────────────────────────────────────────────────────
+
+// ─── Enums ──────────────────────────────────────────────────
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  O_POS
+  O_NEG
+  AB_POS
+  AB_NEG
+}
+
+// ─── Student ────────────────────────────────────────────────
 
 model Student {
-  id          String    @id @default(cuid())
-  schoolId    String
-  school      School    @relation(fields: [schoolId], references: [id])
+  id            String    @id @default(cuid())
+  schoolId      String
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
-  // Basic info — available to ALL modules
-  name        String
-  rollNo      String?
-  photoUrl    String?
-  bloodGroup  String?
-  dateOfBirth DateTime?
-  gender      String?
+  // ── Basic info ────────────────────────────────────────────
+  firstName     String
+  lastName      String
+  dateOfBirth   DateTime?
+  gender        Gender?
+  photoUrl      String?    // profile photo stored in S3
 
-  // Class/section — used by attendance + timetable
-  classGrade  String?   // "10"
-  section     String?   // "A"
+  // ── Class assignment (for timetable & attendance) ─────────
+  classId       String?
+  // class      Class?     @relation(fields: [classId], references: [id])   // defined in timetable.prisma
 
-  isActive    Boolean   @default(true)
+  // ── Parent / guardian link ────────────────────────────────
+  parentId      String?
+  parent        User?      @relation("ParentStudents", fields: [parentId], references: [id])
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  // ── Status & metadata ─────────────────────────────────────
+  isActive      Boolean    @default(true)
+  metadata      Json?      // extensible (e.g., transport route, house, etc.)
 
-  // Core relations
-  parents     ParentStudent[]
-  tokens      Token[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
-  // Module relations — defined in module schemas via opposite relation
-  // EmergencyProfile  → emergency.prisma
-  // AttendanceTaps    → attendance.prisma
+  // ── Relations ─────────────────────────────────────────────
+  tokens        Token[]
+  scans         Scan[]
+  attendanceRecords  AttendanceRecord[]   // defined in attendance.prisma
 
-  @@unique([schoolId, rollNo])
+  emergencyProfile   EmergencyProfile?
+  emergencyContacts  EmergencyContact[]   // alternate contacts beyond parent
+
   @@index([schoolId])
-  @@index([classGrade, section])
-  @@map("students")
+  @@index([classId])
+  @@index([parentId])
+}
+
+// ─── Emergency Profile (1:1 with Student) ────────────────────
+
+model EmergencyProfile {
+  id            String    @id @default(cuid())
+  studentId     String    @unique
+  student       Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  // ── Medical info ──────────────────────────────────────────
+  bloodGroup    BloodGroup?
+  allergies     String?    // e.g. "peanuts, penicillin"
+  medications   String?    // ongoing medications
+  conditions    String?    // chronic conditions (asthma, epilepsy, etc.)
+  doctorName    String?
+  doctorPhone   String?
+  notes         String?    // any extra medical notes for first responders
+
+  // ── Encrypted copy (optional, if you want to store sensitive data encrypted) ─
+  encryptedData String?    // JSON encrypted with shared/security/encryption.js
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([studentId])
+}
+
+// ─── Emergency Contact (alternate contacts, separate from parent) ────────
+
+model EmergencyContact {
+  id            String    @id @default(cuid())
+  studentId     String
+  student       Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  name          String
+  relationship  String     // e.g. "grandparent", "neighbour", "family friend"
+  phone         String
+  email         String?
+  isPrimary     Boolean    @default(false)   // primary contact after parent
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([studentId])
 }
