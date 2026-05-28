@@ -55,22 +55,15 @@ const PATTERNS = {
   ],
   SQL_INJECTION: [
     "' OR '1'='1",
-    '" OR "1"="1",
+    '" OR "1"="1"',
     "' UNION SELECT",
     "'; DROP TABLE",
     "' WAITFOR DELAY",
-    "1=1--",
+    '1=1--',
     "admin'--",
     "' OR 1=1#",
   ],
-  PATH_TRAVERSAL: [
-    '../',
-    '..\\',
-    '....//',
-    '....\\\\',
-    '%2e%2e%2f',
-    '%252e%252e%252f',
-  ],
+  PATH_TRAVERSAL: ['../', '..\\', '....//', '....\\\\', '%2e%2e%2f', '%252e%252e%252f'],
   SUSPICIOUS_UA: [
     'python-requests',
     'curl',
@@ -101,11 +94,7 @@ const NORMAL_PATTERNS = {
       '/api/school-admin/tokens',
       '/api/school-admin/scans',
     ],
-    [ROLES.TEACHER]: [
-      '/api/attendance',
-      '/api/timetable',
-      '/api/students',
-    ],
+    [ROLES.TEACHER]: ['/api/attendance', '/api/timetable', '/api/students'],
     [ROLES.SUPER_ADMIN]: [
       '/api/super-admin/schools',
       '/api/super-admin/users',
@@ -177,7 +166,8 @@ async function calculateBehavioralScore(ip, requestData) {
 
   // [4] SQL injection attempts in query or body
   if (requestData.query || requestData.body) {
-    const combinedInput = JSON.stringify(requestData.query || {}) + JSON.stringify(requestData.body || {});
+    const combinedInput =
+      JSON.stringify(requestData.query || {}) + JSON.stringify(requestData.body || {});
     for (const pattern of PATTERNS.SQL_INJECTION) {
       if (combinedInput.toLowerCase().includes(pattern.toLowerCase())) {
         score += 25;
@@ -253,12 +243,14 @@ async function calculateBehavioralScore(ip, requestData) {
   }
 
   // Store score in Redis (fire-and-forget)
-  redis.set(
-    `behavior:score:${ip}`,
-    JSON.stringify({ score, reasons, updatedAt: new Date().toISOString() }),
-    'EX',
-    WINDOWS.LONG
-  ).catch((err) => logger.debug({ ip, err: err.message }, 'Score store failed'));
+  redis
+    .set(
+      `behavior:score:${ip}`,
+      JSON.stringify({ score, reasons, updatedAt: new Date().toISOString() }),
+      'EX',
+      WINDOWS.LONG
+    )
+    .catch((err) => logger.debug({ ip, err: err.message }, 'Score store failed'));
 
   return { score, reasons };
 }
@@ -267,7 +259,9 @@ async function getBehavioralScore(ip) {
   try {
     const cached = await redis.get(`behavior:score:${ip}`);
     if (cached) return JSON.parse(cached);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { score: 0, reasons: [] };
 }
 
@@ -324,7 +318,10 @@ async function blockIpBehavioral(ip, score, reasons, previousBlockCount = 0) {
     // Table may not exist — non-critical
   }
 
-  logger.warn({ ip, score, reasons, isPermanent, offenseCount }, `IP ${ip} behaviorally blocked (score: ${score})`);
+  logger.warn(
+    { ip, score, reasons, isPermanent, offenseCount },
+    `IP ${ip} behaviorally blocked (score: ${score})`
+  );
 }
 
 // =============================================================================
@@ -343,7 +340,7 @@ export async function recordFailedAuth(ip, identifier, reason) {
     const newScore = score + 15;
 
     const existingBlock = await redis.get(`blocked:behavioral:${ip}`);
-    const offenseCount = existingBlock ? (JSON.parse(existingBlock).offenseCount || 0) : 0;
+    const offenseCount = existingBlock ? JSON.parse(existingBlock).offenseCount || 0 : 0;
 
     if (newScore >= BEHAVIOR_THRESHOLDS.BLOCK) {
       reasons.push(`${attempts} failed auth attempts`);
@@ -417,7 +414,7 @@ export const behavioralSecurity = asyncHandler(async (req, res, next) => {
 
   if (score >= BEHAVIOR_THRESHOLDS.BLOCK) {
     const existingBlock = await redis.get(`blocked:behavioral:${ip}`);
-    const offenseCount = existingBlock ? (JSON.parse(existingBlock).offenseCount || 0) : 0;
+    const offenseCount = existingBlock ? JSON.parse(existingBlock).offenseCount || 0 : 0;
     await blockIpBehavioral(ip, score, reasons, offenseCount);
     throw ApiError.forbidden('Access denied due to suspicious activity', 'BEHAVIOR_ANOMALY');
   }
@@ -470,7 +467,7 @@ export async function whitelistIp(ip, reason, adminId) {
 
 export async function blacklistIp(ip, reason, adminId) {
   const existingBlock = await redis.get(`blocked:behavioral:${ip}`);
-  const offenseCount = existingBlock ? (JSON.parse(existingBlock).offenseCount || 0) : 0;
+  const offenseCount = existingBlock ? JSON.parse(existingBlock).offenseCount || 0 : 0;
   await blockIpBehavioral(ip, BEHAVIOR_THRESHOLDS.PERMANENT_BLOCK, [reason], offenseCount);
   logger.warn({ ip, reason, adminId }, 'IP manually blacklisted');
 }
