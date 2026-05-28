@@ -1,6 +1,11 @@
 // =============================================================================
+<<<<<<< HEAD
 // prisma/schema/modules/emergency.prisma — RESQID
 // Emergency profile and contacts — displayed on QR scan
+=======
+// emergency.prisma — RESQID
+// Module m2: Emergency profiles & contacts
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 // =============================================================================
 
 model EmergencyProfile {
@@ -16,10 +21,18 @@ model EmergencyProfile {
   doctorName   String?
   doctorPhone  String?
 
+<<<<<<< HEAD
   showBloodGroup   Boolean @default(true)
   showAllergies    Boolean @default(true)
   showMedications  Boolean @default(false)
   showContacts     Boolean @default(true)
+=======
+  // Card visibility – parent controls what shows on scan
+  showBloodGroup  Boolean @default(true)
+  showAllergies   Boolean @default(true)
+  showMedications Boolean @default(false)
+  showContacts    Boolean @default(true)
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 
   isComplete  Boolean @default(false)
 
@@ -27,6 +40,9 @@ model EmergencyProfile {
   updatedAt   DateTime @updatedAt
 
   contacts    EmergencyContact[]
+
+  // Multi‑tenancy – school ownership
+  school     School    @relation(fields: [schoolId], references: [id])
 
   @@index([schoolId])
   @@map("emergency_profiles")

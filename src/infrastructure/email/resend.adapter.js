@@ -1,3 +1,10 @@
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+// TODO: Add implementation
+=======
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 import { Resend } from 'resend';
 import React from 'react'; // ✅ ADD THIS
 import { EmailProvider } from './email.provider.js';
@@ -47,7 +54,15 @@ export class ResendAdapter extends EmailProvider {
   }
 
   async sendBulk(emails) {
+<<<<<<< HEAD
     const results = await Promise.allSettled(emails.map((email) => this.send(email)));
+=======
+<<<<<<< HEAD
+    const results = await Promise.allSettled(emails.map(email => this.send(email)));
+=======
+    const results = await Promise.allSettled(emails.map((email) => this.send(email)));
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
     return results.map((result, index) =>
       result.status === 'fulfilled'
         ? result.value

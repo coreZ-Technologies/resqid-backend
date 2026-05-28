@@ -50,6 +50,11 @@ let cacheInstance = null;
 
 export async function initializeCache(config = {}) {
   if (!cacheInstance) {
+
+    const adapter = new RedisAdapter(config);
+    await adapter.connect();
+    cacheInstance = adapter;
+
     const adapter = new RedisAdapter({
       url: config.REDIS_URL || ENV.REDIS_URL,
       password: config.REDIS_PASSWORD || ENV.REDIS_PASSWORD,
@@ -64,10 +69,13 @@ export async function initializeCache(config = {}) {
 
 export function getCache() {
   if (!cacheInstance) {
+    throw new Error('[Cache] Not initialized. Call initializeCache() before use.');
     throw new Error('[Cache] Not initialized. Call initializeCache() first.');
+
   }
   return cacheInstance;
 }
+
 
 export async function shutdownCache() {
   if (cacheInstance) {
@@ -77,4 +85,5 @@ export async function shutdownCache() {
   }
 }
 
+ 
 export { CacheProvider, RedisAdapter };

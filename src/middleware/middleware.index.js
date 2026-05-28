@@ -1,5 +1,17 @@
 // =============================================================================
 // middleware.index.js — RESQID
+<<<<<<< HEAD
+// Barrel file that re‑exports all middleware in one place.
+// app.js imports everything from here to keep the main file clean.
+// =============================================================================
+
+// Logging (traditional file‑based access logs via Morgan)
+import morgan from 'morgan';
+import { createStream } from 'rotating-file-stream';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { ENV } from '../config/env.js';
+=======
 //
 // Central middleware composer — builds the complete middleware chain.
 // Import this single file in app.js and apply in order.
@@ -9,6 +21,7 @@
 //   buildAuthPipeline()       → Applied to protected routes
 //   buildPublicScanPipeline() → Applied to QR emergency scan routes
 // =============================================================================
+>>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f
 
 // ─── Core ────────────────────────────────────────────────────────────────────
 export { requestId } from '#middleware/requestId.middleware.js';
@@ -50,6 +63,33 @@ export {
   ownStudentOnly,
 } from '#middleware/restrictionOwnSchool.middleware.js';
 
+<<<<<<< HEAD
+const skipHealth = req => req.path === '/health' || req.path === '/api/health';
+
+export const accessLogger = morgan(ENV.NODE_ENV === 'production' ? 'tiny' : 'dev', {
+  stream: accessStream,
+  skip: skipHealth,
+});
+
+// ── Security & Utility Middleware ────────────────────────────────────────────
+export { apiVersion } from './apiVersion.middleware.js';
+export { enforceContentType } from './contentType.middleware.js';
+export { verifyDevice, invalidateDeviceCache } from './deviceFingerprint.middleware.js';
+export { globalErrorHandler, notFoundHandler, setupProcessErrorHandlers } from './error.middleware.js';
+export { maintenanceMode, flushMaintenanceCache } from './maintenanceMode.middleware.js';
+
+// ── Auth Middleware (when you generate them) ─────────────────────────────────
+// export { authenticate } from './auth/authenticate.middleware.js';
+// export { rbac } from './auth/rbac.middleware.js';
+// export { tenantScope } from './auth/tenantScope.middleware.js';
+
+// ── HTTP Structured Logger (if you have httpLogger.middleware.js) ────────────
+// export { httpLogger } from './httpLogger.middleware.js';
+
+// ── Other Middleware ─────────────────────────────────────────────────────────
+// export { sanitize } from './sanitize.middleware.js';
+// export { validate } from './validate.middleware.js';
+=======
 // ─── Security ────────────────────────────────────────────────────────────────
 export {
   helmetMiddleware,
@@ -290,3 +330,4 @@ export function buildAuthRoutesPipeline() {
 // // 7. Error handling (LAST)
 // app.use(notFoundHandler);
 // app.use(errorHandler);
+>>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f

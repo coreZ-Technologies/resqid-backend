@@ -1,4 +1,5 @@
 // =============================================================================
+<<<<<<< HEAD
 // prisma/schema/modules/attendance.prisma — RESQID
 // Attendance sessions, taps, and records
 // =============================================================================
@@ -10,12 +11,23 @@ enum AttendanceStatus {
   EXCUSED
   HALF_DAY
 }
+=======
+// attendance.prisma — RESQID
+// Module m3: Attendance tracking via RFID taps
+// =============================================================================
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 
+// ── Session (e.g., morning/afternoon class block) ──────────────────────────
 model AttendanceSession {
   id          String    @id @default(cuid())
   schoolId    String
+<<<<<<< HEAD
   teacherId   String
   grade       String
+=======
+  teacherId   String    // references User.id (role = TEACHER)
+  classGrade  String
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
   section     String
   subject     String?
 
@@ -26,12 +38,17 @@ model AttendanceSession {
   records     AttendanceRecord[]
   taps        AttendanceTap[]
 
+  // Relations
+  school      School    @relation(fields: [schoolId], references: [id])
+  teacher     User      @relation(fields: [teacherId], references: [id])
+
   @@index([schoolId])
   @@index([teacherId])
   @@index([isActive])
   @@map("attendance_sessions")
 }
 
+// ── Raw tap from RFID reader (before processing) ───────────────────────────
 model AttendanceTap {
   id          String            @id @default(cuid())
   sessionId   String
@@ -40,10 +57,17 @@ model AttendanceTap {
   student     Student           @relation(fields: [studentId], references: [id])
   schoolId    String
 
+<<<<<<< HEAD
   uidHash     String
+=======
+  uidHash     String            // SHA-256 of NFC UID (privacy-safe)
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
   tappedAt    DateTime          @default(now())
   deviceId    String?
   processed   Boolean           @default(false)
+
+  // Relations
+  school      School            @relation(fields: [schoolId], references: [id])
 
   @@index([sessionId])
   @@index([studentId])
@@ -51,6 +75,7 @@ model AttendanceTap {
   @@map("attendance_taps")
 }
 
+// ── Processed attendance record (one per student per session) ──────────────
 model AttendanceRecord {
   id          String            @id @default(cuid())
   sessionId   String
@@ -61,10 +86,28 @@ model AttendanceRecord {
 
   status      AttendanceStatus  @default(PRESENT)
   markedAt    DateTime          @default(now())
+<<<<<<< HEAD
   markedBy    String?
+=======
+  markedBy    String?           // optional teacherId if manually overridden
+
+  // Relations
+  school      School            @relation(fields: [schoolId], references: [id])
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 
   @@unique([sessionId, studentId])
   @@index([schoolId])
   @@index([studentId])
   @@map("attendance_records")
+<<<<<<< HEAD
+=======
+}
+
+// ── Enum ───────────────────────────────────────────────────────────────────
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+>>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 }
