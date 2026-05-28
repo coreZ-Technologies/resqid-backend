@@ -1,4 +1,3 @@
-// TODO: Add implementation
 // =============================================================================
 // apiVersion.middleware.js — RESQID
 // API version enforcement and deprecation management
@@ -10,7 +9,7 @@
 //   silently hit new API behaviour and break. This middleware:
 //     - Attaches the resolved API version to every request (req.apiVersion)
 //     - Rejects clients on deprecated versions with a clear upgrade message
-//     - Allows emergency endpoint to be version-free (always latest)
+//     - Allows emergency endpoints to be version-free (always latest)
 //
 // Strategy:
 //   Version is read from (in priority order):
@@ -39,10 +38,12 @@ const VERSION_HEADER = 'api-version';
 
 // Routes that are version-free — always served on current implementation
 const VERSION_FREE_PREFIXES = [
-  '/api/emergency', // public QR scan — must always work regardless of app version
+  '/api/emergency',    // QR emergency scan — must always work
+  '/api/scan',          // public emergency redirect / scan init
   '/health',
   '/api/health',
-  '/api/webhooks', // external providers don't send API-Version header
+  '/api/webhooks',      // external providers don't send API-Version header
+  '/metrics',           // Prometheus metrics (if exposed)
 ];
 
 // Sunset dates for deprecated versions (informational — shown in response)
@@ -74,7 +75,8 @@ export const apiVersion = asyncHandler(async (req, _res, next) => {
 
   // Reject completely unknown versions
   if (!SUPPORTED_VERSIONS.has(version) && !DEPRECATED_VERSIONS.has(version)) {
-    throw ApiError.badRequest(
+    throw new ApiError(
+      400,
       `Unsupported API version '${version}'. Supported: [${[...SUPPORTED_VERSIONS].join(', ')}]`
     );
   }
@@ -82,7 +84,7 @@ export const apiVersion = asyncHandler(async (req, _res, next) => {
   // Reject deprecated versions
   if (DEPRECATED_VERSIONS.has(version)) {
     const sunset = SUNSET_DATES[version];
-    throw ApiError.create(
+    throw new ApiError(
       410,
       `API version '${version}' has been discontinued.${
         sunset ? ` It was sunset on ${sunset}.` : ''

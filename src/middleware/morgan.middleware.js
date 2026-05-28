@@ -1,4 +1,3 @@
-// TODO: Add implementation
 import morgan from 'morgan';
 import { createStream } from 'rotating-file-stream';
 import path from 'path';
@@ -13,10 +12,17 @@ const accessStream = createStream('access.log', {
   maxFiles: 14,
 });
 
-// Skip health check endpoints
+// Custom token for request ID (if you want it in the access log)
+morgan.token('request-id', req => req.id ?? req.requestId ?? '-');
+
 const skipHealth = req => req.path === '/health' || req.path === '/api/health';
 
-export const accessLogger = morgan(ENV.NODE_ENV === 'production' ? 'tiny' : 'dev', {
-  stream: accessStream,
-  skip: skipHealth,
-});
+export const accessLogger = morgan(
+  ENV.NODE_ENV === 'production'
+    ? ':remote-addr - :method :url :status :response-time ms - :request-id'
+    : 'dev',
+  {
+    stream: accessStream,
+    skip: skipHealth,
+  }
+);

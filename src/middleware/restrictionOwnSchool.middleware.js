@@ -1,4 +1,3 @@
-// TODO: Add implementation
 // =============================================================================
 // restrictionOwnSchool.middleware.js — RESQID
 // STRICT MODE — Zero-tolerance access control
@@ -6,8 +5,7 @@
 // Ensures parents can ONLY access their own children's data
 // Single violation = immediate 403 — no partial access, no soft errors
 //
-// ⚠️ ROLE NAMES: This middleware expects roles: 'SCHOOL_USER', 'PARENT_USER', 'SUPER_ADMIN'.
-//    If your new base uses different names (e.g., 'ADMIN', 'PARENT'), update the strings below.
+// ⚠️ ROLE NAMES: Uses SUPER_ADMIN, SCHOOL_ADMIN, TEACHER, PARENT, GUARD, DEVICE
 // =============================================================================
 
 import { prisma } from '../config/prisma.js';
@@ -16,21 +14,21 @@ import { ApiError } from '../shared/response/ApiError.js';
 import { asyncHandler } from '../shared/response/asyncHandler.js';
 import { logger } from '../config/logger.js';
 
-const PARENT_CHILDREN_TTL = 2 * 60; // 2 minutes
-const AUDIT_LOG_THRESHOLD = 3; // Log security events after 3 violations per IP
+const PARENT_CHILDREN_TTL = 2 * 60;          // 2 minutes
+const AUDIT_LOG_THRESHOLD = 3;               // Log security events after 3 violations per IP
 
 // Track violations for security monitoring
-const violationTracker = new Map(); // IP -> count
+const violationTracker = new Map();           // IP → count
 
 // ─── School User Restriction — STRICT ─────────────────────────────────────────
 
 /**
  * ownSchoolOnly
- * Validates that any schoolId in params/body matches the authenticated school
- * Applied on all school-admin routes that reference a school
+ * Validates that any schoolId in params/body matches the authenticated school.
+ * Applied on all routes that reference a school resource.
  *
- * REQUIRES: tenantScope to run before this middleware on the same route.
- * STRICT: Any mismatch = immediate 403 + security log + track for audit
+ * REQUIRES: tenantScope middleware to set req.schoolId.
+ * STRICT: Any mismatch → immediate 403 + security log + violation tracking.
  */
 export const ownSchoolOnly = asyncHandler(async (req, _res, next) => {
   // Super admin bypass — but log for audit
@@ -43,26 +41,27 @@ export const ownSchoolOnly = asyncHandler(async (req, _res, next) => {
 
   const requestedSchoolId = req.params.schoolId ?? req.params.school_id ?? req.body?.school_id;
 
-  // No school reference — valid for routes like /dashboard
+  // No school reference → valid for routes like /dashboard
   if (!requestedSchoolId) return next();
 
-  // CRITICAL: If req.schoolId is undefined, tenantScope was not applied
-  if (req.role === 'SCHOOL_USER' && req.schoolId === undefined) {
+  // Any user that is not SUPER_ADMIN and has a schoolId (set by tenantScope)
+  // must match exactly.
+  if (req.schoolId === undefined) {
     logger.error(
       {
         userId: req.userId,
+        role: req.role,
         path: req.path,
         method: req.method,
         requestId: req.id,
       },
       'SECURITY: ownSchoolOnly called without tenantScope — route misconfiguration'
     );
-    throw ApiError.internal('Access control configuration error');
+    throw new ApiError(500, 'Access control configuration error');
   }
 
   // Strict comparison — must match exactly
   if (req.schoolId !== requestedSchoolId) {
-    // Log security violation for audit
     logger.warn(
       {
         userId: req.userId,
@@ -78,7 +77,7 @@ export const ownSchoolOnly = asyncHandler(async (req, _res, next) => {
     );
 
     trackViolation(req.ip);
-    throw ApiError.forbidden('Access to this school is not permitted');
+    throw new ApiError(403, 'Access to this school is not permitted');
   }
 
   next();
@@ -88,24 +87,21 @@ export const ownSchoolOnly = asyncHandler(async (req, _res, next) => {
 
 /**
  * ownChildrenOnly
- * Validates that a parent can only access students linked to them
- * Strict: No caching bypass, no soft failures
+ * Parent can only access students that are linked to them.
+ * Strict: No caching bypass, no soft failures.
  */
 export const ownChildrenOnly = asyncHandler(async (req, _res, next) => {
-  if (req.role !== 'PARENT_USER') return next();
+  if (req.role !== 'PARENT') return next();
 
   const studentId = req.params.studentId ?? req.params.student_id ?? req.body?.student_id;
-
   if (!studentId) return next();
 
   const parentId = req.userId;
-
   if (!parentId) {
-    throw ApiError.unauthorized('Parent authentication required');
+    throw new ApiError(401, 'Parent authentication required');
   }
 
   const isChild = await verifyParentChild(parentId, studentId);
-
   if (!isChild) {
     logger.warn(
       {
@@ -120,7 +116,7 @@ export const ownChildrenOnly = asyncHandler(async (req, _res, next) => {
     );
 
     trackViolation(req.ip);
-    throw ApiError.forbidden('You do not have access to this student');
+    throw new ApiError(403, 'You do not have access to this student');
   }
 
   req.studentId = studentId;
@@ -129,13 +125,12 @@ export const ownChildrenOnly = asyncHandler(async (req, _res, next) => {
 
 /**
  * ownProfileOnly
- * Parent can only access/modify their own profile — STRICT
+ * Parent can only access/modify their own profile.
  */
 export const ownProfileOnly = asyncHandler(async (req, _res, next) => {
-  if (req.role !== 'PARENT_USER') return next();
+  if (req.role !== 'PARENT') return next();
 
   const requestedId = req.params.parentId ?? req.params.id;
-
   if (requestedId && requestedId !== req.userId) {
     logger.warn(
       {
@@ -148,7 +143,7 @@ export const ownProfileOnly = asyncHandler(async (req, _res, next) => {
     );
 
     trackViolation(req.ip);
-    throw ApiError.forbidden('You can only access your own profile');
+    throw new ApiError(403, 'You can only access your own profile');
   }
 
   next();
@@ -158,8 +153,8 @@ export const ownProfileOnly = asyncHandler(async (req, _res, next) => {
 
 /**
  * ownTokenOnly
- * School user can only access tokens belonging to their school
- * Strict: Always queries DB — no cache for token ownership (security critical)
+ * School user can only access tokens belonging to their school.
+ * Always queries DB — no cache (security critical).
  */
 export const ownTokenOnly = asyncHandler(async (req, _res, next) => {
   if (req.role === 'SUPER_ADMIN') return next();
@@ -167,19 +162,17 @@ export const ownTokenOnly = asyncHandler(async (req, _res, next) => {
   const tokenId = req.params.tokenId ?? req.params.token_id;
   if (!tokenId) return next();
 
-  // CRITICAL: Same guard as ownSchoolOnly
-  if (req.role === 'SCHOOL_USER' && req.schoolId === undefined) {
+  if (req.schoolId === undefined) {
     logger.error(
       { userId: req.userId, path: req.path, tokenId },
       'SECURITY: ownTokenOnly called without tenantScope'
     );
-    throw ApiError.internal('Access control configuration error');
+    throw new ApiError(500, 'Access control configuration error');
   }
 
-  // Always query DB — no caching for token ownership (security first)
   const token = await prisma.token.findUnique({
     where: { id: tokenId },
-    select: { school_id: true, student_id: true },
+    select: { schoolId: true, studentId: true },
   });
 
   if (!token) {
@@ -187,16 +180,16 @@ export const ownTokenOnly = asyncHandler(async (req, _res, next) => {
       { userId: req.userId, tokenId, path: req.path },
       'SECURITY: Token not found access attempt'
     );
-    throw ApiError.notFound('Token not found');
+    throw new ApiError(404, 'Token not found');
   }
 
-  if (req.schoolId && token.school_id !== req.schoolId) {
+  if (token.schoolId !== req.schoolId) {
     logger.warn(
       {
         userId: req.userId,
         role: req.role,
         schoolId: req.schoolId,
-        tokenSchoolId: token.school_id,
+        tokenSchoolId: token.schoolId,
         tokenId,
         path: req.path,
         requestId: req.id,
@@ -205,7 +198,7 @@ export const ownTokenOnly = asyncHandler(async (req, _res, next) => {
     );
 
     trackViolation(req.ip);
-    throw ApiError.forbidden('This token does not belong to your school');
+    throw new ApiError(403, 'This token does not belong to your school');
   }
 
   next();
@@ -213,48 +206,47 @@ export const ownTokenOnly = asyncHandler(async (req, _res, next) => {
 
 /**
  * ownStudentOnly
- * School user can only access students in their school
- * Parent can only access their own children
- * Combined check for student endpoints
+ * Combined check for student endpoints.
+ * School user → student must belong to their school.
+ * Parent → student must be their child.
  */
 export const ownStudentOnly = asyncHandler(async (req, _res, next) => {
   const studentId = req.params.studentId ?? req.params.student_id ?? req.body?.student_id;
-
   if (!studentId) return next();
 
   // School user — check school ownership
-  if (req.role === 'SCHOOL_USER') {
+  if (req.role === 'SCHOOL_ADMIN' || req.role === 'TEACHER' || req.role === 'GUARD' || req.role === 'DEVICE') {
     if (req.schoolId === undefined) {
       logger.error({ userId: req.userId, path: req.path }, 'ownStudentOnly missing tenantScope');
-      throw ApiError.internal('Access control configuration error');
+      throw new ApiError(500, 'Access control configuration error');
     }
 
     const student = await prisma.student.findUnique({
       where: { id: studentId },
-      select: { school_id: true },
+      select: { schoolId: true },
     });
 
     if (!student) {
-      throw ApiError.notFound('Student not found');
+      throw new ApiError(404, 'Student not found');
     }
 
-    if (student.school_id !== req.schoolId) {
+    if (student.schoolId !== req.schoolId) {
       logger.warn(
         {
           userId: req.userId,
           studentId,
           schoolId: req.schoolId,
-          studentSchoolId: student.school_id,
+          studentSchoolId: student.schoolId,
         },
         'SECURITY: School user attempted to access student from another school'
       );
       trackViolation(req.ip);
-      throw ApiError.forbidden('This student does not belong to your school');
+      throw new ApiError(403, 'This student does not belong to your school');
     }
   }
 
   // Parent user — check parent-child relationship
-  if (req.role === 'PARENT_USER') {
+  if (req.role === 'PARENT') {
     const isChild = await verifyParentChild(req.userId, studentId);
     if (!isChild) {
       logger.warn(
@@ -262,7 +254,7 @@ export const ownStudentOnly = asyncHandler(async (req, _res, next) => {
         'SECURITY: Parent attempted to access unauthorized student'
       );
       trackViolation(req.ip);
-      throw ApiError.forbidden('You do not have access to this student');
+      throw new ApiError(403, 'You do not have access to this student');
     }
   }
 
@@ -276,33 +268,31 @@ async function verifyParentChild(parentId, studentId) {
 
   try {
     const cached = await redis.get(key);
-
     if (cached) {
       const childIds = JSON.parse(cached);
       return childIds.includes(studentId);
     }
   } catch (err) {
-    // Redis failure — fall through to DB (fail secure, not open)
     logger.warn({ parentId, err: err.message }, 'Redis cache miss for parent children');
   }
 
-  // Always query DB — no soft failures
+  // Query DB directly — no soft failures
   const links = await prisma.parentStudent.findMany({
-    where: { parent_id: parentId },
-    select: { student_id: true },
+    where: { parentId: parentId },
+    select: { studentId: true },
   });
 
-  const childIds = links.map(l => l.student_id);
+  const childIds = links.map(l => l.studentId);
 
-  // Cache even empty arrays to reduce DB load
+  // Cache the result (even empty array) to reduce DB load
   await redis.setex(key, PARENT_CHILDREN_TTL, JSON.stringify(childIds)).catch(() => {});
 
   return childIds.includes(studentId);
 }
 
 /**
- * Track security violations for anomaly detection
- * After threshold, can trigger alerts or auto-block
+ * Track security violations for anomaly detection.
+ * After threshold, trigger alert or auto-block.
  */
 function trackViolation(ip) {
   const count = (violationTracker.get(ip) || 0) + 1;
@@ -317,7 +307,7 @@ function trackViolation(ip) {
     // Reset counter after alert
     violationTracker.delete(ip);
 
-    // Optional: Trigger auto-block via blockIpNow
+    // Optional: Trigger auto-block via ipBlock middleware
     // import { blockIpNow } from './ipBlock.middleware.js';
     // blockIpNow(ip, `ACCESS_VIOLATION_${count}`).catch(() => {});
   }
@@ -333,7 +323,7 @@ function trackViolation(ip) {
 
 /**
  * invalidateParentChildrenCache
- * Call this whenever a parent-student link changes
+ * Call this whenever a parent-student link changes.
  */
 export async function invalidateParentChildrenCache(parentId) {
   if (!parentId) return;
@@ -343,7 +333,7 @@ export async function invalidateParentChildrenCache(parentId) {
 
 /**
  * invalidateAllParentCache
- * Emergency function to flush all parent caches
+ * Emergency function to flush all parent caches.
  */
 export async function invalidateAllParentCache() {
   const keys = await redis.keys('parent_children:*').catch(() => []);

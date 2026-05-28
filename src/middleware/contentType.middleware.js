@@ -1,4 +1,3 @@
-// TODO: Add implementation
 // =============================================================================
 // contentType.middleware.js — RESQID
 // Enforces Content-Type: application/json on all mutating requests
@@ -75,7 +74,8 @@ export const enforceContentType = asyncHandler(async (req, _res, next) => {
 
   // Must include application/json (may have charset suffix e.g. '; charset=utf-8')
   if (!contentType.toLowerCase().includes('application/json')) {
-    throw ApiError.badRequest(
+    throw new ApiError(
+      400,
       `Content-Type must be application/json — received: '${contentType || 'none'}'`
     );
   }
