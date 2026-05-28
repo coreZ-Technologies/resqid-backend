@@ -1,102 +1,111 @@
-// TODO: Add implementation
 // =============================================================================
-// modules/scan/scan.security.middleware.js — RESQID
+// scan.middleware.js — RESQID
 //
-// All security middleware for the public scan endpoint.
-// Every check here runs before the controller touches crypto or DB.
+// Security middleware for the public QR scan endpoint.
+// Every check runs BEFORE crypto verification or DB query.
 // =============================================================================
-import { logger } from '../../config/logger.js';
-import { redis } from '../../config/redis.js';
-import { isIpBlocked } from '../../shared/cache/scan.cache.js';
-import { extractIp } from '../../shared/network/extractIp.js';
+
+import { middlewareRedis as redis } from '#config/redis.js';
+import { extractIp } from '#shared/network/extractIp.js';
+import { logger } from '#config/logger.js';
+import { ENV } from '#config/env.js';
 import crypto from 'crypto';
-import { RateLimiterRedis } from 'rate-limiter-flexible';
 
-// Whitelist internal monitoring IPs (Railway health checks, etc.)
-const trustedIpList = ['127.0.0.1', '::1'];
-if (process.env.MONITORING_IP) trustedIpList.push(process.env.MONITORING_IP);
-const TRUSTED_IPS = new Set(trustedIpList);
+// ─── Trusted IPs ──────────────────────────────────────────────────────────────
 
-// School static IPs (bypass rate limits) — load from env
-const schoolGatewayList = (process.env.SCHOOL_GATEWAY_IPS || '')
-  .split(',')
-  .filter(ip => ip && ip.trim())
-  .map(ip => ip.trim());
-const SCHOOL_GATEWAY_IPS = new Set(schoolGatewayList);
+const trustedIps = new Set([
+  '127.0.0.1',
+  '::1',
+  '::ffff:127.0.0.1',
+  ...(ENV.MAINTENANCE_WHITELIST_IPS || []),
+  ...(ENV.SCHOOL_GATEWAY_IPS || '')
+    .split(',')
+    .filter(Boolean)
+    .map((s) => s.trim()),
+]);
 
-const ipLimiter = new RateLimiterRedis({
-  storeClient: redis,
-  keyPrefix: 'rl:scan:ip',
-  points: 30,
-  duration: 60,
-  blockDuration: 60,
-});
-
-const tokenLimiter = new RateLimiterRedis({
-  storeClient: redis,
-  keyPrefix: 'rl:scan:token',
-  points: 20,
-  duration: 3600,
-  blockDuration: 300, // 5 minutes
-});
-
-const blockedResponse = (res, message = 'Too many requests.') =>
-  res.status(429).json({ success: false, message });
+// ─── IP Block Check ───────────────────────────────────────────────────────────
 
 export const checkIpBlockedRedis = async (req, res, next) => {
   const ip = extractIp(req);
 
-  if (TRUSTED_IPS.has(ip) || SCHOOL_GATEWAY_IPS.has(ip)) {
-    return next();
-  }
+  if (trustedIps.has(ip)) return next();
 
   try {
-    const blocked = await isIpBlocked(ip);
+    const blocked = await redis.get(`ipblock:${ip}`);
     if (blocked) {
-      logger.info({ ip }, '[scan.security] Blocked IP rejected');
-      return blockedResponse(res);
+      logger.info({ ip }, 'Blocked IP rejected from scan');
+      return res
+        .status(403)
+        .json({ success: false, message: 'Access restricted', errorCode: 'IP_BLOCKED' });
     }
-    next();
   } catch (err) {
-    logger.error({ err: err.message, ip }, '[scan.security] checkIpBlockedRedis error — passing');
-    next();
+    logger.error({ err: err.message, ip }, 'IP block check error — passing');
   }
+
+  next();
 };
+
+// ─── Public Scan Rate Limiter (IP-based) ─────────────────────────────────────
 
 export const publicScanLimiter = async (req, res, next) => {
   const ip = extractIp(req);
 
-  if (TRUSTED_IPS.has(ip) || SCHOOL_GATEWAY_IPS.has(ip)) {
-    return next();
-  }
+  if (trustedIps.has(ip)) return next();
+
+  const key = `rl:scan:${ip}`;
 
   try {
-    await ipLimiter.consume(ip);
-    next();
-  } catch (err) {
-    if (err.msBeforeNext !== undefined) {
-      logger.info({ ip }, '[scan.security] IP rate limit exceeded');
-      return blockedResponse(res);
+    const current = await redis.incr(key);
+    if (current === 1) await redis.expire(key, 60); // 1-minute window
+
+    const remaining = Math.max(0, 30 - current);
+    res.setHeader('X-RateLimit-Remaining', String(remaining));
+    res.setHeader('X-RateLimit-Limit', '30');
+
+    if (current > 30) {
+      logger.info({ ip, count: current }, 'Scan IP rate limit exceeded');
+      return res.status(429).json({
+        success: false,
+        message: 'Too many scans',
+        errorCode: 'SCAN_LIMIT_EXCEEDED',
+        retryAfter: Math.ceil((await redis.ttl(key)) || 60),
+      });
     }
-    logger.error({ err: err.message, ip }, '[scan.security] publicScanLimiter error — passing');
-    next();
+  } catch (err) {
+    logger.error({ err: err.message, ip }, 'Rate limit error — passing');
   }
+
+  next();
 };
+
+// ─── Per-Token Scan Limit ─────────────────────────────────────────────────────
 
 export const perTokenScanLimit = async (req, res, next) => {
   const { code } = req.params;
+  if (!code) return next();
+
   try {
     const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
-    const result = await tokenLimiter.consume(hashedCode);
-    req.scanCount = tokenLimiter.points - result.remainingPoints;
-    next();
-  } catch (err) {
-    if (err.msBeforeNext !== undefined) {
-      logger.info({ codePrefix: code?.slice(0, 8) }, '[scan.security] Token rate limit exceeded');
-      return blockedResponse(res, 'This QR code has been scanned too many times recently.');
+    const key = `rl:token:${hashedCode}`;
+
+    const current = await redis.incr(key);
+    if (current === 1) await redis.expire(key, 3600); // 1-hour window
+
+    req.scanCount = current;
+
+    if (current > 20) {
+      logger.info({ codePrefix: code.slice(0, 8), count: current }, 'Token scan limit exceeded');
+      return res.status(429).json({
+        success: false,
+        message: 'This QR code has been scanned too many times',
+        errorCode: 'SCAN_LIMIT_EXCEEDED',
+      });
     }
-    logger.error({ err: err.message }, '[scan.security] perTokenScanLimit error — passing');
+  } catch (err) {
+    logger.error({ err: err.message }, 'Per-token limit error — passing');
     req.scanCount = 1;
-    next();
   }
+
+  next();
 };

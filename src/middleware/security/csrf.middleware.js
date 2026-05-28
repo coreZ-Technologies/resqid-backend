@@ -1,37 +1,38 @@
-// TODO: Add implementation
 // =============================================================================
 // csrf.middleware.js — RESQID
-// Double-submit cookie pattern — stateless, Redis-free, works with mobile
-// Public emergency API is EXEMPT (read-only GET, no state mutation)
-// Mobile app uses custom header method (no cookies on native apps)
+//
+// Double-submit cookie pattern — stateless, Redis-free.
+// Public emergency API is EXEMPT (read-only GET).
+// Mobile app uses JWT only — CSRF not applicable (no cookies).
 // =============================================================================
 
 import crypto from 'crypto';
-import { ApiError } from '../../shared/response/ApiError.js';
-import { asyncHandler } from '../../shared/response/asyncHandler.js';
-import { ENV } from '../../config/env.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { ENV } from '#config/env.js';
+import { ROLES } from '#shared/constants/roles.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CSRF_COOKIE = '__Host-csrf'; // __Host- prefix = most secure cookie flag
-const CSRF_HEADER = 'x-csrf-token';
-const TOKEN_BYTES = 32;
-const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Methods that mutate state — must be protected
+const CSRF_COOKIE = ENV.CSRF_COOKIE_NAME || '__Host-csrf';
+const CSRF_HEADER = ENV.CSRF_HEADER_NAME || 'x-csrf-token';
+const TOKEN_BYTES = 32;
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
 const PROTECTED_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-// Routes exempt from CSRF — public or pre-auth endpoints
-// FIX [#4]: Clarified exemption reasons per endpoint:
-//   /api/emergency  — public read-only GET, no cookies, no mutation
-//   /api/auth/otp   — pre-authentication (no session cookie exists yet at OTP
-//                     send/verify time, so double-submit pattern cannot apply;
-//                     brute-force is handled by authLimiter + otpLimiter instead)
 const EXEMPT_PREFIXES = [
-  '/api/emergency', // public QR scan — GET only, no mutation
-  '/api/auth/otp', // pre-auth — no session cookie exists yet; rate-limited separately
+  '/api/emergency',
+  '/api/auth/send-otp',
+  '/api/auth/verify-otp',
+  '/api/auth/login',
+  '/api/auth/refresh',
+  '/api/attendance/tap',
+  '/api/webhooks',
+  '/health',
 ];
 
-// ─── CSRF Token Generation ────────────────────────────────────────────────────
+// ─── Token Generation ─────────────────────────────────────────────────────────
 
 function generateToken() {
   return crypto.randomBytes(TOKEN_BYTES).toString('hex');
@@ -43,118 +44,85 @@ function signToken(token) {
 
 function verifyToken(token, signature) {
   const expected = signToken(token);
-  // Timing-safe comparison — prevents timing attacks
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
+    return false;
+  }
 }
 
-// ─── Issue CSRF Token ─────────────────────────────────────────────────────────
+// ─── Issue / Clear ────────────────────────────────────────────────────────────
 
-/**
- * issueCsrfToken
- * Called on login success — sets signed CSRF cookie
- * Frontend must read this cookie and send value in X-CSRF-Token header
- */
 export function issueCsrfToken(res) {
   const token = generateToken();
   const signature = signToken(token);
   const payload = `${token}.${signature}`;
 
   res.cookie(CSRF_COOKIE, payload, {
-    httpOnly: false, // Must be readable by JS — by design
-    secure: ENV.NODE_ENV === 'production',
+    httpOnly: false,
+    secure: ENV.IS_PROD,
     sameSite: 'strict',
     maxAge: TOKEN_TTL_MS,
     path: '/',
-    // __Host- prefix enforced by cookie name — browser handles it
   });
 
   return token;
 }
 
-/**
- * clearCsrfToken
- * Called on logout — invalidate cookie immediately
- */
 export function clearCsrfToken(res) {
   res.clearCookie(CSRF_COOKIE, {
     httpOnly: false,
-    secure: ENV.NODE_ENV === 'production',
+    secure: ENV.IS_PROD,
     sameSite: 'strict',
     path: '/',
   });
 }
 
-// ─── CSRF Verification Middleware ─────────────────────────────────────────────
+// ─── Verification Middleware ──────────────────────────────────────────────────
 
-/**
- * verifyCsrf
- * Applied to all dashboard routes (school admin + super admin)
- * Mobile app sends JWT only — CSRF not required on mobile (no cookies)
- *
- * Strategy: Double-submit cookie
- *   Cookie value: "token.signature"
- *   Header value: "token"
- *   Server re-signs header token and compares to cookie signature
- */
 export const verifyCsrf = asyncHandler(async (req, _res, next) => {
   // Skip safe methods
   if (!PROTECTED_METHODS.has(req.method)) return next();
 
   // Skip exempt routes
-  if (EXEMPT_PREFIXES.some(prefix => req.path.startsWith(prefix))) return next();
+  if (EXEMPT_PREFIXES.some((p) => req.path.startsWith(p))) return next();
 
-  // Mobile app — identified by role or missing cookie
-  // Mobile clients authenticate via JWT Bearer only — no CSRF needed
+  // Mobile app — no CSRF needed
   const isMobileApp =
     req.headers['x-client-type'] === 'mobile' || req.headers['user-agent']?.includes('Resqid');
-  if (req.role === 'PARENT_USER' && isMobileApp) return next();
+
+  if (req.user?.role === ROLES.PARENT && isMobileApp) return next();
+
+  // Device auth — no CSRF needed
+  if (req.user?.role === ROLES.ATTENDANCE_DEVICE) return next();
 
   const cookieValue = req.cookies?.[CSRF_COOKIE];
   const headerValue = req.headers[CSRF_HEADER];
 
-  if (!cookieValue) {
-    throw ApiError.forbidden('CSRF cookie missing');
-  }
-  if (!headerValue) {
-    throw ApiError.forbidden('CSRF token header missing');
-  }
+  if (!cookieValue) throw ApiError.forbidden('CSRF cookie missing', 'CSRF_TOKEN_MISSING');
+  if (!headerValue) throw ApiError.forbidden('CSRF token header missing', 'CSRF_TOKEN_MISSING');
 
   const [cookieToken, cookieSignature] = cookieValue.split('.');
 
   if (!cookieToken || !cookieSignature) {
-    throw ApiError.forbidden('CSRF cookie malformed');
+    throw ApiError.forbidden('CSRF cookie malformed', 'CSRF_TOKEN_INVALID');
   }
 
-  // Header token must match cookie token
   if (cookieToken !== headerValue) {
-    throw ApiError.forbidden('CSRF token mismatch');
+    throw ApiError.forbidden('CSRF token mismatch', 'CSRF_TOKEN_INVALID');
   }
 
-  // Verify signature — proves cookie was issued by us
-  let valid = false;
-  try {
-    valid = verifyToken(cookieToken, cookieSignature);
-  } catch {
-    throw ApiError.forbidden('CSRF token verification failed');
-  }
-
+  const valid = verifyToken(cookieToken, cookieSignature);
   if (!valid) {
-    throw ApiError.forbidden('CSRF token signature invalid');
+    throw ApiError.forbidden('CSRF token signature invalid', 'CSRF_TOKEN_INVALID');
   }
 
   next();
 });
 
-/**
- * verifyCsrfMobile
- * For mobile app routes — CSRF not applicable but validate no cookie present
- * Ensures mobile tokens aren"t accidentally sent with cookie credentials
- */
 export const verifyCsrfMobile = asyncHandler(async (req, _res, next) => {
-  // Mobile app should NOT send CSRF cookies — if it does, something is wrong
-  if (req.cookies?.[CSRF_COOKIE] && req.role === 'PARENT_USER') {
-    // Log anomaly but don"t block — cookie may be stale
-    req.log?.warn({ userId: req.userId }, 'CSRF cookie present on mobile request');
+  if (req.cookies?.[CSRF_COOKIE] && req.user?.role === ROLES.PARENT) {
+    req.log?.warn({ userId: req.user?.id }, 'CSRF cookie present on mobile request');
   }
   next();
 });

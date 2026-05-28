@@ -1,31 +1,25 @@
-// TODO: Add implementation
 // =============================================================================
 // cors.middleware.js — RESQID
-// Strict origin allowlist — unknown origin = hard block, no wildcards ever
-// Public emergency endpoint has its own CORS policy (no credentials allowed)
+//
+// Strict origin allowlist — unknown origin = hard block.
+// Public emergency endpoint has its own permissive CORS policy.
 // =============================================================================
 
 import cors from 'cors';
-import { ENV } from '../../config/env.js';
+import { ENV } from '#config/env.js';
 
 // ─── Allowed Origins ──────────────────────────────────────────────────────────
 
 const DASHBOARD_ORIGINS = new Set(
   [
-    ENV.SUPER_ADMIN_URL, // e.g. https://admin.resqid.in
-    ENV.SCHOOL_ADMIN_URL, // e.g. https://app.resqid.in
-    ...(ENV.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:5173'] : []),
+    ENV.SUPER_ADMIN_URL,
+    ENV.SCHOOL_ADMIN_URL,
+    ...(ENV.IS_DEV ? ['http://localhost:3000', 'http://localhost:5173'] : []),
   ].filter(Boolean)
-); // FIX [#8]: filter removes undefined if env vars are unset
+);
 
-// FIX [#8]: filter(Boolean) prevents undefined from being stored in the Set,
-// which would never match any real origin but pollutes the collection.
 const MOBILE_APP_ORIGINS = new Set(
-  [
-    'capacitor://localhost', // Ionic Capacitor iOS/Android
-    'http://localhost', // local dev
-    ENV.MOBILE_APP_SCHEME, // custom deep link scheme if any
-  ].filter(Boolean)
+  ['capacitor://localhost', 'http://localhost', ENV.MOBILE_APP_SCHEME].filter(Boolean)
 );
 
 // ─── CORS Factory ─────────────────────────────────────────────────────────────
@@ -33,75 +27,70 @@ const MOBILE_APP_ORIGINS = new Set(
 function buildCors(allowedOrigins, { credentials = true } = {}) {
   return cors({
     origin(origin, callback) {
-      // Allow requests with no origin (server-to-server, curl in dev)
-      if (!origin) {
-        // Server-to-server, mobile apps, and API clients may not send Origin
-        return callback(null, true);
-      }
+      // Allow requests with no origin (server-to-server, mobile apps, curl)
+      if (!origin) return callback(null, true);
 
-      if (allowedOrigins.has(origin)) {
-        return callback(null, true);
-      }
+      if (allowedOrigins.has(origin)) return callback(null, true);
 
-      // Unknown origin — hard block, log for monitoring
+      // Unknown origin — hard block
       return callback(new Error(`CORS: origin '${origin}' not allowed`));
     },
     credentials,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token'],
-    exposedHeaders: ['X-Request-ID', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
-    maxAge: 600, // 10 min preflight cache
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Request-ID',
+      'X-CSRF-Token',
+      'X-Device-ID',
+      'X-Device-Signature',
+      'X-API-Key',
+      'X-API-Version',
+    ],
+    exposedHeaders: [
+      'X-Request-ID',
+      'X-RateLimit-Limit',
+      'X-RateLimit-Remaining',
+      'X-RateLimit-Reset',
+      'Retry-After',
+      'X-Behavioral-Score',
+    ],
+    maxAge: 600,
     optionsSuccessStatus: 204,
   });
 }
 
 // ─── Exported Policies ────────────────────────────────────────────────────────
 
-/**
- * dashboardCors — for /api/super-admin and /api/school-admin routes
- * Full credentials, strict origin
- */
-export const dashboardCors = buildCors(DASHBOARD_ORIGINS, {
-  credentials: true,
-});
+/** Dashboard CORS — /api/super-admin, /api/school-admin */
+export const dashboardCors = buildCors(DASHBOARD_ORIGINS, { credentials: true });
 
-/**
- * mobileCors — for /api/auth and /api/parents routes
- * Allows mobile app origins
- */
+/** Mobile CORS — /api/auth, /api/parents */
 export const mobileCors = buildCors(new Set([...DASHBOARD_ORIGINS, ...MOBILE_APP_ORIGINS]), {
   credentials: true,
 });
 
-/**
- * publicCors — for /api/emergency (public QR scan endpoint)
- * No credentials, wide origin — any phone camera browser can hit this
- * credentials: false is critical — prevents cookie/session leakage
- */
+/** Public CORS — /api/emergency, /s/:scanCode (QR scans from any phone) */
 export const publicCors = cors({
-  origin: '*', // public endpoint — any origin allowed
-  credentials: false, // MUST be false when origin: '*'
+  origin: '*',
+  credentials: false,
   methods: ['GET', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Request-ID'],
   maxAge: 300,
   optionsSuccessStatus: 204,
 });
 
-/**
- * Default export — applied globally in app.js
- * Uses most permissive policy; route-level policies override as needed
- */
+/** Default global policy */
 export const corsMiddleware = mobileCors;
 
-/**
- * handleCorsError — must be registered after cors() to catch origin errors
- */
+/** CORS error handler — registered after cors() */
 export function handleCorsError(err, req, res, next) {
-  if (err.message?.startsWith('CORS:') || err.message === 'Origin required in production') {
+  if (err.message?.startsWith('CORS:')) {
     return res.status(403).json({
       success: false,
       message: 'CORS policy violation',
-      requestId: req.id,
+      errorCode: 'CORS_BLOCKED',
+      requestId: req.requestId || 'unknown',
     });
   }
   next(err);

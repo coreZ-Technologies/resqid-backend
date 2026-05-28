@@ -1,10 +1,16 @@
-// src/helpers/validator.js
-import { isValidIndianPhone } from '../utils/phoneNormalize.js';
+// =============================================================================
+// validator.js — RESQID
+//
+// Lightweight validators for individual fields.
+// Each returns { valid: boolean, message: string }.
+// Use for quick checks in services/controllers.
+//
+// For request validation, use validate.middleware.js + Zod schemas instead.
+// =============================================================================
 
-/**
- * Each validator returns { valid: boolean, message: string }
- * So you can use them anywhere — controller, service, or middleware
- */
+import { isValidIndianPhone } from '#shared/utils/phoneNormalize.js';
+
+// ─── Single Field Validators ─────────────────────────────────────────────────
 
 export const validatePhone = (phone) => {
   if (!phone) return { valid: false, message: 'Phone number is required' };
@@ -63,9 +69,28 @@ export const validateBloodGroup = (bg) => {
   return { valid: true };
 };
 
+export const validateUrl = (url) => {
+  if (!url) return { valid: false, message: 'URL is required' };
+  try {
+    new URL(url);
+    return { valid: true };
+  } catch {
+    return { valid: false, message: 'Invalid URL' };
+  }
+};
+
+export const validateUuid = (id) => {
+  if (!id) return { valid: false, message: 'ID is required' };
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(String(id))) return { valid: false, message: 'Invalid ID format' };
+  return { valid: true };
+};
+
+// ─── Batch Validation ────────────────────────────────────────────────────────
+
 /**
- * Validate multiple fields at once
- * Returns first error found or null if all valid
+ * Validate multiple fields at once.
+ * Returns first error found or null if all valid.
  *
  * Usage:
  * const error = validateFields({
@@ -82,4 +107,19 @@ export const validateFields = (fields) => {
     }
   }
   return null;
+};
+
+/**
+ * Validate and collect ALL errors (not just first).
+ * Returns array of { field, message } or empty array if all valid.
+ */
+export const validateAllFields = (fields) => {
+  const errors = [];
+  for (const [field, [value, validatorFn]] of Object.entries(fields)) {
+    const result = validatorFn(value);
+    if (!result.valid) {
+      errors.push({ field, message: result.message });
+    }
+  }
+  return errors;
 };
