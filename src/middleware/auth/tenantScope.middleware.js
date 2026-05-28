@@ -1,84 +1,200 @@
 // =============================================================================
 // tenantScope.middleware.js — RESQID
-// Injects verified schoolId into every school-scoped request
-// Prevents cross-tenant data leakage — every DB query must filter by schoolId
+//
+// Injects verified schoolId into every school-scoped request.
+// Prevents cross-tenant data leakage — every DB query must filter by schoolId.
+//
+// Scope rules:
+//   SUPER_ADMIN / SYSTEM     → No scope, can access all schools
+//   SCHOOL_ADMIN / TEACHER   → Scoped to their school
+//   PARENT                   → No school scope, enforced per-child
+//   ATTENDANCE_DEVICE        → Scoped to assigned school
+//   EMERGENCY_RESPONDER      → No scope (public access)
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
 import { ApiError } from '#shared/response/ApiError.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
-import { ROLES } from '#middleware/auth/rbac.middleware.js'; // single source of truth
-import { PUBLIC_PATHS, isPublicPath } from '#shared/constants/publicPaths.js'; // shared constant
+import { logger } from '#config/logger.js';
+import {
+  ROLES,
+  SCHOOL_SCOPED_ROLES,
+  GLOBAL_ROLES,
+  PARENT_SCOPED_ROLES,
+  DEVICE_SCOPED_ROLES,
+  PUBLIC_ROLES,
+} from '#shared/constants/roles.js';
+import { isPublicPath } from '#shared/constants/publicPaths.js';
+import { SCHOOL_STATUS } from '#shared/constants/status.js';
 
 const SCHOOL_CACHE_TTL = 5 * 60; // 5 minutes
 
+// =============================================================================
+// MAIN MIDDLEWARE
+// =============================================================================
+
 export const tenantScope = asyncHandler(async (req, _res, next) => {
-  // ── Skip public paths — no tenant scope needed ─────────────────────────────
-  if (isPublicPath(req.path)) return next();
+  // ── Skip public paths — no tenant scope needed ─────────────────────────
+  if (isPublicPath(req.path)) {
+    return next();
+  }
 
   const role = req.user?.role;
 
-  if (!role) throw ApiError.unauthorized('Not authenticated');
+  if (!role) {
+    throw ApiError.unauthorized('Authentication required for tenant scoping');
+  }
 
-  // ── Super admin — no tenant scope, can access all schools ─────────────────
-  if (role === ROLES.SUPER_ADMIN) {
+  // ── Global roles — no school scope ────────────────────────────────────
+  if (GLOBAL_ROLES.includes(role)) {
     req.schoolId = null;
     req.school = null;
     return next();
   }
 
-  // ── School admin / Teacher — scoped to their own school ───────────────────
-  if (role === ROLES.SCHOOL_ADMIN || role === ROLES.TEACHER) {
-    const schoolId = req.user?.schoolId;
+  // ── School-scoped roles — must have schoolId ──────────────────────────
+  if (SCHOOL_SCOPED_ROLES.includes(role)) {
+    const schoolId = req.user?.schoolId || req.params?.schoolId || req.body?.schoolId;
 
     if (!schoolId) {
-      throw ApiError.forbidden('School staff has no associated school — check auth config');
+      logger.error({ userId: req.user.id, role }, 'School-scoped user has no schoolId');
+      throw ApiError.tenantRequired();
     }
 
     const school = await getSchool(schoolId);
 
-    if (!school) throw ApiError.notFound('School not found');
-    if (!school.isActive) throw ApiError.forbidden('School account is inactive');
+    if (!school) {
+      throw ApiError.schoolNotFound();
+    }
+
+    if (!school.isActive) {
+      throw ApiError.schoolInactive();
+    }
 
     req.schoolId = schoolId;
     req.school = school;
     return next();
   }
 
-  // ── Parent — no single school scope (children can be in multiple schools) ──
-  if (role === ROLES.PARENT) {
-    req.schoolId = null; // scope enforced per-query via parentId
+  // ── Device roles — schoolId from device auth ──────────────────────────
+  if (DEVICE_SCOPED_ROLES.includes(role)) {
+    const schoolId = req.user?.schoolId;
+
+    if (!schoolId) {
+      throw ApiError.tenantRequired();
+    }
+
+    // Lightweight school check (no cache needed for devices)
+    const schoolExists = await prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { id: true, isActive: true },
+    });
+
+    if (!schoolExists) {
+      throw ApiError.schoolNotFound();
+    }
+
+    if (!schoolExists.isActive) {
+      throw ApiError.schoolInactive();
+    }
+
+    req.schoolId = schoolId;
+    req.school = { id: schoolId, isActive: true };
+    return next();
+  }
+
+  // ── Parent roles — no single school scope ─────────────────────────────
+  if (PARENT_SCOPED_ROLES.includes(role)) {
+    req.schoolId = null;
     req.school = null;
     return next();
   }
 
-  // ── Anything else — hard block ─────────────────────────────────────────────
+  // ── Public roles — no scope ───────────────────────────────────────────
+  if (PUBLIC_ROLES.includes(role)) {
+    req.schoolId = null;
+    req.school = null;
+    return next();
+  }
+
+  // ── Unknown role — hard block ─────────────────────────────────────────
+  logger.error({ role, userId: req.user?.id }, 'Unknown role in tenant scope');
   throw ApiError.forbidden(`Cannot determine tenant scope for role: '${role}'`);
 });
 
-// ─── School fetcher with Redis cache ─────────────────────────────────────────
+// =============================================================================
+// SCHOOL FETCHER (with Redis cache)
+// =============================================================================
 
+/**
+ * Fetch school by ID with Redis caching.
+ * Cache TTL: 5 minutes.
+ */
 async function getSchool(schoolId) {
-  const key = `school:${schoolId}`;
-  const cached = await redis.get(key);
+  const cacheKey = `school:${schoolId}`;
 
-  if (cached) return JSON.parse(cached);
+  try {
+    // Check cache first
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (err) {
+    // Cache miss — continue to DB
+    logger.debug({ err: err.message, schoolId }, 'School cache miss');
+  }
 
+  // Fetch from DB
   const school = await prisma.school.findUnique({
     where: { id: schoolId },
     select: {
       id: true,
-      name: true, // ← added — useful for logs, emails, responses
+      name: true,
       code: true,
       isActive: true,
       timezone: true,
+      status: true,
+      logo_url: true,
     },
   });
 
+  // Cache for 5 minutes
   if (school) {
-    await redis.setex(key, SCHOOL_CACHE_TTL, JSON.stringify(school));
+    try {
+      await redis.set(cacheKey, JSON.stringify(school), 'EX', SCHOOL_CACHE_TTL);
+    } catch (err) {
+      // Non-critical — cache write failure
+      logger.debug({ err: err.message, schoolId }, 'School cache write failed');
+    }
   }
 
   return school;
 }
+
+// =============================================================================
+// HELPER: Get effective schoolId (for use in services)
+// =============================================================================
+
+/**
+ * Get the effective schoolId from request context.
+ * Falls back to req.user.schoolId if req.schoolId is not set.
+ *
+ * Usage in services:
+ *   const schoolId = getEffectiveSchoolId(req);
+ */
+export const getEffectiveSchoolId = (req) => {
+  return req.schoolId || req.user?.schoolId || null;
+};
+
+/**
+ * Require a schoolId — throws if not present.
+ * Use in school-scoped endpoints.
+ */
+export const requireSchoolId = (req) => {
+  const schoolId = getEffectiveSchoolId(req);
+  if (!schoolId) {
+    throw ApiError.tenantRequired();
+  }
+  return schoolId;
+};

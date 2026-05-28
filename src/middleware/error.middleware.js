@@ -1,81 +1,70 @@
 // =============================================================================
 // error.middleware.js — RESQID
 // Global error handler — last line of defence
-// Single responsibility: catch everything, leak nothing, log everything
-//
-// Rules:
-//   - NEVER expose stack traces in production
-//   - NEVER expose DB/internal error messages in production
-//   - NEVER expose which table/field caused a Prisma error
-//   - ALWAYS return consistent ApiError shape
-//   - ALWAYS log full error internally with requestId
-//   - Operational errors (ApiError) → specific status + message
-//   - Programming errors (unexpected) → 500 + generic message
 // =============================================================================
 
 import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
-import { logger } from '../config/logger.js';
-import { ENV } from '../config/env.js';
+import { logger } from '#config/logger.js';
+import { ENV } from '#config/env.js';
+import { ApiError } from '#shared/response/ApiError.js';
 
-const IS_PROD = ENV.NODE_ENV === 'production';
+const IS_PROD = ENV.IS_PROD;
 
 // ─── Error Response Shape ─────────────────────────────────────────────────────
-// ALL errors from this API look exactly like this — no exceptions
 
-function errorResponse(res, { statusCode, message, errors = null, requestId }) {
+function errorResponse(res, { statusCode, message, errors = null, requestId, errorCode }) {
   const body = {
     success: false,
+    statusCode,
     message,
+    errorCode: errorCode || 'ERROR',
     requestId,
     timestamp: new Date().toISOString(),
     ...(errors && { errors }),
-    // Stack trace ONLY in development — never in production
-    ...(!IS_PROD && res.locals._stack && { stack: res.locals._stack }),
+    ...(!IS_PROD && res.locals?._stack && { stack: res.locals._stack }),
   };
   return res.status(statusCode).json(body);
 }
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 
-// Must have 4 arguments — Express identifies error middleware by arity
-// eslint-disable-next-line no-unused-vars
-export function globalErrorHandler(err, req, res, next) {
-  const requestId = req.id ?? req.requestId ?? 'unknown';
-  const log = req.log ?? logger;
+export function globalErrorHandler(err, req, res, _next) {
+  const requestId = req.requestId || 'unknown';
+  const log = req.log || logger;
 
-  // Store stack for dev response (never sent in prod)
-  if (!IS_PROD) res.locals._stack = err.stack;
+  // Store stack for dev
+  if (!IS_PROD) res.locals = { ...res.locals, _stack: err.stack };
 
-  // ── 1. Operational Error — ApiError thrown intentionally ──────────────────
-  if (err.isOperational) {
-    // Warn level — these are expected (bad input, auth failures, etc.)
+  // ── 1. ApiError (Operational) ────────────────────────────────────────────
+  if (err instanceof ApiError) {
     log.warn(
       {
         type: 'operational_error',
         statusCode: err.statusCode,
+        errorCode: err.errorCode,
         message: err.message,
-        errors: err.errors,
         path: req.path,
         method: req.method,
-        userId: req.userId,
+        userId: req.user?.id,
       },
-      `Operational error: ${err.message}`
+      `Operational: ${err.message}`
     );
 
     return errorResponse(res, {
       statusCode: err.statusCode,
       message: err.message,
       errors: err.errors,
+      errorCode: err.errorCode,
       requestId,
     });
   }
 
-  // ── 2. Zod Validation Error — schema parse failed ─────────────────────────
+  // ── 2. Zod Validation Error ──────────────────────────────────────────────
   if (err instanceof ZodError) {
     const errors =
-      err.errors?.map(e => ({
-        field: e.path?.join('.') || 'unknown',
+      err.issues?.map((e) => ({
+        field: e.path?.join('.') || 'root',
         message: e.message,
         code: e.code,
       })) || [];
@@ -86,56 +75,66 @@ export function globalErrorHandler(err, req, res, next) {
       statusCode: 422,
       message: 'Validation failed',
       errors,
+      errorCode: 'VALIDATION_ERROR',
       requestId,
     });
   }
 
-  // ── 3. Prisma Errors — DB-level failures ──────────────────────────────────
+  // ── 3. Prisma Known Errors ───────────────────────────────────────────────
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     return handlePrismaKnownError(err, req, res, requestId, log);
   }
 
+  // Prisma validation error (schema mismatch)
   if (err instanceof Prisma.PrismaClientValidationError) {
-    log.error(
-      { type: 'prisma_validation', path: req.path, userId: req.userId },
-      'Prisma validation error — schema mismatch in query'
-    );
-
+    log.error({ type: 'prisma_validation', path: req.path }, 'Prisma validation error');
     return errorResponse(res, {
       statusCode: 400,
-      message: 'Invalid data provided',
+      message: IS_PROD ? 'Invalid request' : 'Prisma validation error',
+      errorCode: 'VALIDATION_ERROR',
       requestId,
     });
   }
 
+  // Prisma connection/panic
   if (
     err instanceof Prisma.PrismaClientInitializationError ||
     err instanceof Prisma.PrismaClientRustPanicError
   ) {
-    log.fatal({ type: 'prisma_init_error', err }, 'Prisma init/panic — database unavailable');
-
+    log.error({ type: 'prisma_fatal', err: err.message }, 'Database unavailable');
     return errorResponse(res, {
       statusCode: 503,
-      message: 'Database temporarily unavailable. Please try again shortly.',
+      message: 'Service temporarily unavailable',
+      errorCode: 'DATABASE_ERROR',
       requestId,
     });
   }
 
-  // ── 4. JWT Errors — should be caught by auth middleware, but safety net ───
-  if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
-    log.warn({ type: 'jwt_error', name: err.name }, 'JWT error reached error handler');
+  // ── 4. JWT Errors ────────────────────────────────────────────────────────
+  if (err.name === 'JsonWebTokenError') {
     return errorResponse(res, {
       statusCode: 401,
-      message: 'Authentication failed',
+      message: 'Invalid token',
+      errorCode: 'INVALID_TOKEN',
       requestId,
     });
   }
 
-  // ── 5. Multer / File Upload Errors ────────────────────────────────────────
+  if (err.name === 'TokenExpiredError') {
+    return errorResponse(res, {
+      statusCode: 401,
+      message: 'Token has expired',
+      errorCode: 'TOKEN_EXPIRED',
+      requestId,
+    });
+  }
+
+  // ── 5. Multer File Upload Errors ─────────────────────────────────────────
   if (err.code === 'LIMIT_FILE_SIZE') {
     return errorResponse(res, {
       statusCode: 413,
-      message: 'File size exceeds the allowed limit',
+      message: 'File too large',
+      errorCode: 'FILE_TOO_LARGE',
       requestId,
     });
   }
@@ -143,67 +142,67 @@ export function globalErrorHandler(err, req, res, next) {
   if (err.code === 'LIMIT_UNEXPECTED_FILE') {
     return errorResponse(res, {
       statusCode: 400,
-      message: 'Unexpected file field in upload',
+      message: 'Unexpected file field',
+      errorCode: 'INVALID_FILE_TYPE',
       requestId,
     });
   }
 
-  // ── 6. SyntaxError — malformed JSON body ──────────────────────────────────
+  // ── 6. SyntaxError (malformed JSON) ──────────────────────────────────────
   if (err instanceof SyntaxError && 'body' in err) {
     return errorResponse(res, {
       statusCode: 400,
-      message: 'Request body contains invalid JSON',
+      message: 'Invalid JSON in request body',
+      errorCode: 'VALIDATION_ERROR',
       requestId,
     });
   }
 
-  // ── 7. Programming Error / Unknown — never expose internals ───────────────
-  // Full error logged internally, safe message sent to client
+  // ── 7. Unknown / Programming Error ───────────────────────────────────────
   log.error(
     {
       type: 'unexpected_error',
-      err: {
-        message: err.message,
-        name: err.name,
-        code: err.code,
-        stack: err.stack,
-      },
+      err: { message: err.message, name: err.name, stack: err.stack },
       path: req.path,
       method: req.method,
-      userId: req.userId,
-      schoolId: req.schoolId,
+      userId: req.user?.id,
       requestId,
     },
-    `Unexpected error: ${err.message}`
+    `Unexpected: ${err.message}`
   );
 
   return errorResponse(res, {
     statusCode: 500,
+<<<<<<< HEAD
     // Generic message in production — never leak implementation details
     message: IS_PROD ? 'An unexpected error occurred' : err.message,
+=======
+    message: IS_PROD ? 'Internal server error' : err.message,
+    errorCode: 'INTERNAL_ERROR',
+>>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f
     requestId,
   });
 }
 
-// ─── 404 Handler — must be registered BEFORE globalErrorHandler ───────────────
+// ─── 404 Handler ──────────────────────────────────────────────────────────────
 
 export function notFoundHandler(req, res) {
-  const requestId = req.id ?? 'unknown';
-  const log = req.log ?? logger;
+  const requestId = req.requestId || 'unknown';
 
-  log.warn(
+  (req.log || logger).warn(
     {
       type: 'not_found',
       method: req.method,
       url: req.originalUrl,
-      userId: req.userId,
     },
     `404: ${req.method} ${req.path}`
   );
 
   return res.status(404).json({
     success: false,
+    statusCode: 404,
     message: `Route ${req.method} ${req.path} not found`,
+    errorCode: 'NOT_FOUND',
     requestId,
     timestamp: new Date().toISOString(),
   });
@@ -216,119 +215,30 @@ function handlePrismaKnownError(err, req, res, requestId, log) {
     {
       type: 'prisma_error',
       code: err.code,
-      // NEVER log err.meta in production — contains table/field names
       ...(IS_PROD ? {} : { meta: err.meta }),
       path: req.path,
-      userId: req.userId,
     },
-    `Prisma error P${err.code}`
+    `Prisma P${err.code}`
   );
 
-  switch (err.code) {
-    // Unique constraint violation
-    case 'P2002': {
-      const field = IS_PROD ? 'field' : (err.meta?.target?.[0] ?? 'field');
-      return errorResponse(res, {
-        statusCode: 409,
-        message: `A record with this ${field} already exists`,
-        requestId,
-      });
-    }
+  const map = {
+    P2002: [
+      409,
+      'DUPLICATE_ENTRY',
+      `A record with this ${IS_PROD ? 'field' : err.meta?.target?.[0] || 'field'} already exists`,
+    ],
+    P2025: [404, 'NOT_FOUND', 'Record not found'],
+    P2003: [400, 'FOREIGN_KEY_ERROR', 'Referenced record does not exist'],
+    P2011: [400, 'VALIDATION_ERROR', 'Required field missing'],
+    P2000: [400, 'VALIDATION_ERROR', 'Value exceeds maximum length'],
+    P2034: [409, 'CONFLICT', 'Write conflict, please retry'],
+  };
 
-    // Record not found
-    case 'P2025':
-      return errorResponse(res, {
-        statusCode: 404,
-        message: 'The requested record was not found',
-        requestId,
-      });
+  const [statusCode, errorCode, message] = map[err.code] || [
+    500,
+    'DATABASE_ERROR',
+    'Database error',
+  ];
 
-    // Foreign key constraint failed
-    case 'P2003':
-      return errorResponse(res, {
-        statusCode: 400,
-        message: 'Referenced record does not exist',
-        requestId,
-      });
-
-    // Required field null violation
-    case 'P2011':
-      return errorResponse(res, {
-        statusCode: 400,
-        message: 'A required field is missing',
-        requestId,
-      });
-
-    // Value too long
-    case 'P2000':
-      return errorResponse(res, {
-        statusCode: 400,
-        message: 'A field value exceeds the maximum allowed length',
-        requestId,
-      });
-
-    // Transaction conflict
-    case 'P2034':
-      return errorResponse(res, {
-        statusCode: 409,
-        message: 'Write conflict, please retry',
-        requestId,
-      });
-
-    // Default — unknown Prisma known error
-    default:
-      return errorResponse(res, {
-        statusCode: 500,
-        message: IS_PROD ? 'A database error occurred' : `Prisma error ${err.code}`,
-        requestId,
-      });
-  }
-}
-
-// ─── Unhandled Rejection / Exception Catchers ────────────────────────────────
-// Register these ONCE in server.js — not here
-// Exported so server.js can use them
-
-export function setupProcessErrorHandlers(server) {
-  // Unhandled promise rejections — log and exit gracefully
-  process.on('unhandledRejection', (reason, promise) => {
-    logger.fatal(
-      { type: 'unhandled_rejection', reason, promise },
-      'Unhandled promise rejection — shutting down'
-    );
-    gracefulShutdown(server, 1);
-  });
-
-  // Uncaught exceptions — ALWAYS exit — process state is undefined
-  process.on('uncaughtException', err => {
-    logger.fatal(
-      { type: 'uncaught_exception', err },
-      'Uncaught exception — shutting down immediately'
-    );
-    gracefulShutdown(server, 1);
-  });
-
-  // Graceful shutdown signals
-  process.on('SIGTERM', () => {
-    logger.info('SIGTERM received — shutting down gracefully');
-    gracefulShutdown(server, 0);
-  });
-
-  process.on('SIGINT', () => {
-    logger.info('SIGINT received — shutting down gracefully');
-    gracefulShutdown(server, 0);
-  });
-}
-
-function gracefulShutdown(server, code) {
-  server.close(() => {
-    logger.info('HTTP server closed');
-    process.exit(code);
-  });
-
-  // Force kill after 10 seconds if graceful close fails
-  setTimeout(() => {
-    logger.error('Forced shutdown — server did not close in time');
-    process.exit(code);
-  }, 10_000).unref();
+  return errorResponse(res, { statusCode, message, errorCode, requestId });
 }

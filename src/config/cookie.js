@@ -3,17 +3,14 @@
 import { ENV } from './env.js';
 
 // ─── Cookie Name Constants ────────────────────────────────────────────────────
-// Single source of truth — import these wherever you read/clear cookies
 
 export const COOKIE_NAMES = {
   ACCESS_TOKEN: 'accessToken',
   REFRESH_TOKEN: 'refreshToken',
-  CSRF_TOKEN: '__Host-csrf', // must match CSRF_COOKIE_NAME in csrfToken.js
+  CSRF_TOKEN: '__Host-csrf',
 };
 
 // ─── Base domain config ───────────────────────────────────────────────────────
-// Only applied to non-__Host- prefixed cookies.
-// __Host- cookies must NOT have a domain attribute — browser will reject them.
 
 const COOKIE_DOMAIN = ENV.COOKIE_DOMAIN || undefined;
 
@@ -24,7 +21,7 @@ export const cookieConfig = {
     httpOnly: true,
     secure: ENV.IS_PROD,
     sameSite: ENV.IS_PROD ? 'strict' : 'lax',
-    maxAge: 15 * 60 * 1000, // 15 minutes in ms
+    maxAge: 15 * 60 * 1000, // 15 minutes
     path: '/',
     domain: COOKIE_DOMAIN,
   },
@@ -33,21 +30,16 @@ export const cookieConfig = {
     httpOnly: true,
     secure: ENV.IS_PROD,
     sameSite: ENV.IS_PROD ? 'strict' : 'lax',
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days in ms
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     path: '/',
     domain: COOKIE_DOMAIN,
   },
 
-  // __Host- prefix rules (enforced by browser):
-  //   ✅ secure must always be true
-  //   ✅ path must be '/'
-  //   ❌ domain must NOT be set
-  //   ❌ will silently fail/be ignored if above rules are broken
   csrfToken: {
     httpOnly: false, // JS must read this to send as header
-    secure: true, // always true — __Host- requires it, even in dev
-    sameSite: 'strict', // consistent with csrfToken.js
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours in ms
+    secure: true, // __Host- prefix requires secure
+    sameSite: 'strict',
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
     path: '/',
     // domain intentionally omitted — __Host- prefix forbids it
   },
@@ -71,7 +63,6 @@ export const setCsrfCookie = (res, csrfToken) => {
 };
 
 export const clearCsrfCookie = (res) => {
-  // Must match exactly what was set — secure + path, no domain
   res.clearCookie(COOKIE_NAMES.CSRF_TOKEN, {
     secure: true,
     sameSite: 'strict',

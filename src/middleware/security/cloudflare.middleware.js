@@ -1,26 +1,20 @@
-// TODO: Add implementation
 // =============================================================================
 // cloudflare.middleware.js — RESQID
-// Enforces that all traffic is routed through Cloudflare in production.
-// Controlled by ENV.CLOUDFLARE_ONLY — set true in production.
+//
+// Enforces all traffic through Cloudflare in production.
+// Verified by CF-Ray header — injected by Cloudflare, cannot be spoofed.
+//
+// Also sets req.realIp from CF-Connecting-IP for accurate IP tracking.
 // =============================================================================
 
-import { ENV } from '../../config/env.js';
-import { logger } from '../../config/logger.js';
+import { ENV } from '#config/env.js';
+import { logger } from '#config/logger.js';
 
-/**
- * Cloudflare presence is verified by checking for the `CF-Ray` header.
- * This header is injected by Cloudflare on every proxied request and
- * cannot be spoofed from outside the Cloudflare network when your
- * DNS is orange-clouded (proxied).
- *
- * CF-Ray format: <16-hex-char-id>-<airport-code>  e.g. "7f3e1a2b3c4d5e6f-BOM"
- */
 const CF_RAY_REGEX = /^[0-9a-f]{16}-[A-Z]{3}$/i;
 
 export function cloudflareOnly(req, res, next) {
-  // Bypass entirely in non-production or when flag is off
-  if (!ENV.CLOUDFLARE_ONLY) return next();
+  // Bypass if not behind Cloudflare
+  if (!ENV.BEHIND_CLOUDFLARE) return next();
 
   const cfRay = req.headers['cf-ray'];
 
@@ -28,8 +22,8 @@ export function cloudflareOnly(req, res, next) {
     logger.warn(
       {
         ip: req.ip,
-        requestId: req.id,
-        cfRay: cfRay ?? 'missing',
+        requestId: req.requestId,
+        cfRay: cfRay || 'missing',
         path: req.path,
       },
       'Blocked: request did not originate from Cloudflare'
@@ -37,13 +31,26 @@ export function cloudflareOnly(req, res, next) {
 
     return res.status(403).json({
       success: false,
-      code: 'DIRECT_ACCESS_FORBIDDEN',
-      message: 'Direct access to this server is not allowed.',
+      statusCode: 403,
+      message: 'Direct access not allowed',
+      errorCode: 'DIRECT_ACCESS_FORBIDDEN',
     });
   }
 
-  // Optionally expose the CF-Ray on res.locals for logging/tracing
+  // Store CF-Ray for tracing
   res.locals.cfRay = cfRay;
+
+  // Set real IP from Cloudflare header
+  const cfIp = req.headers[ENV.CLOUDFLARE_IP_HEADER || 'cf-connecting-ip'];
+  if (cfIp) {
+    req.realIp = cfIp;
+  }
+
+  // Set country from Cloudflare header
+  const cfCountry = req.headers[ENV.CLOUDFLARE_COUNTRY_HEADER || 'cf-ipcountry'];
+  if (cfCountry) {
+    req.cfCountry = cfCountry;
+  }
 
   next();
 }

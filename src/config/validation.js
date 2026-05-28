@@ -28,8 +28,8 @@ export const CONSTANTS = Object.freeze({
   },
 
   CACHE: {
-    DEFAULT_TTL_SECS: 300, // 5 minutes
-    STATIC_TTL_SECS: 86400, // 24 hours
+    DEFAULT_TTL_SECS: 300,
+    STATIC_TTL_SECS: 86400,
     NO_CACHE: 'no-cache, no-store, must-revalidate',
   },
 
@@ -42,38 +42,68 @@ export const CONSTANTS = Object.freeze({
       'X-Request-ID',
       'API-Version',
       'X-Device-ID',
+      'X-Device-Signature',
+      'X-API-Key',
     ],
-    EXPOSED_HEADERS: ['X-Request-ID', 'X-Rate-Limit-Remaining'],
-    MAX_AGE: 86400, // 24 hours preflight cache
+    EXPOSED_HEADERS: [
+      'X-Request-ID',
+      'X-Rate-Limit-Limit',
+      'X-Rate-Limit-Remaining',
+      'X-Rate-Limit-Reset',
+      'Retry-After',
+    ],
+    MAX_AGE: 86400,
+  },
+
+  // ─── Middleware-Specific Constants ────────────────────────────────────────
+
+  REQUEST_ID: {
+    HEADER_NAME: 'x-request-id',
+    GENERATE_IF_MISSING: true,
+  },
+
+  CONTENT_TYPE: {
+    ALLOWED_TYPES: ['application/json', 'multipart/form-data', 'application/x-www-form-urlencoded'],
+  },
+
+  DEVICE_FINGERPRINT: {
+    HEADER_NAME: 'x-device-id',
+    SIGNATURE_HEADER: 'x-device-signature',
+  },
+
+  API_VERSION: {
+    HEADER_NAME: 'x-api-version',
+    DEFAULT: '1',
+  },
+
+  MAINTENANCE: {
+    RETRY_AFTER_HEADER: 'retry-after',
+    DEFAULT_RETRY_SECONDS: 3600,
   },
 });
 
 // ─── Anomaly Detection Thresholds ─────────────────────────────────────────────
-// Separated so they're easy to tune without touching logic
 
 const ANOMALY_THRESHOLDS = {
-  REDIS_CONNECTION_SPIKE: 50, // warn if connections jump by this many in one interval
-  REDIS_CONNECTION_MAX: 200, // warn if total exceeds this
-  MEMORY_INCREASE_PERCENT: 40, // warn if heap grows by this % in one interval
-  MEMORY_INCREASE_MIN_MB: 150, // only warn if absolute increase exceeds this too (avoids GC noise)
+  REDIS_CONNECTION_SPIKE: 50,
+  REDIS_CONNECTION_MAX: 200,
+  MEMORY_INCREASE_PERCENT: 40,
+  MEMORY_INCREASE_MIN_MB: 150,
+
+  // ─── Middleware Anomaly Thresholds ─────────────────────────────────────────
+  RATE_LIMIT_TRIGGER_RATE: 0.8, // 80% of limit — warn
+  IP_BLOCK_RATE: 10, // 10 blocks per minute — alert
+  CSRF_FAILURE_RATE: 5, // 5 failures per minute — alert
+  ATTACK_DETECTION_RATE: 3, // 3 attacks per minute — critical
 };
 
 // ─── Runtime Config Validator ─────────────────────────────────────────────────
 
-/**
- * validateRuntimeConfig()
- *
- * Validates service config and secrets at startup.
- * DB connectivity is intentionally skipped here —
- * connectPrisma() in prisma.js already handles that with retries.
- *
- * Call once after all modules are loaded.
- */
 export async function validateRuntimeConfig() {
   const errors = [];
   const warnings = [];
 
-  // 1. Redis connectivity — all 3 clients
+  // 1. Redis connectivity
   const redisClients = [
     { name: 'http', client: redis },
     { name: 'middleware', client: middlewareRedis },
@@ -88,7 +118,6 @@ export async function validateRuntimeConfig() {
       ]);
 
       if (pong !== 'PONG') {
-        // middleware and worker Redis are non-critical — warn, don't error
         const list = name === 'http' ? errors : warnings;
         list.push(`Redis [${name}]: unexpected ping response '${pong}'`);
       }
@@ -98,7 +127,7 @@ export async function validateRuntimeConfig() {
     }
   }
 
-  // 2. Duplicate secrets check — reduces blast radius if one is compromised
+  // 2. Duplicate secrets check
   const secrets = [
     ENV.JWT_ACCESS_SECRET,
     ENV.JWT_REFRESH_SECRET,
@@ -112,7 +141,7 @@ export async function validateRuntimeConfig() {
     warnings.push('Two or more secrets share the same value — rotate immediately');
   }
 
-  // 3. URL format — only enforce HTTPS in production
+  // 3. URL format — HTTPS in production
   if (ENV.IS_PROD) {
     const urls = [
       { key: 'API_URL', value: ENV.API_URL },
@@ -142,6 +171,19 @@ export async function validateRuntimeConfig() {
       warnings.push(
         'ENABLE_PIPELINE_QUEUE=true in production — pipeline worker should run locally'
       );
+    }
+
+    // ─── Middleware security checks in production ────────────────────────────
+    if (ENV.CSRF_ENABLED && ENV.CSRF_SECRET.length < 32) {
+      errors.push('CSRF_SECRET too short in production (min 32 chars)');
+    }
+
+    if (
+      ENV.GEO_BLOCK_ENABLED &&
+      ENV.GEO_BLOCKED_COUNTRIES.length === 0 &&
+      ENV.GEO_ALLOWED_COUNTRIES.length === 0
+    ) {
+      warnings.push('GEO_BLOCK_ENABLED but no countries configured');
     }
   }
 
@@ -190,7 +232,6 @@ export function startConnectionMonitoring(intervalMs = 60_000) {
       detectAnomalies(stats);
       lastStats = stats;
     } catch (err) {
-      // Monitoring failure must never crash the app — log at debug only
       logger.debug({ err: err.message }, 'Connection monitoring tick failed');
     }
   }, intervalMs);
@@ -254,7 +295,6 @@ function detectAnomalies(current) {
     MEMORY_INCREASE_MIN_MB,
   } = ANOMALY_THRESHOLDS;
 
-  // Redis connection spike
   if (lastStats.redis?.connected_clients && current.redis?.connected_clients) {
     const spike = current.redis.connected_clients - lastStats.redis.connected_clients;
     if (spike > REDIS_CONNECTION_SPIKE && current.redis.connected_clients > REDIS_CONNECTION_MAX) {
@@ -264,7 +304,6 @@ function detectAnomalies(current) {
     }
   }
 
-  // Memory growth — require BOTH % and absolute threshold to avoid GC false positives
   if (lastStats.memory?.heap_used_mb && current.memory?.heap_used_mb) {
     const deltaMb = current.memory.heap_used_mb - lastStats.memory.heap_used_mb;
     const deltaPercent = (deltaMb / lastStats.memory.heap_used_mb) * 100;
@@ -344,8 +383,6 @@ export async function enhancedHealthCheck() {
 }
 
 // ─── Graceful Shutdown ────────────────────────────────────────────────────────
-// Imports are at the TOP of the file — never inside shutdown handlers.
-// If a module failed to load at boot, you need to know at boot, not at shutdown.
 
 let isShuttingDown = false;
 
@@ -358,7 +395,6 @@ export async function enhancedGracefulShutdown(signal) {
 
   logger.info({ signal }, 'Graceful shutdown initiated');
 
-  // Force exit if shutdown hangs beyond 30s
   const timer = setTimeout(() => {
     logger.error('Graceful shutdown timed out after 30s — forcing exit');
     process.exit(1);
@@ -369,12 +405,11 @@ export async function enhancedGracefulShutdown(signal) {
     await disconnectPrisma();
     await disconnectRedis();
 
-    // closeMailer is sync — no await needed
     try {
       const { closeMailer } = await import('./mailer.js');
       closeMailer();
     } catch {
-      // mailer may not be initialized — not fatal
+      // mailer may not be initialized
     }
 
     logger.info('Graceful shutdown complete');
@@ -392,8 +427,6 @@ export async function enhancedGracefulShutdown(signal) {
 export function printStartupBanner() {
   const mode = ENV.IS_PROD ? 'PRODUCTION' : ENV.IS_DEV ? 'DEVELOPMENT' : 'STAGING';
 
-  // Use logger so banner goes through log pipeline in prod
-  // In dev, logger pretty-prints anyway so this still looks good
   logger.info(
     {
       type: 'startup_banner',
@@ -402,6 +435,14 @@ export function printStartupBanner() {
       node_env: ENV.NODE_ENV,
       log_level: ENV.LOG_LEVEL,
       jwt_expiry: `${ENV.JWT_ACCESS_EXPIRY} / ${ENV.JWT_REFRESH_EXPIRY}`,
+      security: {
+        csrf: ENV.CSRF_ENABLED,
+        rate_limit: ENV.ENABLE_RATE_LIMIT,
+        geo_block: ENV.GEO_BLOCK_ENABLED,
+        behavioral: ENV.BEHAVIORAL_ANALYSIS_ENABLED,
+        attack_detection: ENV.ATTACK_DETECTION_ENABLED,
+        device_fingerprint: ENV.DEVICE_FINGERPRINT_ENABLED,
+      },
       services: {
         database: ENV.DATABASE_URL ? 'configured' : 'missing',
         redis: ENV.REDIS_URL ? 'configured' : 'missing',

@@ -1,20 +1,27 @@
-// prisma/schema/modules/timetable.prisma
+// =============================================================================
+// timetable.prisma — RESQID
+// Module m1: Timetable management, teachers, subjects, periods, substitutions
+// =============================================================================
 
 model Teacher {
-  id        String     @id @default(cuid())
+  id        String   @id @default(cuid())
   schoolId  String
-  userId    String?    @unique  // links to SchoolUser if they have login
+  userId    String?  @unique   // optional link to User (if teacher has login)
   name      String
   phone     String?
-  subjectIds String[]  // subjects they teach
+  subjectIds String[] // subjects they teach (Subject.code or Subject.id)
 
-  isActive  Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   deletedAt DateTime?
 
-  periods   Period[]
-  substitutions Substitution[] @relation("SubstituteTeacher")
+  periods        Period[]
+  substitutions  Substitution[] @relation("SubstituteTeacher")
+
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
+  user     User?   @relation(fields: [userId], references: [id])
 
   @@index([schoolId])
   @@map("teachers")
@@ -27,6 +34,9 @@ model Subject {
   code     String? // "MATH"
 
   periods  Period[]
+
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
 
   @@unique([schoolId, code])
   @@index([schoolId])
@@ -51,6 +61,9 @@ model Period {
 
   substitutions Substitution[]
 
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
+
   @@index([schoolId])
   @@index([teacherId])
   @@index([classGrade, section])
@@ -70,6 +83,9 @@ model Substitution {
   notifiedAt      DateTime?
 
   createdAt       DateTime @default(now())
+
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
 
   @@index([schoolId])
   @@index([date])
