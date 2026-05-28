@@ -1,91 +1,67 @@
 // =============================================================================
 // modules/parents/parent.service.js — RESQID
+// Business logic — emergency profile management moved to m2-emergency.
 // =============================================================================
 
-import crypto from 'crypto';
-import * as repo from './parent.repository.js';
-import { prisma } from '#config/prisma.js';
-import { middlewareRedis as redis } from '#config/redis.js';
-import { logger } from '#config/logger.js';
 import { ApiError } from '#shared/response/ApiError.js';
-import { generateOtp } from '#services/Otp.service.js';
-import { getEmail } from '#infrastructure/email/email.index.js';
-import { getSms } from '#infrastructure/sms/sms.index.js';
+import { logger } from '#config/logger.js';
+import { middlewareRedis as redis } from '#config/redis.js';
+import * as repo from './parent.repository.js';
 import { publish } from '#orchestrator/events/event.publisher.js';
 import { EVENTS } from '#orchestrator/events/event.types.js';
 import { invalidateScanCache } from '#shared/cache/scan.cache.js';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const hashOtp = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
-
-const maskPhone = (phone) => {
-  if (!phone) return 'Unknown';
-  return phone.slice(0, 3) + '****' + phone.slice(-4);
-};
-
 const HOME_CACHE_KEY = (id) => `parent:home:${id}`;
 const HOME_CACHE_TTL = 5 * 60;
 
-async function invalidateHomeCache(parentId) {
+const invalidateHomeCache = async (parentId) => {
   await redis.del(HOME_CACHE_KEY(parentId)).catch(() => {});
-}
+};
 
-async function cacheAside(key, ttl, fn) {
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOME
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const getParentHome = async (parentId) => {
   try {
-    const cached = await redis.get(key);
+    const cached = await redis.get(HOME_CACHE_KEY(parentId));
     if (cached) return JSON.parse(cached);
   } catch {}
-  const data = await fn();
-  if (data) await redis.set(key, JSON.stringify(data), 'EX', ttl).catch(() => {});
+
+  const data = await repo.getParentHome(parentId);
+  if (data) {
+    await redis
+      .set(HOME_CACHE_KEY(parentId), JSON.stringify(data), 'EX', HOME_CACHE_TTL)
+      .catch(() => {});
+  }
   return data;
-}
+};
 
-// ─── GET /me ──────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROFILE
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export const getParentHome = (parentId) =>
-  cacheAside(HOME_CACHE_KEY(parentId), HOME_CACHE_TTL, () => repo.getParentHome(parentId));
-
-// ─── PATCH /me/profile ────────────────────────────────────────────────────────
-
-export const updateProfile = async (parentId, body) => {
-  const { studentId, firstName, lastName, grade, section, photoUrl, emergency, contacts } = body;
-
-  // Verify parent-child link
-  const link = await repo.findParentStudentLink(parentId, studentId);
-  if (!link) throw ApiError.forbidden('Student not linked to your account');
-
-  await repo.updateStudentProfile(studentId, { firstName, lastName, grade, section, photoUrl });
-
-  if (emergency) {
-    await repo.upsertEmergencyProfile(studentId, emergency);
-  }
-
-  if (contacts) {
-    await repo.replaceEmergencyContacts(studentId, contacts);
-  }
-
-  // Invalidate scan cache
-  await invalidateScanCache(studentId);
+export const updateParentProfile = async (parentId, { name }) => {
+  await repo.updateParentProfile(parentId, { name });
   await invalidateHomeCache(parentId);
-
   return { success: true };
 };
 
-// ─── PATCH /me/visibility ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// CARD VISIBILITY
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export const updateVisibility = async (parentId, { studentId, visibility }) => {
-  const link = await repo.findParentStudentLink(parentId, studentId);
-  if (!link) throw ApiError.forbidden('Student not linked');
-
+export const updateVisibility = async (parentId, studentId, visibility) => {
+  await repo.verifyStudentOwnership(parentId, studentId);
   await repo.updateCardVisibility(studentId, visibility);
   await invalidateScanCache(studentId);
   await invalidateHomeCache(parentId);
-
   return { success: true };
 };
 
-// ─── PATCH /me/notifications ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export const updateNotifications = async (parentId, prefs) => {
   await repo.upsertNotificationPrefs(parentId, prefs);
@@ -93,17 +69,16 @@ export const updateNotifications = async (parentId, prefs) => {
   return { success: true };
 };
 
-// ─── POST /me/lock-card ───────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOCK CARD
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export const lockCard = async (parentId, { studentId }) => {
-  const link = await repo.findParentStudentLink(parentId, studentId);
-  if (!link) throw ApiError.forbidden('Student not linked');
-
+export const lockCard = async (parentId, studentId) => {
+  await repo.verifyStudentOwnership(parentId, studentId);
   const result = await repo.lockStudentCard(studentId);
   await invalidateScanCache(studentId);
   await invalidateHomeCache(parentId);
 
-  // Notify
   await publish({
     type: EVENTS.PARENT_CARD_LOCKED,
     actorId: parentId,
@@ -111,14 +86,18 @@ export const lockCard = async (parentId, { studentId }) => {
     payload: { studentId },
   }).catch(() => {});
 
-  return result;
+  return { locked: result.count > 0 };
 };
 
-// ─── POST /me/device-token ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEVICE
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export const registerDeviceToken = (parentId, body) => repo.upsertParentDevice(parentId, body);
 
-// ─── POST /me/link-card ───────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// LINK CARD (Add Child)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export const linkCard = async (parentId, { cardNumber }) => {
   const card = await repo.findCardByNumber(cardNumber);
@@ -126,7 +105,7 @@ export const linkCard = async (parentId, { cardNumber }) => {
 
   if (card.studentId) {
     const existingLink = await repo.findParentStudentLink(parentId, card.studentId);
-    if (existingLink) throw ApiError.conflict('Already linked');
+    if (existingLink) throw ApiError.conflict('Already linked to your account');
   }
 
   let studentId = card.studentId;
@@ -141,48 +120,23 @@ export const linkCard = async (parentId, { cardNumber }) => {
   await repo.createParentStudentLink(parentId, studentId, count === 0);
 
   await invalidateHomeCache(parentId);
-
   return { success: true, studentId };
 };
 
-// ─── PATCH /me/active-student ─────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// SET ACTIVE STUDENT
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export const setActiveStudent = async (parentId, studentId) => {
-  const link = await repo.findParentStudentLink(parentId, studentId);
-  if (!link) throw ApiError.forbidden('Student not linked');
-
+  await repo.verifyStudentOwnership(parentId, studentId);
   await repo.setActiveStudent(parentId, studentId);
   await invalidateHomeCache(parentId);
-
   return { success: true };
 };
 
-// ─── POST /me/unlink-child ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCAN HISTORY
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export const unlinkChild = async (parentId, studentId) => {
-  const link = await repo.findParentStudentLink(parentId, studentId);
-  if (!link) throw ApiError.forbidden('Student not linked');
-
-  await repo.deleteParentStudentLink(parentId, studentId);
-
-  const remaining = await repo.countParentChildren(parentId);
-  if (remaining === 0) {
-    await repo.setActiveStudent(parentId, null);
-  }
-
-  await invalidateHomeCache(parentId);
-
-  return { success: true, remainingChildren: remaining };
-};
-
-// ─── Scan History ─────────────────────────────────────────────────────────────
-
-export const getScanHistory = (parentId, query) => repo.getScanHistory(parentId, query);
-
-// ─── Parent Profile ───────────────────────────────────────────────────────────
-
-export const updateParentProfile = async (parentId, { name }) => {
-  await prisma.parentUser.update({ where: { id: parentId }, data: { name } });
-  await invalidateHomeCache(parentId);
-  return { success: true };
-};
+export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
+  repo.getScanHistory(parentId, { studentId, page, limit, filter });

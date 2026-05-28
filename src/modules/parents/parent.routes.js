@@ -4,14 +4,13 @@
 // =============================================================================
 
 import { Router } from 'express';
+import { validate, validateAll } from '#middleware/validate.middleware.js';
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
 import { authorize } from '#middleware/auth/rbac.middleware.js';
 import { ROLES } from '#shared/constants/roles.js';
-import { validate, validateAll } from '#middleware/validate.middleware.js';
-
-// ─── Validation ──────────────────────────────────────────────────────────────
+import * as controller from './parent.controller.js';
 import {
-  updateProfileSchema,
+  parentProfileSchema,
   updateVisibilitySchema,
   updateNotificationsSchema,
   lockCardSchema,
@@ -19,80 +18,64 @@ import {
   linkCardSchema,
   setActiveStudentSchema,
   scanHistorySchema,
-  parentProfileSchema,
   generateUploadUrlSchema,
   confirmUploadSchema,
 } from './parent.validation.js';
 
-// ─── Controllers ─────────────────────────────────────────────────────────────
-import {
-  getMe,
-  updateProfile,
-  updateVisibility,
-  updateNotifications,
-  lockCard,
-  registerDeviceToken,
-  linkCard,
-  setActiveStudent,
-  getScanHistory,
-  updateParentProfile,
-  generatePhotoUploadUrl,
-  confirmPhotoUpload,
-} from './parent.controller.js';
-
 const router = Router();
 
-// All routes require authentication + PARENT role
+// All routes require PARENT role
 router.use(authenticate, authorize(ROLES.PARENT));
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CORE ROUTES
-// ═══════════════════════════════════════════════════════════════════════════════
+// Dashboard
+router.get('/me', controller.getMe);
 
-// Dashboard home
-router.get('/me', getMe);
+// Profile
+router.patch('/me', validate(parentProfileSchema), controller.updateParentProfile);
 
-// Update child's emergency profile
-router.patch('/me/students/:studentId/emergency', validate(updateProfileSchema), updateProfile);
-
-// Update card visibility
+// Card visibility per child
 router.patch(
   '/me/students/:studentId/visibility',
-  validate(updateVisibilitySchema),
-  updateVisibility
+  validateAll(updateVisibilitySchema),
+  controller.updateVisibility
 );
 
-// Update notification preferences
-router.patch('/me/notifications', validate(updateNotificationsSchema), updateNotifications);
+// Notification preferences
+router.patch(
+  '/me/notifications',
+  validate(updateNotificationsSchema),
+  controller.updateNotifications
+);
 
 // Lock card (emergency)
-router.post('/me/students/:studentId/lock', validate(lockCardSchema), lockCard);
+router.post('/me/students/:studentId/lock', validateAll(lockCardSchema), controller.lockCard);
 
-// Register device for push notifications
-router.post('/me/device', validate(registerDeviceTokenSchema), registerDeviceToken);
+// Device token for push
+router.post('/me/device', validate(registerDeviceTokenSchema), controller.registerDeviceToken);
 
-// Link a new child's card
-router.post('/me/children', validate(linkCardSchema), linkCard);
+// Add child
+router.post('/me/children', validate(linkCardSchema), controller.linkCard);
 
-// Set active child
-router.patch('/me/active-child', validate(setActiveStudentSchema), setActiveStudent);
+// Switch active child
+router.patch('/me/active-child', validate(setActiveStudentSchema), controller.setActiveStudent);
 
-// Scan history
-router.get('/me/students/:studentId/scans', validateAll(scanHistorySchema), getScanHistory);
-
-// Update own profile
-router.patch('/me', validate(parentProfileSchema), updateParentProfile);
+// Scan history per child
+router.get(
+  '/me/students/:studentId/scans',
+  validateAll(scanHistorySchema),
+  controller.getScanHistory
+);
 
 // Photo upload
 router.post(
   '/me/students/:studentId/photo/upload-url',
   validate(generateUploadUrlSchema),
-  generatePhotoUploadUrl
+  controller.generatePhotoUploadUrl
 );
 router.post(
   '/me/students/:studentId/photo/confirm',
   validate(confirmUploadSchema),
-  confirmPhotoUpload
+  controller.confirmPhotoUpload
 );
 
 export default router;
