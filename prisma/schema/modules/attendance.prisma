@@ -1,14 +1,22 @@
 // =============================================================================
-// attendance.prisma — RESQID
-// Module m3: Attendance tracking via RFID taps
+// prisma/schema/modules/attendance.prisma — RESQID
+// Attendance sessions, taps, and records
 // =============================================================================
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+  HALF_DAY
+}
 
 // ── Session (e.g., morning/afternoon class block) ──────────────────────────
 model AttendanceSession {
   id          String    @id @default(cuid())
   schoolId    String
-  teacherId   String    // references User.id (role = TEACHER)
-  classGrade  String
+  teacherId   String
+  grade       String
   section     String
   subject     String?
 
@@ -38,7 +46,7 @@ model AttendanceTap {
   student     Student           @relation(fields: [studentId], references: [id])
   schoolId    String
 
-  uidHash     String            // SHA-256 of NFC UID (privacy-safe)
+  uidHash     String
   tappedAt    DateTime          @default(now())
   deviceId    String?
   processed   Boolean           @default(false)
@@ -63,21 +71,10 @@ model AttendanceRecord {
 
   status      AttendanceStatus  @default(PRESENT)
   markedAt    DateTime          @default(now())
-  markedBy    String?           // optional teacherId if manually overridden
-
-  // Relations
-  school      School            @relation(fields: [schoolId], references: [id])
+  markedBy    String?
 
   @@unique([sessionId, studentId])
   @@index([schoolId])
   @@index([studentId])
   @@map("attendance_records")
-}
-
-// ── Enum ───────────────────────────────────────────────────────────────────
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  LATE
-  EXCUSED
 }

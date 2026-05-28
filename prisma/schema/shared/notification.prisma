@@ -1,63 +1,7 @@
 // =============================================================================
-// notification.prisma — RESQID
-// Shared notification models: logs, preferences
+// prisma/schema/shared/notification.prisma — RESQID
+// Multi-channel notifications for parents and school users
 // =============================================================================
-
-model Notification {
-  id         String             @id @default(cuid())
-
-  // Recipient — polymorphic (parent or school staff)
-  parentId     String?
-  schoolUserId String?
-
-  parent       Parent?          @relation(fields: [parentId], references: [id])
-  schoolUser   User?            @relation(fields: [schoolUserId], references: [id])
-
-  schoolId     String?
-  school       School?          @relation(fields: [schoolId], references: [id])
-
-  title        String
-  body         String
-  type         String            // from EVENTS constants (e.g., 'EMERGENCY_TRIGGERED')
-
-  data         Json?             // deep link payload (studentId, incidentId, etc.)
-
-  channel      NotificationChannel
-  status       NotificationStatus  @default(PENDING)
-
-  sentAt       DateTime?
-  readAt       DateTime?
-  failReason   String?
-
-  createdAt    DateTime          @default(now())
-
-  @@index([parentId])
-  @@index([schoolUserId])
-  @@index([status])
-  @@index([type])
-  @@map("notifications")
-}
-
-model NotificationPreference {
-  id           String  @id @default(cuid())
-  parentId     String  @unique
-  parent       Parent  @relation(fields: [parentId], references: [id])
-
-  smsEnabled   Boolean @default(true)
-  emailEnabled Boolean @default(false)
-  pushEnabled  Boolean @default(true)
-
-  // Per‑event preferences
-  onScan          Boolean @default(true)
-  onAttendance    Boolean @default(true)
-  onEmergency     Boolean @default(true)
-  onAnnouncement  Boolean @default(true)
-
-  updatedAt    DateTime @updatedAt
-
-  @@index([parentId])
-  @@map("notification_preferences")
-}
 
 enum NotificationChannel {
   SMS
@@ -68,7 +12,59 @@ enum NotificationChannel {
 
 enum NotificationStatus {
   PENDING
+  QUEUED
   SENT
+  DELIVERED
+  READ
   FAILED
   CANCELLED
+}
+
+model Notification {
+  id           String             @id @default(cuid())
+
+  parentId     String?
+  parent       ParentUser?        @relation(fields: [parentId], references: [id])
+  schoolUserId String?
+  schoolId     String?
+  school       School?            @relation(fields: [schoolId], references: [id])
+
+  title        String
+  body         String
+  type         String
+  data         Json?
+
+  channel      NotificationChannel
+  status       NotificationStatus @default(PENDING)
+
+  sentAt       DateTime?
+  readAt       DateTime?
+  failReason   String?
+
+  createdAt    DateTime           @default(now())
+
+  @@index([parentId])
+  @@index([schoolUserId])
+  @@index([schoolId])
+  @@index([status])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id           String  @id @default(cuid())
+  parentId     String  @unique
+  parent       ParentUser? @relation(fields: [parentId], references: [id])
+
+  smsEnabled   Boolean @default(true)
+  emailEnabled Boolean @default(false)
+  pushEnabled  Boolean @default(true)
+
+  onScan       Boolean @default(true)
+  onAttendance Boolean @default(true)
+  onEmergency  Boolean @default(true)
+  onAnnouncement Boolean @default(true)
+
+  updatedAt    DateTime @updatedAt
+
+  @@map("notification_preferences")
 }

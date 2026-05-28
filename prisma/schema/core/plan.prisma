@@ -1,18 +1,20 @@
-// prisma/schema/core/plan.prisma
+// =============================================================================
+// prisma/schema/core/plan.prisma — RESQID
+// Subscription plans, payments, and orders
+// =============================================================================
 
 model Plan {
-  id           String   @id  // matches PLAN_IDS constant e.g. "resqid_complete"
-  label        String
-  description  String?
+  id              String   @id
+  label           String
+  description     String?
 
-  // Price in paise — base price, actual locked on subscription
   pricePerStudent Int
 
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  subscriptions Subscription[]
+  subscriptions   Subscription[]
 
   @@map("plans")
 }
@@ -24,25 +26,32 @@ model Subscription {
   planId    String
   plan      Plan     @relation(fields: [planId], references: [id])
 
-  // Modules unlocked — derived from planId at creation, stored for fast lookup
-  modules   String[] // ["emergency", "attendance"]
+  modules   String[]
 
-  studentCount          Int
-  pricePerStudentPaise  Int   // locked at purchase time
-  totalAmountPaise      Int   // studentCount × pricePerStudentPaise
+  studentCount         Int
+  pricePerStudentPaise Int
+  totalAmountPaise     Int
 
   validFrom  DateTime
   validUntil DateTime
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  status    String   @default("ACTIVE")
 
-  // Payment records
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   payments   Payment[]
 
   @@index([schoolId])
   @@index([validUntil])
   @@map("subscriptions")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
 }
 
 model Payment {
@@ -54,7 +63,6 @@ model Payment {
   currency       String        @default("INR")
   status         PaymentStatus @default(PENDING)
 
-  // Razorpay
   gatewayOrderId   String?  @unique
   gatewayPaymentId String?  @unique
 
@@ -66,14 +74,16 @@ model Payment {
   @@map("payments")
 }
 
-enum PaymentStatus {
-  PENDING
-  SUCCESS
-  FAILED
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  PROCESSING
+  PRINTED
+  SHIPPED
+  DELIVERED
+  CANCELLED
   REFUNDED
 }
-
-// ─── Order ────────────────────────────────────────────────────────────────────
 
 model Order {
   id        String      @id @default(cuid())
@@ -106,15 +116,4 @@ model OrderItem {
 
   @@index([orderId])
   @@map("order_items")
-}
-
-enum OrderStatus {
-  DRAFT
-  CONFIRMED
-  PROCESSING
-  PRINTED
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
 }

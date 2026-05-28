@@ -1,8 +1,11 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // TODO: Add implementation
 import { logger } from '#config/logger.js';
 import { initializeCache, getCache, TTL, CacheKey } from './cache/cache.index.js';
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 // =============================================================================
 // infrastructure.index.js — RESQID
 //
@@ -16,30 +19,43 @@ import { initializeCache, getCache, TTL, CacheKey } from './cache/cache.index.js
 
 import { logger } from '#config/logger.js';
 import { initializeCache, getCache, shutdownCache, TTL, CacheKey } from './cache/cache.index.js';
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 import { initializeEmail, getEmail } from './email/email.index.js';
 import { initializePush, getPush } from './push/push.index.js';
 import { initializeSms, getSms } from './sms/sms.index.js';
 import { initializeStorage, getStorage, StoragePath } from './storage/storage.index.js';
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 import { closeAllConnections as closeSseConnections } from './sse/sse.service.js';
 
 // ─── Infrastructure Class ────────────────────────────────────────────────────
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+import { closeAllConnections as closeSseConnections } from './sse/sse.service.js';
+
+// ─── Infrastructure Class ────────────────────────────────────────────────────
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 
 export class Infrastructure {
   constructor(config = {}) {
     this.config = config;
     this.initialized = false;
 <<<<<<< HEAD
+<<<<<<< HEAD
     this.modules = {};
 =======
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   }
 
   async initialize() {
     if (this.initialized) {
+<<<<<<< HEAD
 <<<<<<< HEAD
       logger.warn('[Infrastructure] Already initialized — skipping.');
       return this.modules;
@@ -57,6 +73,8 @@ export class Infrastructure {
       logger.info('[Infrastructure] All modules initialized successfully.');
       return this.modules;
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       logger.warn('[Infrastructure] Already initialized');
       return this;
     }
@@ -78,7 +96,10 @@ export class Infrastructure {
 
       logger.info('[Infrastructure] All modules initialized');
       return this;
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
     } catch (err) {
       logger.error({ err: err.message }, '[Infrastructure] Initialization failed');
       throw err;
@@ -87,6 +108,7 @@ export class Infrastructure {
 
   getCache() {
     this._assertReady();
+<<<<<<< HEAD
 <<<<<<< HEAD
     return getCache();
   }
@@ -106,6 +128,8 @@ export class Infrastructure {
     this._assertReady();
     return getStorage();
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
     return this.cache;
   }
   getEmail() {
@@ -123,7 +147,10 @@ export class Infrastructure {
   getStorage() {
     this._assertReady();
     return this.storage;
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   }
 
   getConstants() {
@@ -132,17 +159,23 @@ export class Infrastructure {
 
   async shutdown() {
 <<<<<<< HEAD
+<<<<<<< HEAD
     if (typeof this.modules.cache?.disconnect === 'function') {
       await this.modules.cache.disconnect();
     }
     this.initialized = false;
     logger.info('[Infrastructure] Shutdown complete.');
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
     if (this.cache) await shutdownCache();
     closeSseConnections();
     this.initialized = false;
     logger.info('[Infrastructure] Shutdown complete');
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   }
 
   _assertReady() {
@@ -153,10 +186,15 @@ export class Infrastructure {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+// ─── Singleton ───────────────────────────────────────────────────────────────
+
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 let infrastructureInstance = null;
 
 export async function initializeInfrastructure(config = {}) {
@@ -175,7 +213,10 @@ export function getInfrastructure() {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 export async function shutdownInfrastructure() {
   if (infrastructureInstance) {
     await infrastructureInstance.shutdown();
@@ -183,5 +224,8 @@ export async function shutdownInfrastructure() {
   }
 }
 
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 export { TTL, CacheKey, StoragePath };

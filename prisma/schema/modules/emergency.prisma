@@ -1,34 +1,32 @@
 // =============================================================================
-// emergency.prisma — RESQID
-// Module m2: Emergency profiles & contacts
+// prisma/schema/modules/emergency.prisma — RESQID
+// Emergency profile and contacts — displayed on QR scan
 // =============================================================================
 
 model EmergencyProfile {
-  id        String   @id @default(cuid())
-  studentId String   @unique
-  student   Student  @relation(fields: [studentId], references: [id])
-  schoolId  String
+  id         String   @id @default(cuid())
+  studentId  String   @unique
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId   String
 
-  // Medical
-  bloodGroup    String?
-  allergies     String[]
-  medications   String[]
-  conditions    String[]
-  doctorName    String?
-  doctorPhone   String?
+  bloodGroup   String?
+  allergies    String[]
+  medications  String[]
+  conditions   String[]
+  doctorName   String?
+  doctorPhone  String?
 
-  // Card visibility – parent controls what shows on scan
-  showBloodGroup  Boolean @default(true)
-  showAllergies   Boolean @default(true)
-  showMedications Boolean @default(false)
-  showContacts    Boolean @default(true)
+  showBloodGroup   Boolean @default(true)
+  showAllergies    Boolean @default(true)
+  showMedications  Boolean @default(false)
+  showContacts     Boolean @default(true)
 
-  isComplete Boolean @default(false)  // false until parent fills profile
+  isComplete  Boolean @default(false)
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  contacts   EmergencyContact[]
+  contacts    EmergencyContact[]
 
   // Multi‑tenancy – school ownership
   school     School    @relation(fields: [schoolId], references: [id])
@@ -40,13 +38,17 @@ model EmergencyProfile {
 model EmergencyContact {
   id         String           @id @default(cuid())
   profileId  String
-  profile    EmergencyProfile @relation(fields: [profileId], references: [id])
+  profile    EmergencyProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   name       String
   phone      String
-  relation   String           // FATHER | MOTHER | GUARDIAN etc.
+  relation   String
   isPrimary  Boolean          @default(false)
-  order      Int              @default(0)  // display order
+  priority   Int              @default(0)
+
+  isActive   Boolean          @default(true)
+  callEnabled    Boolean      @default(true)
+  whatsappEnabled Boolean     @default(false)
 
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt

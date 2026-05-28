@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // TODO: Add implementation
 import { RedisAdapter } from './redis.adapter.js';
 import { CacheProvider } from './cache.provider.js';
@@ -42,6 +43,8 @@ export const CacheKey = {
 // Singleton
 // ---------------------------------------------------------------------------
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 // =============================================================================
 // cache.index.js — RESQID
 //
@@ -90,16 +93,22 @@ export const CacheKey = {
 
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 let cacheInstance = null;
 
 export async function initializeCache(config = {}) {
   if (!cacheInstance) {
 <<<<<<< HEAD
+<<<<<<< HEAD
     const adapter = new RedisAdapter(config);
     await adapter.connect();
     cacheInstance = adapter;
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
     const adapter = new RedisAdapter({
       url: config.REDIS_URL || ENV.REDIS_URL,
       password: config.REDIS_PASSWORD || ENV.REDIS_PASSWORD,
@@ -108,7 +117,10 @@ export async function initializeCache(config = {}) {
     await adapter.connect();
     cacheInstance = adapter;
     logger.info('[Cache] Infrastructure cache initialized');
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   }
   return cacheInstance;
 }
@@ -116,16 +128,23 @@ export async function initializeCache(config = {}) {
 export function getCache() {
   if (!cacheInstance) {
 <<<<<<< HEAD
+<<<<<<< HEAD
     throw new Error('[Cache] Not initialized. Call initializeCache() before use.');
 =======
     throw new Error('[Cache] Not initialized. Call initializeCache() first.');
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+    throw new Error('[Cache] Not initialized. Call initializeCache() first.');
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   }
   return cacheInstance;
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 export async function shutdownCache() {
   if (cacheInstance) {
     await cacheInstance.disconnect();
@@ -134,5 +153,8 @@ export async function shutdownCache() {
   }
 }
 
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 export { CacheProvider, RedisAdapter };

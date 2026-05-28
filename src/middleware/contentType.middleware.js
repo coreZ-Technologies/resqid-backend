@@ -68,20 +68,12 @@ export const enforceContentType = asyncHandler(async (req, _res, next) => {
 
   const contentType = (req.headers['content-type'] || '').toLowerCase();
 
-<<<<<<< HEAD
-  // Must include application/json (may have charset suffix e.g. '; charset=utf-8')
-  if (!contentType.toLowerCase().includes('application/json')) {
-    throw new ApiError(
-      400,
-      `Content-Type must be application/json — received: '${contentType || 'none'}'`
-=======
   // Must include application/json
   if (!contentType.includes('application/json')) {
     throw ApiError.badRequest(
       `Content-Type must be application/json. Received: '${contentType || 'none'}'`,
       [],
       'CONTENT_TYPE_INVALID'
->>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f
     );
   }
 

@@ -1,12 +1,16 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // TODO: Add implementation
 =======
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 /**
  * Storage Provider Interface
  * Defines the contract for all object-storage adapter implementations.
  */
 export class StorageProvider {
+<<<<<<< HEAD
 <<<<<<< HEAD
     async upload(file, key, options = {}) {
       throw new Error('StorageProvider.upload() is not implemented.');
@@ -40,6 +44,8 @@ export class StorageProvider {
   export default StorageProvider;
   
 =======
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   async upload(file, key, options = {}) {
     throw new Error('StorageProvider.upload() is not implemented.');
   }
@@ -70,4 +76,7 @@ export class StorageProvider {
 }
 
 export default StorageProvider;
+<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea

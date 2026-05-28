@@ -173,13 +173,8 @@ export function globalErrorHandler(err, req, res, _next) {
 
   return errorResponse(res, {
     statusCode: 500,
-<<<<<<< HEAD
-    // Generic message in production — never leak implementation details
-    message: IS_PROD ? 'An unexpected error occurred' : err.message,
-=======
     message: IS_PROD ? 'Internal server error' : err.message,
     errorCode: 'INTERNAL_ERROR',
->>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f
     requestId,
   });
 }

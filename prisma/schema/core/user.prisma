@@ -1,23 +1,34 @@
-// prisma/schema/core/user.prisma
+// =============================================================================
+// prisma/schema/core/user.prisma — RESQID
+// Identity models for all authenticated actors
+// =============================================================================
+
+enum SchoolUserRole {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+}
 
 // ─── Super Admin ──────────────────────────────────────────────────────────────
 
 model SuperAdmin {
-  id           String    @id @default(cuid())
+  id           String        @id @default(cuid())
   name         String
-  email        String    @unique
+  email        String        @unique
   passwordHash String
 
-  isActive     Boolean   @default(true)
+  isActive     Boolean       @default(true)
   lastLoginAt  DateTime?
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  sessions     UserSession[]
 
   @@map("super_admins")
 }
 
-// ─── School User (Admin + Teacher) ───────────────────────────────────────────
+// ─── School User ──────────────────────────────────────────────────────────────
 
 model SchoolUser {
   id           String         @id @default(cuid())
@@ -37,7 +48,6 @@ model SchoolUser {
   updatedAt    DateTime       @updatedAt
   deletedAt    DateTime?
 
-  // Relations
   sessions     UserSession[]
 
   @@index([schoolId])
@@ -45,49 +55,44 @@ model SchoolUser {
   @@map("school_users")
 }
 
-enum SchoolUserRole {
-  ADMIN
-  TEACHER
-}
-
 // ─── Parent User ──────────────────────────────────────────────────────────────
 
 model ParentUser {
-  id          String    @id @default(cuid())
-  name        String?
-  phone       String    @unique
-  email       String?
+  id           String          @id @default(cuid())
+  name         String?
+  phone        String          @unique
+  email        String?
 
-  // OTP auth
-  otp         String?
+  otp          String?
   otpExpiresAt DateTime?
-  otpAttempts  Int      @default(0)
+  otpAttempts  Int             @default(0)
 
-  isActive    Boolean   @default(true)
-  lastLoginAt DateTime?
+  isActive     Boolean         @default(true)
+  lastLoginAt  DateTime?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
 
-  // Relations
-  students    ParentStudent[]
-  sessions    UserSession[]
-  devices     Device[]
+  students     ParentStudent[]
+  sessions     UserSession[]
+  devices      ParentDevice[]
+  notifications Notification[]
+  preferences  NotificationPreference?
 
   @@index([phone])
   @@map("parent_users")
 }
 
-// ─── Parent ↔ Student link ────────────────────────────────────────────────────
+// ─── Parent ↔ Student Link ────────────────────────────────────────────────────
 
 model ParentStudent {
   id        String      @id @default(cuid())
   parentId  String
-  parent    ParentUser  @relation(fields: [parentId], references: [id])
+  parent    ParentUser  @relation(fields: [parentId], references: [id], onDelete: Cascade)
   studentId String
-  student   Student     @relation(fields: [studentId], references: [id])
-  relation  String      @default("PARENT")  // PARENT | GUARDIAN | SIBLING
+  student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  relation  String      @default("PARENT")
 
   isPrimary Boolean     @default(false)
   createdAt DateTime    @default(now())
@@ -97,47 +102,117 @@ model ParentStudent {
   @@map("parent_students")
 }
 
-// ─── Session ──────────────────────────────────────────────────────────────────
+// ─── User Session (polymorphic) ───────────────────────────────────────────────
 
 model UserSession {
-  id                  String      @id @default(cuid())
+  id                String       @id @default(cuid())
 
-  // Polymorphic actor
-  schoolUserId        String?
-  schoolUser          SchoolUser? @relation(fields: [schoolUserId], references: [id])
-  parentUserId        String?
-  parentUser          ParentUser  @relation(fields: [parentUserId], references: [id])
+  superAdminId      String?
+  superAdmin        SuperAdmin?  @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+  schoolUserId      String?
+  schoolUser        SchoolUser?  @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
+  parentUserId      String?
+  parentUser        ParentUser?  @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
 
-  refreshTokenHash    String      @unique
-  deviceFingerprint   String?
-  deviceInfo          Json?       // { device, os, browser }
-  ipAddress           String?
+  refreshTokenHash  String       @unique
+  deviceFingerprint String?
+  deviceInfo        Json?
+  ipAddress         String?
 
-  expiresAt           DateTime
-  revokedAt           DateTime?
+  expiresAt         DateTime
+  revokedAt         DateTime?
 
-  createdAt           DateTime    @default(now())
+  createdAt         DateTime     @default(now())
 
+  @@index([superAdminId])
   @@index([schoolUserId])
   @@index([parentUserId])
+  @@index([refreshTokenHash])
   @@map("user_sessions")
 }
 
-// ─── Device (for push notifications) ─────────────────────────────────────────
+// ─── Parent Device ────────────────────────────────────────────────────────────
 
-model Device {
-  id          String     @id @default(cuid())
-  parentId    String
-  parent      ParentUser @relation(fields: [parentId], references: [id])
+model ParentDevice {
+  id                String     @id @default(cuid())
+  parentId          String
+  parent            ParentUser @relation(fields: [parentId], references: [id], onDelete: Cascade)
 
-  expoPushToken String?  @unique
-  platform      String   // ios | android
-  deviceId      String
+  deviceFingerprint String     @unique
+  platform          String
+  expoPushToken     String?    @unique
 
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  isActive          Boolean    @default(true)
+  loggedOutAt       DateTime?
+  logoutReason      String?
+  lastSeenAt        DateTime?
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   @@index([parentId])
-  @@map("devices")
+  @@map("parent_devices")
+}
+
+// ─── Attendance Device (RFID Machines) ────────────────────────────────────────
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+  BLOCKED
+  UNREGISTERED
+  CONFIGURING
+  ERROR
+}
+
+model AttendanceDevice {
+  id          String       @id @default(cuid())
+  schoolId    String
+  school      School       @relation(fields: [schoolId], references: [id])
+
+  name        String
+  apiKey      String       @unique
+  status      DeviceStatus @default(UNREGISTERED)
+
+  lastSeenAt  DateTime?
+  ipAddress   String?
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  scans       Scan[]
+
+  @@index([schoolId])
+  @@map("attendance_devices")
+}
+
+// ─── Feature Flags ────────────────────────────────────────────────────────────
+
+model FeatureFlag {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  enabled     Boolean   @default(false)
+  description String?
+  metadata    Json?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("feature_flags")
+}
+
+// ─── Trusted Scan Zone ────────────────────────────────────────────────────────
+
+model TrustedScanZone {
+  id          String    @id @default(cuid())
+  schoolId    String?
+  ipRange     String
+  description String?
+  isActive    Boolean   @default(true)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("trusted_scan_zones")
 }

@@ -1,40 +1,70 @@
-// prisma/schema/core/student.prisma
-// CORE ONLY — no module fields here
-// Module relations are defined in their own schema files
+// =============================================================================
+// prisma/schema/core/student.prisma — RESQID
+// Student entity — emergency profile moved to modules/emergency.prisma
+// =============================================================================
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
 
 model Student {
-  id          String    @id @default(cuid())
-  schoolId    String
-  school      School    @relation(fields: [schoolId], references: [id])
+  id         String   @id @default(cuid())
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
-  // Basic info — available to ALL modules
-  name        String
-  rollNo      String?
-  photoUrl    String?
-  bloodGroup  String?
+  firstName  String
+  lastName   String
   dateOfBirth DateTime?
-  gender      String?
+  gender     Gender?
+  photoUrl   String?
 
-  // Class/section — used by attendance + timetable
-  classGrade  String?   // "10"
-  section     String?   // "A"
+  // Class assignment
+  grade      String?    // "10"
+  section    String?    // "A"
 
-  isActive    Boolean   @default(true)
+  // Parent link
+  parentId   String?
+  parent     ParentUser? @relation(fields: [parentId], references: [id])
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  // Card visibility
+  cardVisibilityId String?
+  cardVisibility   CardVisibility?
 
-  // Core relations
-  parents     ParentStudent[]
-  tokens      Token[]
+  isActive   Boolean   @default(true)
+  metadata   Json?
 
-  // Module relations — defined in module schemas via opposite relation
-  // EmergencyProfile  → emergency.prisma
-  // AttendanceTaps    → attendance.prisma
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  @@unique([schoolId, rollNo])
+  // Relations
+  tokens              Token[]
+  scans               Scan[]
+  attendanceRecords   AttendanceRecord[]
+  attendanceTaps      AttendanceTap[]
+  emergencyProfile    EmergencyProfile?
+  parentLinks         ParentStudent[]
+
   @@index([schoolId])
-  @@index([classGrade, section])
+  @@index([grade, section])
+  @@index([parentId])
   @@map("students")
+}
+
+// ─── Card Visibility (parent controls what shows on scan) ─────────────────────
+
+enum VisibilityLevel {
+  PUBLIC    // Full profile visible on scan
+  MINIMAL   // Only primary contact visible
+  HIDDEN    // No data visible
+}
+
+model CardVisibility {
+  id         String         @id @default(cuid())
+  visibility VisibilityLevel @default(PUBLIC)
+
+  students   Student[]
+
+  @@map("card_visibility")
 }

@@ -1,0 +1,84 @@
+// =============================================================================
+// prisma/schema/core/scan.prisma — RESQID
+// Records every physical/digital interaction with a student's token
+// =============================================================================
+
+enum ScanType {
+  RFID_TAP
+  QR_EMERGENCY
+  QR_ID_CHECK
+  MANUAL_ENTRY
+}
+
+enum ScanStatus {
+  SUCCESS
+  FAILED
+  BLOCKED
+  ANOMALOUS
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Scan {
+  id           String    @id @default(cuid())
+  studentId    String
+  student      Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId     String
+  school       School    @relation(fields: [schoolId], references: [id])
+  tokenId      String?
+  token        Token?    @relation(fields: [tokenId], references: [id])
+
+  type         ScanType
+  status       ScanStatus @default(SUCCESS)
+
+  timestamp    DateTime  @default(now())
+  locationLat  Float?
+  locationLng  Float?
+  initiatedBy  String?
+
+  deviceId     String?
+  deviceIp     String?
+  userAgent    Json?
+
+  metadata     Json?
+
+  anomalies    ScanAnomaly[]
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([studentId, timestamp])
+  @@index([schoolId, timestamp])
+  @@index([deviceId])
+  @@index([initiatedBy])
+  @@map("scans")
+}
+
+model ScanAnomaly {
+  id           String    @id @default(cuid())
+  scanId       String
+  scan         Scan      @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  studentId    String
+  schoolId     String
+
+  type         String
+  severity     Severity  @default(MEDIUM)
+  description  String
+
+  metadata     Json?
+
+  detectedAt   DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedBy   String?
+  resolution   String?
+
+  @@index([studentId, detectedAt])
+  @@index([schoolId, detectedAt])
+  @@index([severity])
+  @@map("scan_anomalies")
+}

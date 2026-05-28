@@ -1,11 +1,15 @@
-// prisma/schema/core/schema.prisma
+// =============================================================================
+// prisma/schema/core/schema.prisma — RESQID
+// Generator + Datasource configuration
+// prismaSchemaFolder auto-discovers all .prisma files in subdirectories
+// =============================================================================
 
 generator client {
-    provider = "prisma-client-js"
+    provider        = "prisma-client-js"
     previewFeatures = ["prismaSchemaFolder"]
 }
 
 datasource db {
     provider = "postgresql"
-    url = env("DATABASE_URL")
+    url      = env("DATABASE_URL")
 }

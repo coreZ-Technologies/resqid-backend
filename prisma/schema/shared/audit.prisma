@@ -1,34 +1,43 @@
-// prisma/schema/shared/audit.prisma
+// =============================================================================
+// prisma/schema/shared/audit.prisma — RESQID
+// Central audit log for all business-level actions
+// =============================================================================
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
 
 model AuditLog {
-  id         String   @id @default(cuid())
+  id         String        @id @default(cuid())
 
-  // Who did it
-  actorId    String?  // null = system action
-  actorType  String   // SUPER_ADMIN | SCHOOL_ADMIN | TEACHER | PARENT | SYSTEM
+  action     String
+  severity   AuditSeverity @default(INFO)
 
-  // What they did
-  action     String   // from AUDIT_ACTION constants e.g. "student.created"
+  actorId    String?
+  actorType  String?
 
-  // What was affected
-  targetId   String?
-  targetType String?  // "Student" | "Token" | "School" etc.
+  entity     String?
+  entityId   String?
+  oldValue   Json?
+  newValue   Json?
 
-  // Scope
-  schoolId   String?  // null for platform-level actions
+  schoolId   String?
 
-  // Context
   ipAddress  String?
+  userAgent  String?
   device     String?
-  os         String?
-  browser    String?
-  metadata   Json?    // any extra data
 
-  createdAt  DateTime @default(now())
+  metadata   Json?
 
-  @@index([actorId])
-  @@index([schoolId])
-  @@index([action])
-  @@index([createdAt])
+  createdAt  DateTime      @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([entity, entityId])
+  @@index([severity])
   @@map("audit_logs")
 }
