@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 // TODO: Add implementation
+=======
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
 import { EmailProvider } from './email.provider.js';
 import { BrevoAdapter } from './brevo.adapter.js';
 import { ResendAdapter } from './resend.adapter.js';

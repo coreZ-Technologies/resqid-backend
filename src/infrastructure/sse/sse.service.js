@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 // TODO: Add implementation
+=======
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
 // src/infrastructure/sse/sse.service.js
 // FIXED: Removed CONNECTION_TIMEOUT_MS. Heartbeat alone keeps connection alive.
 // FIXED: Removed lastActivity dead state.
@@ -80,7 +83,11 @@ export const registerClient = (userId, userType, res) => {
   });
 
   // Handle errors
+<<<<<<< HEAD
   res.on('error', err => {
+=======
+  res.on('error', (err) => {
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
     logger.error({ userId, error: err.message }, '[SSE] Connection error');
     cleanupConnection(userId, heartbeatInterval, res);
   });
@@ -120,7 +127,11 @@ const cleanupConnection = (userId, heartbeatInterval, res) => {
 /**
  * Remove all connections for a user
  */
+<<<<<<< HEAD
 export const removeClient = userId => {
+=======
+export const removeClient = (userId) => {
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
   const userConnections = clients.get(userId);
   if (userConnections) {
     for (const conn of userConnections) {
@@ -191,7 +202,11 @@ export const pushSSEToAll = (userIds, event) => {
 /**
  * Broadcast to all connected clients
  */
+<<<<<<< HEAD
 export const broadcastToAll = event => {
+=======
+export const broadcastToAll = (event) => {
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
   let sent = 0;
   const deadConnections = [];
 
@@ -245,7 +260,11 @@ export const getConnectedClients = () => {
   return result;
 };
 
+<<<<<<< HEAD
 export const isUserConnected = userId => {
+=======
+export const isUserConnected = (userId) => {
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
   const connections = clients.get(userId);
   return connections ? connections.size > 0 : false;
 };
