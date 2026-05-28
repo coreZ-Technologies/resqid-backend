@@ -1,123 +1,94 @@
-// TODO: Add implementation
-/**
- * server.js
- *
- * Starts the HTTP server and manages graceful shutdown.
- * This is the file you run with `node src/server.js` or
- * `pm2 start ecosystem.config.cjs`.
- */
+// =============================================================================
+// server.js — RESQID
+// HTTP server startup with graceful shutdown.
+// Run: node src/server.js
+// =============================================================================
 
-import http from 'http';
-
-// ---- Load environment first (before anything else) ----
-import './config/env.js';          // validates & loads .env
-
-// ---- Application ----
 import app from './app.js';
+import { ENV } from '#config/env.js';
+import { logger } from '#config/logger.js';
+import { prisma } from '#config/prisma.js';
+import {
+  initializeInfrastructure,
+  shutdownInfrastructure,
+} from '#infrastructure/infrastructure.index.js';
+import {
+  validateRuntimeConfig,
+  printStartupBanner,
+  enhancedGracefulShutdown,
+} from '#config/validation.js';
+import { initQueues } from '#orchestrator/queues/queue.manager.js';
 
-// ---- Utilities ----
-import { logger } from './config/logger.js';
-import { prisma } from './config/prisma.js';     // DB connection
-import { redis } from './config/redis.js';        // Redis connection
-import { cacheProvider } from './infrastructure/cache/cache.provider.js'; // optional
+const PORT = ENV.PORT || 3000;
 
-// ---- Instrumentation (tracing/metrics) ----
-// This file might be loaded separately via --require, but we can also call it here
-try {
-  // If you use OpenTelemetry, the instrument.js exports an init function
-  const { initInstrumentation } = await import('../instrument.js');
-  await initInstrumentation();
-} catch {
-  // Instrumentation is optional; fail silently
-  logger.info('No instrumentation loaded (instrument.js not found or skipped)');
-}
+// ─── Start Server ─────────────────────────────────────────────────────────────
 
-// =====================================================
-// START SERVER
-// =====================================================
-const PORT = process.env.PORT || 3000;
-let server;
-
-async function startServer() {
+const start = async () => {
   try {
-    // Validate connections before accepting traffic
+    // 1. Validate runtime config (Redis, DB, secrets)
+    const configCheck = await validateRuntimeConfig();
+    if (!configCheck.valid) {
+      logger.error('Runtime config validation failed — exiting');
+      process.exit(1);
+    }
+
+    // 2. Connect to database
     await prisma.$connect();
     logger.info('Database connected');
 
-    await redis.ping();
-    logger.info('Redis connected');
+    // 3. Initialize infrastructure (cache, email, sms, storage)
+    await initializeInfrastructure();
+    logger.info('Infrastructure initialized');
 
-    // Create the HTTP server
-    server = http.createServer(app);
+    // 4. Initialize BullMQ queues
+    initQueues();
+    logger.info('Queues initialized');
 
-    server.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT} [${process.env.NODE_ENV}]`);
+    // 5. Start HTTP server
+    const server = app.listen(PORT, () => {
+      printStartupBanner();
+      logger.info({ port: PORT, env: ENV.NODE_ENV }, `Server running on port ${PORT}`);
     });
 
+    // 6. Graceful shutdown
+    const shutdown = async (signal) => {
+      logger.info({ signal }, 'Shutdown signal received');
+
+      server.close(async () => {
+        try {
+          await shutdownInfrastructure();
+          await prisma.$disconnect();
+          logger.info('Server closed gracefully');
+          process.exit(0);
+        } catch (err) {
+          logger.error({ err: err.message }, 'Error during shutdown');
+          process.exit(1);
+        }
+      });
+
+      // Force exit after 15 seconds if graceful shutdown hangs
+      setTimeout(() => {
+        logger.error('Forced shutdown after timeout');
+        process.exit(1);
+      }, 15000).unref();
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+
+    // 7. Unhandled errors
+    process.on('uncaughtException', (err) => {
+      logger.error({ err }, 'Uncaught exception');
+      shutdown('uncaughtException');
+    });
+
+    process.on('unhandledRejection', (reason) => {
+      logger.error({ reason }, 'Unhandled rejection');
+    });
   } catch (err) {
-    logger.fatal('Failed to start server', err);
+    logger.error({ err }, 'Failed to start server');
     process.exit(1);
   }
-}
+};
 
-// =====================================================
-// GRACEFUL SHUTDOWN
-// =====================================================
-async function gracefulShutdown(signal) {
-  logger.warn(`Received ${signal}. Shutting down gracefully...`);
-
-  // 1. Stop accepting new connections
-  if (server) {
-    server.close(() => {
-      logger.info('HTTP server closed');
-    });
-  }
-
-  // 2. Wait for ongoing requests to finish (with timeout)
-  //    (Express handles this; server.close() only stops new connections)
-
-  // 3. Disconnect from databases and caches
-  try {
-    await prisma.$disconnect();
-    logger.info('Database disconnected');
-  } catch (err) {
-    logger.error('Error disconnecting database', err);
-  }
-
-  try {
-    await redis.quit();
-    logger.info('Redis disconnected');
-  } catch (err) {
-    logger.error('Error disconnecting Redis', err);
-  }
-
-  // 4. (Optional) Shutdown any other services (BullMQ workers, etc.)
-  //    e.g., import { queueManager } from './orchestrator/queues/queue.manager.js';
-  //    await queueManager.shutdown();
-
-  // 5. Exit process
-  setTimeout(() => {
-    logger.info('Exiting process');
-    process.exit(0);
-  }, 2000).unref(); // Force exit after 2 seconds if hanging
-}
-
-// Listen for termination signals
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
-
-// Handle uncaught errors that crash the process
-process.on('uncaughtException', (err) => {
-  logger.fatal('Uncaught exception', err);
-  gracefulShutdown('uncaughtException');
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  logger.fatal('Unhandled rejection', { reason, promise });
-  // Don't shutdown immediately, but you could.
-});
-
-// =====================================================
-// START THE SERVER
-// =====================================================
-startServer();
+start();

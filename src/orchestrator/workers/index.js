@@ -1,1 +1,271 @@
-// TODO: Add implementation
+// =============================================================================
+// orchestrator/workers/index.js — RESQID
+//
+// RAILWAY (always on):
+//   WORKER_ROLE=emergency     → EmergencyWorker only
+//   WORKER_ROLE=notification  → NotificationWorker only
+//   WORKER_ROLE=attendance    → AttendanceWorker only
+//   WORKER_ROLE=all           → All 5 workers
+// =============================================================================
+
+process.env.WORKER_PROCESS = 'true';
+
+import { initializeInfrastructure } from '#infrastructure/infrastructure.index.js';
+import { startEmergencyWorker, stopEmergencyWorker } from './emergency.worker.js';
+import { startNotificationWorker, stopNotificationWorker } from './notification.worker.js';
+import { startScanWorker, stopScanWorker } from './scan.worker.js';
+import { startMaintenanceWorker, stopMaintenanceWorker } from './maintenance.worker.js';
+import { startAttendanceWorker, stopAttendanceWorker } from './attendance.worker.js';
+import { closeAllQueues } from '../queues/queue.config.js';
+import { closeQueueConnection } from '../queues/queue.connection.js';
+import { flushDlqSlackBatch } from '../dlq/dlq.handler.js';
+import { logger } from '#config/logger.js';
+
+const c = {
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
+  white: '\x1b[97m',
+  gray: '\x1b[90m',
+  orange: '\x1b[38;5;208m',
+  mint: '\x1b[38;5;121m',
+  coral: '\x1b[38;5;203m',
+  sky: '\x1b[38;5;117m',
+  amber: '\x1b[38;5;214m',
+  lime: '\x1b[38;5;154m',
+};
+
+const ok = `${c.green}${c.bold}✓${c.reset}`;
+const fail = `${c.red}${c.bold}✗${c.reset}`;
+const pad = (s, n) => String(s).padEnd(n);
+
+const ROLE = (process.env.WORKER_ROLE ?? 'all').toLowerCase();
+
+// =============================================================================
+// WORKER REGISTRY
+// =============================================================================
+
+const ALL_WORKERS = [
+  {
+    name: 'EmergencyWorker',
+    queue: 'emergency_queue',
+    conc: 10,
+    roles: ['all', 'emergency'],
+    col: c.coral,
+    desc: 'QR scan events · parent alerts',
+    start: startEmergencyWorker,
+    stop: stopEmergencyWorker,
+  },
+  {
+    name: 'NotificationWorker',
+    queue: 'notification_queue',
+    conc: 5,
+    roles: ['all', 'notification'],
+    col: c.sky,
+    desc: 'Email · SMS · Push dispatch',
+    start: startNotificationWorker,
+    stop: stopNotificationWorker,
+  },
+  {
+    name: 'AttendanceWorker',
+    queue: 'attendance_bulk_queue',
+    conc: 3,
+    roles: ['all', 'attendance'],
+    col: c.lime,
+    desc: 'Bulk attendance sync from ESP32 devices',
+    start: startAttendanceWorker,
+    stop: stopAttendanceWorker,
+  },
+  {
+    name: 'ScanWorker',
+    queue: 'setInterval/60s',
+    conc: 1,
+    roles: ['all'],
+    col: c.mint,
+    desc: 'Drain Redis scan logs → Postgres',
+    start: startScanWorker,
+    stop: stopScanWorker,
+  },
+  {
+    name: 'MaintenanceWorker',
+    queue: 'setInterval/24h',
+    conc: 1,
+    roles: ['all'],
+    col: c.amber,
+    desc: 'Token expiry · session cleanup · DB vacuum',
+    start: startMaintenanceWorker,
+    stop: stopMaintenanceWorker,
+  },
+];
+
+const ACTIVE = ALL_WORKERS.filter((w) => w.roles.includes(ROLE));
+
+// =============================================================================
+// BANNER
+// =============================================================================
+
+function printBanner() {
+  const W = 64;
+  const hl = c.amber;
+  const box = { tl: '╔', tr: '╗', bl: '╚', br: '╝', h: '═', v: '║', ml: '╠', mr: '╣' };
+  const row = (text = '') => {
+    const visible = text.replace(/\x1b\[[0-9;]*m/g, '');
+    const p = W - visible.length;
+    return `${hl}${box.v}${c.reset}${text}${' '.repeat(Math.max(0, p))}${hl}${box.v}${c.reset}`;
+  };
+  const divider = `${hl}${box.ml}${box.h.repeat(W)}${box.mr}${c.reset}`;
+
+  console.log('');
+  console.log(`${hl}${box.tl}${box.h.repeat(W)}${box.tr}${c.reset}`);
+  console.log(row());
+  console.log(row(`  ${c.bold}${c.white}⚙  RESQID${c.reset}${c.dim}  by coreZ Technologies`));
+  console.log(row(`  ${c.dim}QR-based Student Emergency Identity System`));
+  console.log(row());
+  console.log(divider);
+  console.log(row());
+  console.log(
+    row(
+      `  ${c.amber}${c.bold}WORKER PROCESS${c.reset}  ${c.gray}·${c.reset}  ${c.dim}BullMQ  ·  Redis  ·  PostgreSQL${c.reset}`
+    )
+  );
+  console.log(
+    row(
+      `  ${c.dim}ROLE=${c.reset}${c.amber}${c.bold}${ROLE.toUpperCase()}${c.reset}  ${c.gray}·${c.reset}  ${c.dim}${ACTIVE.length} worker${ACTIVE.length !== 1 ? 's' : ''} running${c.reset}`
+    )
+  );
+  console.log(row());
+  console.log(`${hl}${box.bl}${box.h.repeat(W)}${box.br}${c.reset}`);
+  console.log('');
+}
+
+function printTopology() {
+  const W = 72;
+  const SEP = `  ${c.gray}${'─'.repeat(W)}${c.reset}`;
+
+  console.log(`\n${SEP}`);
+  console.log(`  ${c.bold}${c.cyan}Worker Topology${c.reset}`);
+  console.log(SEP);
+  console.log(`  ${c.dim}${'Worker'.padEnd(24)} ${'Queue / Interval'.padEnd(22)} Conc${c.reset}`);
+  console.log(SEP);
+
+  ALL_WORKERS.forEach((w) => {
+    const isActive = ACTIVE.some((a) => a.name === w.name);
+    const dot = isActive ? `${w.col}●${c.reset}` : `${c.gray}○${c.reset}`;
+    const name = isActive
+      ? `${w.col}${c.bold}${pad(w.name, 22)}${c.reset}`
+      : `${c.gray}${pad(w.name, 22)}${c.reset}`;
+    console.log(
+      `  ${dot}  ${name}${c.dim}${pad(w.queue, 22)}${c.reset}${c.gray}×${w.conc}${c.reset}`
+    );
+  });
+
+  console.log(SEP);
+}
+
+// =============================================================================
+// DLQ FLUSH
+// =============================================================================
+
+let _dlqFlushInterval = null;
+
+const startDlqFlush = () => {
+  _dlqFlushInterval = setInterval(
+    async () => {
+      try {
+        await flushDlqSlackBatch();
+      } catch (err) {
+        logger.error({ err: err.message }, '[workers] DLQ flush failed');
+      }
+    },
+    60 * 60 * 1000
+  );
+  if (_dlqFlushInterval.unref) _dlqFlushInterval.unref();
+};
+
+const stopDlqFlush = () => {
+  if (_dlqFlushInterval) {
+    clearInterval(_dlqFlushInterval);
+    _dlqFlushInterval = null;
+  }
+};
+
+// =============================================================================
+// GRACEFUL SHUTDOWN
+// =============================================================================
+
+const gracefulShutdown = async (signal) => {
+  console.log(`\n  ${c.yellow}⚡ ${signal} — draining workers…${c.reset}`);
+  logger.info({ signal }, '[workers] Graceful shutdown');
+
+  stopDlqFlush();
+
+  try {
+    await Promise.allSettled(ACTIVE.map((w) => w.stop()));
+    await closeAllQueues();
+    await closeQueueConnection();
+    console.log(
+      `\n  ${ok}  ${c.bold}${c.green}All workers drained — shutdown complete${c.reset}\n`
+    );
+    logger.info('[workers] Shutdown complete');
+    process.exit(0);
+  } catch (err) {
+    logger.error({ err: err.message }, '[workers] Shutdown error');
+    process.exit(1);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'Uncaught exception in worker process');
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error({ reason }, 'Unhandled rejection in worker process');
+  process.exit(1);
+});
+
+// =============================================================================
+// START
+// =============================================================================
+
+export const startWorkers = async () => {
+  printBanner();
+  printTopology();
+
+  if (ACTIVE.length === 0) {
+    console.error(`\n  ${fail}  ${c.red}Unknown WORKER_ROLE="${ROLE}"${c.reset}`);
+    console.error(`  ${c.dim}Valid: all · emergency · notification · attendance${c.reset}\n`);
+    process.exit(1);
+  }
+
+  await initializeInfrastructure({
+    cache: {},
+    email: {},
+    push: {},
+    sms: {},
+    storage: {},
+  });
+
+  logger.info({ role: ROLE, count: ACTIVE.length }, '[workers] Starting workers');
+
+  ACTIVE.forEach((w) => w.start());
+  startDlqFlush();
+
+  logger.info({ workers: ACTIVE.map((w) => w.name) }, '[workers] Workers started');
+  console.log(
+    `\n  ${ok}  ${c.bold}${c.green}${ACTIVE.length} worker${ACTIVE.length !== 1 ? 's' : ''} running${c.reset}  ${c.dim}Waiting for jobs…${c.reset}\n`
+  );
+};
+
+// Auto-start when executed directly
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __main = process.argv[1] && fileURLToPath(`file://${process.argv[1]}`);
+if (__main === __filename) {
+  startWorkers();
+}

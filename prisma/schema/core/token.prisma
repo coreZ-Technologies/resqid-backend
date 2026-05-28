@@ -1,39 +1,10 @@
-// prisma/schema/core/token.prisma
+// =============================================================================
+// prisma/schema/core/token.prisma — RESQID
+// Physical and digital tokens assigned to students
+// =============================================================================
 
-model Token {
-  id        String      @id @default(cuid())
-  schoolId  String
-  school    School      @relation(fields: [schoolId], references: [id])
-  studentId String?
-  student   Student?    @relation(fields: [studentId], references: [id])
-
-  // Card identity
-  uid       String      @unique  // physical NFC/QR UID
-  cardType  CardType    @default(QR)
-  status    TokenStatus @default(UNREGISTERED)
-
-  // Scan code — AES-SIV encrypted, used in QR URL
-  scanCode  String      @unique
-  scanCodeHash String   @unique  // for lookup
-
-  issuedAt  DateTime?
-  revokedAt DateTime?
-  revokedBy String?     // userId who revoked
-
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-
-  // Relations
-  scanLogs  ScanLog[]
-  order     OrderItem?
-
-  @@index([schoolId])
-  @@index([studentId])
-  @@index([status])
-  @@map("tokens")
-}
-
-enum CardType {
+enum TokenType {
+  RFID
   QR
   NFC
   COMBO
@@ -46,30 +17,7 @@ enum TokenStatus {
   INACTIVE
   REVOKED
   LOST
-}
-
-// ─── Scan Log — every scan recorded here ─────────────────────────────────────
-
-model ScanLog {
-  id          String    @id @default(cuid())
-  tokenId     String
-  token       Token     @relation(fields: [tokenId], references: [id])
-  schoolId    String
-
-  scannedAt   DateTime  @default(now())
-  result      ScanResult
-
-  // Context
-  ipAddress   String?
-  city        String?
-  device      String?
-  os          String?
-  isBot       Boolean   @default(false)
-
-  @@index([tokenId])
-  @@index([schoolId])
-  @@index([scannedAt])
-  @@map("scan_logs")
+  EXPIRED
 }
 
 enum ScanResult {
@@ -79,89 +27,88 @@ enum ScanResult {
   INACTIVE
   REVOKED
   ACTIVE
+  BLOCKED
+  SUSPICIOUS
 }
-
-// ─── Scan Rate Limit — feeds ipBlock middleware ───────────────────────────────
-
-model ScanRateLimit {
-  id             String   @id @default(cuid())
-  identifier     String
-  identifierType String   // IP | TOKEN
-  count          Int      @default(0)
-  blockCount     Int      @default(0)
-  blockedReason  String?
-  lastHit        DateTime @default(now())
-  windowStart    DateTime @default(now())
-
-  @@unique([identifier, identifierType])
-  @@index([identifier])
-  @@map("scan_rate_limits")
-}// ─────────────────────────────────────────────────────────────
-// token.prisma
-//
-// Physical and digital tokens assigned to a student.
-// A single student can have multiple active tokens:
-//   • RFID card   → used by the attendance module
-//   • QR badge    → used by the emergency module
-//   • NFC sticker → future expansion
-//
-// Every scan (attendance tap / emergency QR) references the token
-// that was used, giving a full audit trail from hardware to record.
-// ─────────────────────────────────────────────────────────────
-
-// ─── Enums ──────────────────────────────────────────────────
-
-enum TokenType {
-  RFID
-  QR
-  NFC
-}
-
-enum TokenStatus {
-  ACTIVE
-  INACTIVE
-  REVOKED
-  LOST
-  EXPIRED
-}
-
-// ─── Token ──────────────────────────────────────────────────
 
 model Token {
   id          String      @id @default(cuid())
 
-  // ── Ownership ─────────────────────────────────────────────
-  studentId   String
-  student     Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId   String?
+  student     Student?    @relation(fields: [studentId], references: [id], onDelete: SetNull)
   schoolId    String
   school      School      @relation(fields: [schoolId], references: [id])
 
-  // ── Identifier ────────────────────────────────────────────
-  type        TokenType
-  rfidUid     String?     @unique   // e.g. "A1B2C3D4" – unique RFID hardware UID
-  qrCode      String?     @unique   // e.g. "RESQID:STU-123" – unique QR payload
+  type        TokenType   @default(QR)
+  rfidUid     String?     @unique
+  qrCode      String?     @unique
 
-  // ── Lifecycle ─────────────────────────────────────────────
-  status      TokenStatus @default(ACTIVE)
-  issuedAt    DateTime    @default(now())
-  expiresAt   DateTime?   // e.g. end of the school year
-  revokedAt   DateTime?   // set when status becomes REVOKED or LOST
-  revokedBy   String?     // User.id of the admin who revoked it
+  // AES-SIV encrypted scan code for QR URL
+  scanCode    String?     @unique
+  scanCodeHash String?    @unique
 
-  // ── Human‑readable label ──────────────────────────────────
-  label       String?     // "Main RFID Card", "Emergency QR Badge"
+  status      TokenStatus @default(UNREGISTERED)
+  issuedAt    DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  revokedBy   String?
 
-  // ── Extras ────────────────────────────────────────────────
-  metadata    Json?       // batch number, hardware version, etc.
+  label       String?
+  metadata    Json?
 
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  // ── Relations ─────────────────────────────────────────────
-  scans       Scan[]      // all scans that used this token
+  scans       Scan[]
+  scanLogs    ScanLog[]
+  orderItem   OrderItem?
 
   @@index([studentId])
   @@index([schoolId, type])
   @@index([rfidUid])
-  @@index([qrCode])
+  @@index([scanCodeHash])
+  @@index([status])
+  @@map("tokens")
+}
+
+// ─── Scan Log ─────────────────────────────────────────────────────────────────
+
+model ScanLog {
+  id          String     @id @default(cuid())
+  tokenId     String
+  token       Token      @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  schoolId    String
+
+  scannedAt   DateTime   @default(now())
+  result      ScanResult
+
+  ipAddress   String?
+  city        String?
+  device      String?
+  os          String?
+  isBot       Boolean    @default(false)
+
+  @@index([tokenId])
+  @@index([schoolId])
+  @@index([scannedAt])
+  @@map("scan_logs")
+}
+
+// ─── Scan Rate Limit ──────────────────────────────────────────────────────────
+
+model ScanRateLimit {
+  id             String    @id @default(cuid())
+  identifier     String
+  identifierType String    // IP | TOKEN | DEVICE
+  count          Int       @default(0)
+  blockCount     Int       @default(0)
+  blockedUntil   DateTime?
+  blockedReason  String?
+  lastHit        DateTime  @default(now())
+  windowStart    DateTime  @default(now())
+  metadata       Json?
+
+  @@unique([identifier, identifierType])
+  @@index([identifier])
+  @@map("scan_rate_limits")
 }

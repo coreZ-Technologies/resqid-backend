@@ -1,77 +1,171 @@
-// prisma/schema/modules/timetable.prisma
+// =============================================================================
+// prisma/schema/modules/timetable.prisma — RESQID
+// School-specific timetable with substitution support
+// =============================================================================
+
+model SchoolTimetableConfig {
+  id              String   @id @default(cuid())
+  schoolId        String   @unique
+
+  periodsPerDay   Int      @default(8)
+  periodDuration  Int      @default(45)
+  startTime       String   @default("08:00")
+  endTime         String   @default("15:00")
+  workingDays     Int      @default(31)
+
+  breakAfterPeriods    Int[]
+  breakDuration        Int    @default(15)
+
+  allowSubstitution      Boolean @default(true)
+  maxSubstitutionsPerDay Int    @default(3)
+  substitutionNoticeMins  Int   @default(30)
+
+  notifyOnSubstitution   Boolean @default(true)
+  notifyTeachers         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("school_timetable_configs")
+}
 
 model Teacher {
-  id        String     @id @default(cuid())
-  schoolId  String
-  userId    String?    @unique  // links to SchoolUser if they have login
-  name      String
-  phone     String?
-  subjectIds String[]  // subjects they teach
+  id          String     @id @default(cuid())
+  schoolId    String
+  userId      String?    @unique
 
-  isActive  Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  deletedAt DateTime?
+  name        String
+  email       String?
+  phone       String?
 
-  periods   Period[]
-  substitutions Substitution[] @relation("SubstituteTeacher")
+  subjects    String[]
+
+  maxPeriodsPerDay   Int    @default(6)
+  maxPeriodsPerWeek  Int    @default(30)
+  unavailableDays    Int[]
+  unavailablePeriods Json?
+
+  isActive    Boolean    @default(true)
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+
+  periods         Period[]
+  substitutions   Substitution[]   @relation("SubstituteTeacher")
 
   @@index([schoolId])
+  @@index([userId])
   @@map("teachers")
 }
 
 model Subject {
-  id       String  @id @default(cuid())
-  schoolId String
-  name     String  // "Mathematics"
-  code     String? // "MATH"
+  id        String  @id @default(cuid())
+  schoolId  String
 
-  periods  Period[]
+  name      String
+  code      String?
+  category  String?
+
+  periodsPerWeek     Int     @default(5)
+  requiresLab        Boolean @default(false)
+  labPeriodsPerWeek  Int     @default(0)
+
+  isActive  Boolean @default(true)
+
+  periods   Period[]
 
   @@unique([schoolId, code])
   @@index([schoolId])
   @@map("subjects")
 }
 
-model Period {
-  id          String   @id @default(cuid())
+model ClassGroup {
+  id          String  @id @default(cuid())
   schoolId    String
-  teacherId   String
-  teacher     Teacher  @relation(fields: [teacherId], references: [id])
-  subjectId   String
-  subject     Subject  @relation(fields: [subjectId], references: [id])
 
-  classGrade  String
+  grade       String
   section     String
-  dayOfWeek   Int      // 1=Mon 2=Tue ... 6=Sat
-  startTime   String   // "09:00"
-  endTime     String   // "09:45"
+  label       String?
 
-  isActive    Boolean  @default(true)
+  teacherId   String?
+  teacher     Teacher?  @relation(fields: [teacherId], references: [id])
+  roomNumber  String?
+
+  studentCount Int    @default(0)
+  isActive    Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  periods     Period[]
+
+  @@unique([schoolId, grade, section])
+  @@index([schoolId])
+  @@map("class_groups")
+}
+
+model Period {
+  id           String     @id @default(cuid())
+  schoolId     String
+
+  classId      String
+  classGroup   ClassGroup @relation(fields: [classId], references: [id])
+  teacherId    String
+  teacher      Teacher    @relation(fields: [teacherId], references: [id])
+  subjectId    String
+  subject      Subject    @relation(fields: [subjectId], references: [id])
+
+  dayOfWeek    Int
+  periodNumber Int
+  startTime    String
+  endTime      String
+
+  periodType   String     @default("REGULAR")
+  roomNumber   String?
+
+  isActive     Boolean    @default(true)
+  isSubstituted Boolean   @default(false)
+
+  validFrom    DateTime?
+  validUntil   DateTime?
 
   substitutions Substitution[]
 
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([schoolId, classId, dayOfWeek, periodNumber])
   @@index([schoolId])
-  @@index([teacherId])
-  @@index([classGrade, section])
+  @@index([teacherId, dayOfWeek])
   @@map("periods")
 }
 
 model Substitution {
-  id              String   @id @default(cuid())
-  schoolId        String
-  periodId        String
-  period          Period   @relation(fields: [periodId], references: [id])
-  substituteId    String
-  substitute      Teacher  @relation("SubstituteTeacher", fields: [substituteId], references: [id])
+  id                String   @id @default(cuid())
+  schoolId          String
 
-  date            DateTime
-  reason          String?
-  notifiedAt      DateTime?
+  periodId          String
+  period            Period   @relation(fields: [periodId], references: [id])
+  substituteId      String
+  substitute        Teacher  @relation("SubstituteTeacher", fields: [substituteId], references: [id])
+  originalTeacherId String
+  originalTeacher   Teacher  @relation(fields: [originalTeacherId], references: [id])
 
-  createdAt       DateTime @default(now())
+  date              DateTime
+  reason            String?
+  status            String   @default("PENDING")
 
-  @@index([schoolId])
-  @@index([date])
+  approvedBy        String?
+  approvedAt        DateTime?
+  notifiedAt        DateTime?
+  notifyParents     Boolean  @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([schoolId, date])
+  @@index([periodId])
+  @@index([substituteId])
   @@map("substitutions")
 }

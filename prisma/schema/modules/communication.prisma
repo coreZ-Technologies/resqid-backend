@@ -1,17 +1,20 @@
-// prisma/schema/modules/communication.prisma
+// =============================================================================
+// prisma/schema/modules/communication.prisma — RESQID
+// Announcements and parent messaging
+// =============================================================================
 
 model Announcement {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   schoolId  String
-  authorId  String   // SchoolUser.id
+  school    School    @relation(fields: [schoolId], references: [id])
+  authorId  String
 
   title     String
   body      String
   imageUrl  String?
 
-  // Targeting
   targetAll     Boolean  @default(true)
-  targetGrades  String[] // ["10", "11"] — empty = all
+  targetGrades  String[]
 
   publishedAt   DateTime?
   expiresAt     DateTime?
@@ -27,13 +30,11 @@ model Announcement {
 model Message {
   id         String   @id @default(cuid())
   schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id])
 
-  // Sender — school staff
-  senderId   String   // SchoolUser.id
-
-  // Recipient — parent
+  senderId   String
   parentId   String
-  studentId  String   // context — which child this is about
+  studentId  String
 
   body       String
   isRead     Boolean  @default(false)

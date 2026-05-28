@@ -1,22 +1,13 @@
-// ─────────────────────────────────────────────────────────────
-// school.prisma
-// Core school (tenant) model.
-//
-// Every school has:
-//   • a board affiliation (ICSE / CBSE / …) – used by timetable module
-//   • a physical address (separate fields, not JSON) – used for geo‑fencing,
-//     emergency location context, and communication
-//   • a subscription plan & status – controls feature availability
-//   • feature toggles – quick per‑school module on/off switches
-// ─────────────────────────────────────────────────────────────
-
-// ─── Enums ──────────────────────────────────────────────────
+// =============================================================================
+// prisma/schema/core/school.prisma — RESQID
+// Core school (tenant) model
+// =============================================================================
 
 enum Board {
   ICSE
   CBSE
-  WB_BOARD        // West Bengal Board
-  STATE_BOARD     // generic state board
+  WB_BOARD
+  STATE_BOARD
   IB
   CAMBRIDGE
   OTHER
@@ -25,50 +16,56 @@ enum Board {
 enum SchoolStatus {
   ACTIVE
   INACTIVE
-  SUSPENDED       // e.g. payment overdue
-  TRIAL           // free trial period
+  SUSPENDED
+  TRIAL
 }
 
-// ─── School ─────────────────────────────────────────────────
-
 model School {
-  id        String       @id @default(cuid())
-  name      String
+  id         String       @id @default(cuid())
+  name       String
+  code       String?      @unique
 
-  // ── Board (mandatory) ─────────────────────────────────────
-  board     Board        @default(OTHER)
+  // Board affiliation
+  board      Board        @default(OTHER)
 
-  // ── Address (structured, not JSON) ────────────────────────
-  street    String?      // e.g. "12 Park Street"
-  city      String?
-  state     String?
-  country   String?      @default("India")
-  postalCode String?     // e.g. "700016"
+  // Address (structured)
+  street     String?
+  city       String?
+  state      String?
+  country    String?      @default("India")
+  postalCode String?
 
-  // ── Contact ───────────────────────────────────────────────
-  email     String?
-  phone     String?
-  website   String?
+  // Contact
+  email      String?
+  phone      String?
+  website    String?
+  logoUrl    String?
 
-  // ── Timezone (default India) ──────────────────────────────
-  timezone  String       @default("Asia/Kolkata")
+  // Timezone
+  timezone   String       @default("Asia/Kolkata")
 
-  // ── Subscription & billing ────────────────────────────────
-  planId    String?
-  plan      Plan?        @relation(fields: [planId], references: [id])
-  status    SchoolStatus @default(TRIAL)
+  // Subscription
+  planId     String?
+  plan       Plan?        @relation(fields: [planId], references: [id])
+  status     SchoolStatus @default(TRIAL)
 
-  // ── Feature toggles ───────────────────────────────────────
-  // Example: {"emergency":true,"attendance":true,"timetable":true,"communication":false}
-  features  Json         @default("{}")
+  // Feature toggles — {"emergency":true,"attendance":true,"timetable":false}
+  features   Json         @default("{}")
 
-  // ── Timestamps ────────────────────────────────────────────
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
-  // ── Relations (models in other files) ─────────────────────
-  users     User[]       // all users belonging to this school
-  students  Student[]
-  tokens    Token[]
-  scans     Scan[]
+  // Relations
+  users               SchoolUser[]
+  students            Student[]
+  tokens              Token[]
+  scans               Scan[]
+  subscriptions       Subscription[]
+  orders              Order[]
+  attendanceDevices   AttendanceDevice[]
+  announcements       Announcement[]
+  messages            Message[]
+  notifications       Notification[]
+
+  @@map("schools")
 }

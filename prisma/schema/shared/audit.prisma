@@ -1,19 +1,7 @@
-// #file: prisma/schema/audit.prisma
-
-// ─────────────────────────────────────────────────────────────
-// audit.prisma
-//
-// Central audit log for all business‑level actions.
-// Used by:
-//   • auditLog helper         (src/shared/helpers/auditLogger.js)
-//   • auditLog middleware     (src/middleware/logging/auditLog.middleware.js)
-//   • Super Admin dashboard   (view audit trails per school)
-//   • Compliance & security reports
-//
-// This model is intentionally **denormalised** – it stores the
-// actor/role/target as strings so we can log actions even if the
-// actor or target is later deleted. No FK constraints here.
-// ─────────────────────────────────────────────────────────────
+// =============================================================================
+// prisma/schema/shared/audit.prisma — RESQID
+// Central audit log for all business-level actions
+// =============================================================================
 
 enum AuditSeverity {
   INFO
@@ -23,36 +11,33 @@ enum AuditSeverity {
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
+  id         String        @id @default(cuid())
 
-  // ── What happened ─────────────────────────────────────────
-  action    String   // e.g. "student.created" (see shared/constants/audit.js)
-  severity  AuditSeverity @default(INFO)
+  action     String
+  severity   AuditSeverity @default(INFO)
 
-  // ── Who did it ────────────────────────────────────────────
-  actorId   String?  // id of the user (SuperAdmin, SchoolUser, ParentUser)
-  actorType String?  // "super_admin" | "school_user" | "parent_user" | "system"
+  actorId    String?
+  actorType  String?
 
-  // ── What was affected ─────────────────────────────────────
-  targetId   String? // id of the affected entity (student, token, etc.)
-  targetType String? // "Student" | "Token" | "School" | "EmergencyProfile" …
+  entity     String?
+  entityId   String?
+  oldValue   Json?
+  newValue   Json?
 
-  // ── Tenant scope (null for Super Admin cross‑school actions) ─
-  schoolId  String?
+  schoolId   String?
 
-  // ── Network / device context ──────────────────────────────
-  ip        String?
-  device    String?  // "Mobile" | "Desktop" | "Tablet"
-  os        String?
-  browser   String?
+  ipAddress  String?
+  userAgent  String?
+  device     String?
 
-  // ── Extra details ─────────────────────────────────────────
-  metadata  Json?    // old/new values, reason, notes – anything
+  metadata   Json?
 
-  createdAt DateTime @default(now())
+  createdAt  DateTime      @default(now())
 
   @@index([schoolId, createdAt])
-  @@index([action])
-  @@index([actorId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([entity, entityId])
   @@index([severity])
+  @@map("audit_logs")
 }
