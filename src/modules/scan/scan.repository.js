@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // TODO: Add implementation
 // =============================================================================
 // modules/scan/scan.repository.js — RESQID
@@ -11,11 +12,17 @@
 //   ScanLog write → Redis queue enqueue (hot path)
 //   writeScanLog kept for edge cases (emergency worker fallback)
 //   bulkWriteScanLogs called by scan.worker every 5 seconds
+=======
+// =============================================================================
+// modules/scan/scan.repository.js — RESQID
+// All DB reads/writes for the public QR scan flow.
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 
+<<<<<<< HEAD
 // =============================================================================
 // findTokenForScan
 // Single query — all required joins, called only on Redis cache miss.
@@ -30,21 +37,35 @@ import { logger } from '#config/logger.js';
  * @returns {Promise<object|null>}
  */
 export const findTokenForScan = async tokenId => {
+=======
+/**
+ * Find a token by UUID with all joined data for scan resolution.
+ * Single query — no N+1.
+ */
+export const findTokenForScan = async (tokenId) => {
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
   return prisma.token.findUnique({
     where: { id: tokenId },
     select: {
       id: true,
       status: true,
+<<<<<<< HEAD
       expires_at: true,
       school_id: true,
       student_id: true,
       is_honeypot: true,
+=======
+      expiresAt: true,
+      schoolId: true,
+      studentId: true,
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
 
       school: {
         select: {
           id: true,
           name: true,
           code: true,
+<<<<<<< HEAD
           logo_url: true,
           phone: true, // plaintext — school contact, intentionally public
           address: true,
@@ -53,12 +74,18 @@ export const findTokenForScan = async tokenId => {
               scan_notifications_enabled: true,
             },
           },
+=======
+          logoUrl: true,
+          phone: true,
+          address: true,
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
         },
       },
 
       student: {
         select: {
           id: true,
+<<<<<<< HEAD
           first_name: true,
           last_name: true,
           photo_url: true,
@@ -69,10 +96,22 @@ export const findTokenForScan = async tokenId => {
           is_active: true,
 
           parents: {
+=======
+          firstName: true,
+          lastName: true,
+          photoUrl: true,
+          grade: true,
+          section: true,
+          gender: true,
+          isActive: true,
+
+          parentLinks: {
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
             select: {
               parent: {
                 select: {
                   devices: {
+<<<<<<< HEAD
                     where: { is_active: true },
                     // FIX: Cap devices per parent — prevent unbounded push tokens
                     // and duplicate notifications from old/reinstalled devices
@@ -81,6 +120,12 @@ export const findTokenForScan = async tokenId => {
                     select: {
                       expo_push_token: true,
                     },
+=======
+                    where: { isActive: true },
+                    take: 3,
+                    orderBy: { lastSeenAt: 'desc' },
+                    select: { expoPushToken: true },
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
                   },
                 },
               },
@@ -88,6 +133,7 @@ export const findTokenForScan = async tokenId => {
           },
 
           cardVisibility: {
+<<<<<<< HEAD
             select: {
               visibility: true,
               hidden_fields: true, // consumed by service — never forwarded raw
@@ -120,6 +166,32 @@ export const findTokenForScan = async tokenId => {
                   display_order: true,
                   call_enabled: true,
                   whatsapp_enabled: true,
+=======
+            select: { visibility: true },
+          },
+
+          emergencyProfile: {
+            select: {
+              bloodGroup: true,
+              allergies: true,
+              conditions: true,
+              medications: true,
+              doctorName: true,
+              doctorPhone: true,
+              notes: true,
+              isComplete: true,
+              contacts: {
+                where: { isActive: true },
+                orderBy: { priority: 'asc' },
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                  relation: true,
+                  priority: true,
+                  callEnabled: true,
+                  whatsappEnabled: true,
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
                 },
               },
             },
@@ -130,6 +202,7 @@ export const findTokenForScan = async tokenId => {
   });
 };
 
+<<<<<<< HEAD
 // =============================================================================
 // writeScanLog — direct DB write (non-hot-path: emergency worker fallback)
 // FIX: Made explicitly async with try/catch — no implicit Promise footgun
@@ -218,6 +291,32 @@ export const findStudentWithParent = async studentId => {
                 take: 3,
                 orderBy: { last_seen_at: 'desc' },
                 select: { expo_push_token: true },
+=======
+/**
+ * Find student with parent contact info for emergency notifications.
+ */
+export const findStudentWithParent = async (studentId) => {
+  if (!studentId) return null;
+
+  return prisma.student.findUnique({
+    where: { id: studentId },
+    select: {
+      firstName: true,
+      lastName: true,
+      parentLinks: {
+        take: 1,
+        select: {
+          parent: {
+            select: {
+              email: true,
+              name: true,
+              phone: true,
+              devices: {
+                where: { isActive: true },
+                take: 3,
+                orderBy: { lastSeenAt: 'desc' },
+                select: { expoPushToken: true },
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
               },
             },
           },
@@ -226,3 +325,24 @@ export const findStudentWithParent = async studentId => {
     },
   });
 };
+<<<<<<< HEAD
+=======
+
+/**
+ * Bulk insert scan logs (called by scan worker).
+ */
+export const bulkWriteScanLogs = async (entries) => {
+  if (!Array.isArray(entries) || entries.length === 0) return;
+
+  const valid = entries.filter((e) => e && e.tokenId && e.schoolId && e.result);
+
+  if (valid.length === 0) return;
+
+  try {
+    await prisma.scanLog.createMany({ data: valid, skipDuplicates: true });
+  } catch (err) {
+    logger.error({ err: err.message, count: valid.length }, '[scan.repo] Bulk write failed');
+    throw err;
+  }
+};
+>>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590

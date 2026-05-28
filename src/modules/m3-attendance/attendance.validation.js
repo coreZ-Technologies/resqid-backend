@@ -1,33 +1,18 @@
-// TODO: Add implementation
 // =============================================================================
-// attendance.validation.js — RESQID
-// Zod schemas for all attendance endpoints
+// modules/m3-attendance/attendance.validation.js — RESQID
+// Zod schemas for all attendance endpoints.
 // =============================================================================
 
 import { z } from 'zod';
 
-// ─── Reusable field schemas ───────────────────────────────────────────────────
+// ─── Reusable ─────────────────────────────────────────────────────────────────
 
-const cuid = z.string().cuid('Invalid ID format');
+const cuid = z.string().min(1, 'Invalid ID format');
+const grade = z.string().min(1).max(10);
+const section = z.string().min(1).max(5);
+const attendanceStatus = z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']);
 
-const grade = z
-  .string()
-  .min(1)
-  .max(10)
-  .regex(/^[a-zA-Z0-9]+$/, 'Grade must be alphanumeric');
-
-const section = z
-  .string()
-  .min(1)
-  .max(5)
-  .regex(/^[a-zA-Z0-9]+$/, 'Section must be alphanumeric');
-
-const paginationSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
-
-// ─── Session Schemas ──────────────────────────────────────────────────────────
+// ─── Session ──────────────────────────────────────────────────────────────────
 
 export const openSessionSchema = z.object({
   body: z.object({
@@ -38,19 +23,13 @@ export const openSessionSchema = z.object({
 });
 
 export const closeSessionSchema = z.object({
-  params: z.object({
-    sessionId: cuid,
-  }),
-});
-
-export const getSessionSchema = z.object({
-  params: z.object({
-    sessionId: cuid,
-  }),
+  params: z.object({ sessionId: cuid }),
 });
 
 export const listSessionsSchema = z.object({
-  query: paginationSchema.extend({
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
     grade: z.string().optional(),
     section: z.string().optional(),
     isActive: z
@@ -58,30 +37,42 @@ export const listSessionsSchema = z.object({
       .transform((v) => v === 'true')
       .optional(),
     teacherId: cuid.optional(),
-    from: z.string().datetime({ offset: true }).optional(),
-    to: z.string().datetime({ offset: true }).optional(),
+    from: z.string().optional(),
+    to: z.string().optional(),
   }),
 });
 
-// ─── Tap Schema (RFID device) ─────────────────────────────────────────────────
+// ─── Tap (RFID Device) ───────────────────────────────────────────────────────
 
 export const tapSchema = z.object({
   body: z.object({
-    sessionId: cuid,
-    uidHash: z.string().min(8).max(128, 'UID hash too long'),
-    deviceId: z.string().min(1).max(100).optional(),
-    tappedAt: z.string().datetime({ offset: true }).optional(),
+    uidHash: z.string().min(8).max(128),
+    deviceId: z.string().min(1).max(100),
+    tappedAt: z.string().optional(),
   }),
 });
 
-// ─── Manual Mark Schemas ──────────────────────────────────────────────────────
+// ─── Bulk Sync (ESP32 Offline) ───────────────────────────────────────────────
 
-const attendanceStatus = z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']);
+export const bulkTapSchema = z.object({
+  body: z.object({
+    deviceId: z.string().min(1).max(100),
+    taps: z
+      .array(
+        z.object({
+          uidHash: z.string().min(8).max(128),
+          tappedAt: z.string(),
+        })
+      )
+      .min(1)
+      .max(1000),
+  }),
+});
+
+// ─── Manual Mark ──────────────────────────────────────────────────────────────
 
 export const markAttendanceSchema = z.object({
-  params: z.object({
-    sessionId: cuid,
-  }),
+  params: z.object({ sessionId: cuid }),
   body: z.object({
     studentId: cuid,
     status: attendanceStatus,
@@ -89,9 +80,7 @@ export const markAttendanceSchema = z.object({
 });
 
 export const bulkMarkAttendanceSchema = z.object({
-  params: z.object({
-    sessionId: cuid,
-  }),
+  params: z.object({ sessionId: cuid }),
   body: z.object({
     records: z
       .array(
@@ -100,44 +89,33 @@ export const bulkMarkAttendanceSchema = z.object({
           status: attendanceStatus,
         })
       )
-      .min(1, 'At least one record required')
-      .max(200, 'Max 200 records per bulk mark'),
+      .min(1)
+      .max(200),
   }),
 });
 
 export const updateAttendanceSchema = z.object({
-  params: z.object({
-    sessionId: cuid,
-    studentId: cuid,
-  }),
-  body: z.object({
-    status: attendanceStatus,
-  }),
+  params: z.object({ sessionId: cuid, studentId: cuid }),
+  body: z.object({ status: attendanceStatus }),
 });
 
-export const deleteAttendanceSchema = z.object({
-  params: z.object({
-    sessionId: cuid,
-    studentId: cuid,
-  }),
-});
-
-// ─── Query / Report Schemas ───────────────────────────────────────────────────
+// ─── Query ────────────────────────────────────────────────────────────────────
 
 export const sessionRecordsSchema = z.object({
-  params: z.object({
-    sessionId: cuid,
+  params: z.object({ sessionId: cuid }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
   }),
-  query: paginationSchema,
 });
 
 export const studentAttendanceSchema = z.object({
-  params: z.object({
-    studentId: cuid,
-  }),
-  query: paginationSchema.extend({
-    from: z.string().datetime({ offset: true }).optional(),
-    to: z.string().datetime({ offset: true }).optional(),
+  params: z.object({ studentId: cuid }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    from: z.string().optional(),
+    to: z.string().optional(),
   }),
 });
 
@@ -147,25 +125,18 @@ export const classAttendanceSchema = z.object({
     section,
     date: z
       .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format')
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
-    from: z.string().datetime({ offset: true }).optional(),
-    to: z.string().datetime({ offset: true }).optional(),
+    from: z.string().optional(),
+    to: z.string().optional(),
   }),
 });
 
-// ─── Device Registration Schemas ─────────────────────────────────────────────
+// ─── Device ──────────────────────────────────────────────────────────────────
 
 export const registerDeviceSchema = z.object({
   body: z.object({
-    deviceName: z.string().min(1).max(100),
-    deviceIdentifier: z.string().min(4).max(100),
+    name: z.string().min(1).max(100),
     location: z.string().max(200).optional(),
-  }),
-});
-
-export const removeDeviceSchema = z.object({
-  params: z.object({
-    deviceId: cuid,
   }),
 });

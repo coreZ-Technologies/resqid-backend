@@ -17,6 +17,9 @@ model SuperAdmin {
   email        String        @unique
   passwordHash String
 
+  isPasswordDefault  Boolean  @default(false)
+  passwordChangedAt  DateTime?
+
   isActive     Boolean       @default(true)
   lastLoginAt  DateTime?
 
@@ -40,6 +43,9 @@ model SchoolUser {
   phone        String?
   passwordHash String
   role         SchoolUserRole @default(TEACHER)
+
+  isPasswordDefault  Boolean  @default(true)   // Must change on first login
+  passwordChangedAt  DateTime?
 
   isActive     Boolean        @default(true)
   lastLoginAt  DateTime?
