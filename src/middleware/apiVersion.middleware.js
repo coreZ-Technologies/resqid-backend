@@ -1,23 +1,8 @@
 // =============================================================================
 // apiVersion.middleware.js — RESQID
 //
-<<<<<<< HEAD
 // API version enforcement and deprecation management.
 // Reads API-Version header or URL prefix — rejects unsupported versions.
-=======
-<<<<<<< HEAD
-// Why this matters:
-//   Without versioning enforcement, you can never safely make breaking
-//   changes. Old mobile app versions (which parents may not update) will
-//   silently hit new API behaviour and break. This middleware:
-//     - Attaches the resolved API version to every request (req.apiVersion)
-//     - Rejects clients on deprecated versions with a clear upgrade message
-//     - Allows emergency endpoints to be version-free (always latest)
-=======
-// API version enforcement and deprecation management.
-// Reads API-Version header or URL prefix — rejects unsupported versions.
->>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 //
 // Version resolution (priority order):
 //   1. URL prefix:      /api/v2/students
@@ -43,27 +28,12 @@ const VERSION_HEADER = ENV.API_VERSION_HEADER || 'x-api-version';
 
 // Version-free routes — always served on current implementation
 const VERSION_FREE_PREFIXES = [
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-  '/api/emergency',    // QR emergency scan — must always work
-  '/api/scan',          // public emergency redirect / scan init
-  '/health',
-  '/api/health',
-  '/api/webhooks',      // external providers don't send API-Version header
-  '/metrics',           // Prometheus metrics (if exposed)
-=======
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
   '/api/emergency',
   '/api/attendance/tap',
   '/api/attendance/device',
   '/health',
   '/api/health',
   '/api/webhooks',
-<<<<<<< HEAD
-=======
->>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 ];
 
 // Sunset dates for deprecated versions
@@ -85,48 +55,21 @@ export const apiVersion = asyncHandler(async (req, _res, next) => {
 
   // Reject unknown versions
   if (!SUPPORTED_VERSIONS.has(version) && !DEPRECATED_VERSIONS.has(version)) {
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-    throw new ApiError(
-      400,
-      `Unsupported API version '${version}'. Supported: [${[...SUPPORTED_VERSIONS].join(', ')}]`
-=======
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
     throw ApiError.badRequest(
       `Unsupported API version '${version}'. Supported: [${[...SUPPORTED_VERSIONS].join(', ')}]`,
       [],
       'INVALID_API_VERSION'
-<<<<<<< HEAD
-=======
->>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
     );
   }
 
   // Reject deprecated versions
   if (DEPRECATED_VERSIONS.has(version)) {
     const sunset = SUNSET_DATES[version];
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-    throw new ApiError(
-      410,
-      `API version '${version}' has been discontinued.${
-        sunset ? ` It was sunset on ${sunset}.` : ''
-      } Please upgrade to v${getLatestVersion()}.`
-    );
-=======
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
     const message = sunset
       ? `API version '${version}' was sunset on ${sunset}. Please upgrade to ${getLatestVersion()}.`
       : `API version '${version}' is deprecated. Please upgrade to ${getLatestVersion()}.`;
 
     throw ApiError.custom(410, message, 'VERSION_DEPRECATED');
-<<<<<<< HEAD
-=======
->>>>>>> f12b34193109594a272a9511d4ea4c7b1fbd8b5f
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
   }
 
   // Attach version to request

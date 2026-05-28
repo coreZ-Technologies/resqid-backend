@@ -120,11 +120,6 @@ export const logger = pino(
       env: ENV.NODE_ENV,
       pid: process.pid,
     },
-    timestamp: pino.stdTimeFunctions.isoTime,
-    redact: {
-      paths: REDACT_PATHS,
-      censor: '[REDACTED]',
-    },
     serializers: {
       err: pino.stdSerializers.err,
       error: pino.stdSerializers.err,

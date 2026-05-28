@@ -30,11 +30,7 @@ export class BrevoAdapter extends EmailProvider {
         `${this.baseUrl}/smtp/email`,
         {
           sender,
-<<<<<<< HEAD
-          to: recipients.map(email => ({ email })),
-=======
           to: recipients.map((email) => ({ email })),
->>>>>>>>> Temporary merge branch 2
           subject,
           htmlContent: html,
           ...(text && { textContent: text }),
@@ -75,11 +71,7 @@ export class BrevoAdapter extends EmailProvider {
   }
 
   async sendBulk(emails) {
-<<<<<<<<< Temporary merge branch 1
-    const results = await Promise.allSettled(emails.map(e => this.send(e)));
-=========
     const results = await Promise.allSettled(emails.map((e) => this.send(e)));
->>>>>>>>> Temporary merge branch 2
     return results.map((r, i) =>
       r.status === 'fulfilled'
         ? r.value

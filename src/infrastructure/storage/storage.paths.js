@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-// TODO: Add implementation
-=======
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
 // infrastructure/storage/storage.paths.js — RESQID
 // Provider-agnostic path builder. Keys are pure paths — no domain, no bucket name.
 // Switch R2 → S3 by changing CDN_BASE_URL and credentials only.
@@ -14,15 +7,7 @@ import crypto from 'crypto';
 const year = () => new Date().getFullYear().toString();
 const ts = () => Date.now();
 const hex = (n = 4) => crypto.randomBytes(n).toString('hex');
-<<<<<<< HEAD
 const ext = (contentType) => {
-=======
-<<<<<<< HEAD
-const ext = contentType => {
-=======
-const ext = (contentType) => {
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
   const map = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
   return map[contentType] ?? 'jpg';
 };
