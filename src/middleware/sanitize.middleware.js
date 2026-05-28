@@ -1,33 +1,41 @@
 // =============================================================================
 // sanitize.middleware.js — RESQID
-// STRICT MODE — NoSQL injection prevention + deep object sanitization
-// Rejects ANY suspicious input — no exceptions, no mercy
+//
+// STRICT input sanitization — NoSQL injection prevention + deep cleaning.
+// Rejects suspicious input before it reaches services/DB.
 // =============================================================================
 
-import { asyncHandler } from '../shared/response/asyncHandler.js';
-import { ApiError } from '../shared/response/ApiError.js';
-import { logger } from '../config/logger.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { logger } from '#config/logger.js';
+import { extractIp } from '#shared/network/extractIp.js';
 
-// ─── NoSQL key detector — STRICT ──────────────────────────────────────────────
+// ─── NoSQL Key Detection ─────────────────────────────────────────────────────
 
-// Block ANY key starting with $ or containing . or $ anywhere
-const NOSQL_KEY_RE = /^\$|[\$\.]/; // starts with $ OR contains $ or .
+const NOSQL_KEY_RE = /^\$|[\$\.]/;
+const MAX_DEPTH = 10;
+const MAX_STRING_LEN = 50_000;
+const MAX_ARRAY_LEN = 10_000;
+const MAX_OBJECT_KEYS = 500;
 
-// Blocked MongoDB operators (full list)
-const BLOCKED_OPERATORS = new Set([
-  '$where', '$regex', '$options', '$and', '$or', '$nor', '$not',
-  '$expr', '$jsonSchema', '$mod', '$text', '$search',
-  '$geoWithin', '$geoIntersects', '$near', '$nearSphere',
-  '$elemMatch', '$size', '$all', '$in', '$nin', '$exists', '$type',
-  '$slice', '$sort', '$project', '$group', '$match', '$lookup',
-  '$unwind', '$out', '$merge', '$addFields', '$set', '$unset',
-  '$replaceRoot', '$replaceWith', '$graphLookup', '$facet',
-  '$bucket', '$bucketAuto', '$sortByCount', '$count', '$skip', '$limit', '$sample',
+const DANGEROUS_KEYS = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+  '__defineGetter__',
+  '__defineSetter__',
+  '__lookupGetter__',
+  '__lookupSetter__',
 ]);
 
+// ─── Core Sanitizers ─────────────────────────────────────────────────────────
+
+/**
+ * Strip NoSQL injection operators from object keys.
+ */
 function stripNoSqlKeys(obj, depth = 0, path = '') {
-  if (depth > 10) {
-    throw new Error(`Request payload nesting too deep at path: ${path || 'root'}`);
+  if (depth > MAX_DEPTH) {
+    throw new Error(`Nesting too deep at: ${path || 'root'}`);
   }
 
   if (!obj || typeof obj !== 'object') return obj;
@@ -40,16 +48,9 @@ function stripNoSqlKeys(obj, depth = 0, path = '') {
   for (const [key, value] of Object.entries(obj)) {
     const currentPath = path ? `${path}.${key}` : key;
 
-    // Check for NoSQL operators
     if (NOSQL_KEY_RE.test(key)) {
-      logger.warn({ key, path: currentPath }, `STRICT: NoSQL injection key blocked: "${key}"`);
+      logger.warn({ key, path: currentPath }, `NoSQL injection key blocked: "${key}"`);
       throw new Error(`Invalid character in field name: "${key}"`);
-    }
-
-    // Check for blocked MongoDB operators
-    if (BLOCKED_OPERATORS.has(key)) {
-      logger.warn({ key, path: currentPath }, `STRICT: Blocked MongoDB operator: "${key}"`);
-      throw new Error(`Invalid operator in request: "${key}"`);
     }
 
     clean[key] = stripNoSqlKeys(value, depth + 1, currentPath);
@@ -57,174 +58,105 @@ function stripNoSqlKeys(obj, depth = 0, path = '') {
   return clean;
 }
 
-// ─── NoSQL Injection Sanitizer — STRICT ───────────────────────────────────────
-
-export const sanitizeNoSql = (req, res, next) => {
-  try {
-    // Sanitize body
-    if (req.body && typeof req.body === 'object') {
-      req.body = stripNoSqlKeys(req.body);
-    }
-
-    // Sanitize query parameters
-    if (req.query && typeof req.query === 'object') {
-      const cleanQuery = stripNoSqlKeys(req.query);
-      Object.assign(req.query, cleanQuery);
-    }
-
-    // Sanitize route parameters
-    if (req.params && typeof req.params === 'object') {
-      const cleanParams = stripNoSqlKeys(req.params);
-      Object.assign(req.params, cleanParams);
-    }
-
-    next();
-  } catch (err) {
-    logger.warn(
-      {
-        err: err.message,
-        ip: req.ip,
-        userId: req.userId,
-        path: req.path,
-        method: req.method,
-      },
-      'STRICT: NoSQL injection blocked'
-    );
-    next(new ApiError(400, 'Invalid characters detected in request'));
-  }
-};
-
-// ─── Deep Object Sanitizer — STRICT ───────────────────────────────────────────
-
-const DANGEROUS_KEYS = new Set([
-  '__proto__', 'constructor', 'prototype',
-  '__defineGetter__', '__defineSetter__',
-  '__lookupGetter__', '__lookupSetter__',
-]);
-const MAX_DEPTH = 10;
-const MAX_STRING_LEN = 50_000;
-const MAX_ARRAY_LEN = 10_000;
-const MAX_OBJECT_KEYS = 500;
-
-export const sanitizeDeep = asyncHandler(async (req, _res, next) => {
-  try {
-    if (req.body) {
-      req.body = deepClean(req.body, 0, 'body');
-    }
-    if (req.query) {
-      Object.assign(req.query, deepClean(req.query, 0, 'query'));
-    }
-    if (req.params) {
-      Object.assign(req.params, deepClean(req.params, 0, 'params'));
-    }
-  } catch (err) {
-    logger.warn(
-      { err: err.message, ip: req.ip, userId: req.userId, path: req.path },
-      'STRICT: Deep sanitization blocked'
-    );
-    throw new ApiError(400, err.message); // structural errors are safe to expose
-  }
-  next();
-});
-
+/**
+ * Deep clean — enforce limits and strip dangerous patterns.
+ */
 function deepClean(obj, depth, source = '') {
   if (depth > MAX_DEPTH) {
-    throw new Error(`Request payload nesting too deep (max ${MAX_DEPTH} levels) in ${source}`);
+    throw new Error(`Nesting too deep (max ${MAX_DEPTH}) in ${source}`);
   }
 
-  // String validation
   if (typeof obj === 'string') {
     if (obj.length > MAX_STRING_LEN) {
-      throw new Error(`String field exceeds maximum length of ${MAX_STRING_LEN} characters in ${source}`);
+      throw new Error(`String exceeds max length ${MAX_STRING_LEN} in ${source}`);
     }
     if (obj.includes('\u0000')) {
       throw new Error(`Null byte detected in ${source}`);
     }
-    return obj;
+    // Strip control characters
+    return obj.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   }
 
-  // Array validation
   if (Array.isArray(obj)) {
     if (obj.length > MAX_ARRAY_LEN) {
-      throw new Error(`Array exceeds maximum length of ${MAX_ARRAY_LEN} items in ${source}`);
+      throw new Error(`Array exceeds max ${MAX_ARRAY_LEN} items in ${source}`);
     }
     return obj.map((item, idx) => deepClean(item, depth + 1, `${source}[${idx}]`));
   }
 
-  // Object validation
-  if (obj !== null && typeof obj === 'object') {
+  if (obj !== null && typeof obj === 'object' && !(obj instanceof Date) && !Buffer.isBuffer(obj)) {
     const keys = Object.keys(obj);
     if (keys.length > MAX_OBJECT_KEYS) {
-      throw new Error(`Object exceeds maximum of ${MAX_OBJECT_KEYS} keys in ${source}`);
+      throw new Error(`Object exceeds max ${MAX_OBJECT_KEYS} keys in ${source}`);
     }
 
     const clean = {};
     for (const [key, value] of Object.entries(obj)) {
-      // Block prototype pollution keys
       if (DANGEROUS_KEYS.has(key)) {
-        throw new Error(`Prototype pollution attempt detected: "${key}" in ${source}`);
+        throw new Error(`Prototype pollution attempt: "${key}" in ${source}`);
       }
-      // Block keys with null bytes
       if (key.includes('\u0000')) {
-        throw new Error(`Null byte in field name: "${key}" in ${source}`);
+        throw new Error(`Null byte in key: "${key}" in ${source}`);
       }
       clean[key] = deepClean(value, depth + 1, `${source}.${key}`);
     }
     return clean;
   }
 
-  // Primitives (number, boolean, null) are safe
   return obj;
 }
 
-// ─── Additional Validation Helpers ────────────────────────────────────────────
+// ─── Middleware ───────────────────────────────────────────────────────────────
 
 /**
- * validateEmail
- * Strict email validation for user input
+ * NoSQL injection sanitizer — strips $ operators from keys.
  */
-export function validateEmail(email) {
-  if (!email) return false;
-  if (typeof email !== 'string') return false;
-  if (email.length > 254) return false;
-
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  return emailRegex.test(email);
-}
-
-/**
- * validatePhone
- * Strict Indian phone number validation
- */
-export function validatePhone(phone) {
-  if (!phone) return false;
-  if (typeof phone !== 'string') return false;
-
-  // Indian mobile: 10 digits, starts with 6-9
-  const phoneRegex = /^[6-9]\d{9}$/;
-  return phoneRegex.test(phone);
-}
-
-/**
- * sanitizeString
- * Strip dangerous characters from string
- */
-export function sanitizeString(str) {
-  if (typeof str !== 'string') return str;
-
-  // Remove null bytes
-  str = str.replace(/\u0000/g, '');
-
-  // Remove control characters except newline, tab, carriage return
-  str = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-
-  // Trim whitespace
-  str = str.trim();
-
-  // Limit length
-  if (str.length > MAX_STRING_LEN) {
-    str = str.slice(0, MAX_STRING_LEN);
+export const sanitizeNoSql = (req, res, next) => {
+  try {
+    if (req.body && typeof req.body === 'object') {
+      req.body = stripNoSqlKeys(req.body);
+    }
+    if (req.query && typeof req.query === 'object') {
+      const clean = stripNoSqlKeys(req.query);
+      // Clear and reassign (query is a getter/setter)
+      for (const key of Object.keys(req.query)) delete req.query[key];
+      Object.assign(req.query, clean);
+    }
+    if (req.params && typeof req.params === 'object') {
+      const clean = stripNoSqlKeys(req.params);
+      for (const key of Object.keys(req.params)) delete req.params[key];
+      Object.assign(req.params, clean);
+    }
+    next();
+  } catch (err) {
+    const ip = extractIp(req);
+    logger.warn({ err: err.message, ip, path: req.path }, 'NoSQL injection blocked');
+    next(ApiError.badRequest('Invalid characters in request', [], 'NOSQL_INJECTION_DETECTED'));
   }
+};
 
-  return str;
-}
+/**
+ * Deep sanitizer — enforces limits and strips dangerous patterns.
+ */
+export const sanitizeDeep = asyncHandler(async (req, _res, next) => {
+  try {
+    if (req.body && typeof req.body === 'object') {
+      req.body = deepClean(req.body, 0, 'body');
+    }
+    if (req.query && typeof req.query === 'object') {
+      const clean = deepClean(req.query, 0, 'query');
+      for (const key of Object.keys(req.query)) delete req.query[key];
+      Object.assign(req.query, clean);
+    }
+    if (req.params && typeof req.params === 'object') {
+      const clean = deepClean(req.params, 0, 'params');
+      for (const key of Object.keys(req.params)) delete req.params[key];
+      Object.assign(req.params, clean);
+    }
+  } catch (err) {
+    const ip = extractIp(req);
+    logger.warn({ err: err.message, ip, path: req.path }, 'Deep sanitization blocked');
+    throw ApiError.badRequest(err.message, [], 'VALIDATION_ERROR');
+  }
+  next();
+});

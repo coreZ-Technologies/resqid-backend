@@ -1,4 +1,3 @@
-// TODO: Add implementation
 import { Resend } from 'resend';
 import React from 'react'; // ✅ ADD THIS
 import { EmailProvider } from './email.provider.js';
@@ -48,7 +47,7 @@ export class ResendAdapter extends EmailProvider {
   }
 
   async sendBulk(emails) {
-    const results = await Promise.allSettled(emails.map(email => this.send(email)));
+    const results = await Promise.allSettled(emails.map((email) => this.send(email)));
     return results.map((result, index) =>
       result.status === 'fulfilled'
         ? result.value

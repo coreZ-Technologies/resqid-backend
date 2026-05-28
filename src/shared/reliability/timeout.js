@@ -1,12 +1,15 @@
-/**
- * Wraps an async function with a timeout.
- * If the function doesn't resolve within `ms`, it rejects.
- */
+// =============================================================================
+// timeout.js — RESQID
+//
+// Wraps an async function with a timeout.
+// If the function doesn't resolve within `ms`, it rejects.
+// =============================================================================
+
 export class TimeoutError extends Error {
   constructor(ms) {
     super(`Operation timed out after ${ms}ms`);
     this.name = 'TimeoutError';
-    this.code = 'TIMEOUTs';
+    this.code = 'TIMEOUT'; // Fixed: was 'TIMEOUTs'
   }
 }
 

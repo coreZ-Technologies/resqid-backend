@@ -1,4 +1,3 @@
-// TODO: Add implementation
 import { EmailProvider } from './email.provider.js';
 import { BrevoAdapter } from './brevo.adapter.js';
 import { ResendAdapter } from './resend.adapter.js';

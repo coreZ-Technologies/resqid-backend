@@ -1,4 +1,3 @@
-// TODO: Add implementation
 import { Expo } from 'expo-server-sdk';
 import { PushProvider } from './push.provider.js';
 import { logger } from '#config/logger.js';
@@ -65,7 +64,7 @@ export class ExpoAdapter extends PushProvider {
   }
 
   async sendToDevices(deviceTokens, notification) {
-    const validTokens = deviceTokens.filter(t => {
+    const validTokens = deviceTokens.filter((t) => {
       const valid = Expo.isExpoPushToken(t);
       if (!valid) logger.warn({ token: t.slice(0, 10) + '…' }, '[Expo] Invalid token filtered');
       return valid;
@@ -80,7 +79,7 @@ export class ExpoAdapter extends PushProvider {
       };
     }
 
-    const messages = validTokens.map(token => ({
+    const messages = validTokens.map((token) => ({
       to: token,
       title: notification.title,
       body: notification.body,

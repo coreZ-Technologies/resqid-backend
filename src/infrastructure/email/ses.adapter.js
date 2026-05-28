@@ -1,4 +1,3 @@
-// TODO: Add implementation
 // =============================================================================
 // infrastructure/email/ses.adapter.js — RESQID
 // AWS SES only. React Email for rendering. No Resend, no Nodemailer.

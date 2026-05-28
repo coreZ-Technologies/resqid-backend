@@ -1,4 +1,3 @@
-// TODO: Add implementation
 // =============================================================================
 // infrastructure/sms/msg91.adapter.js — RESQID
 // MSG91 adapter. DLT-compliant SMS, OTP send/verify.

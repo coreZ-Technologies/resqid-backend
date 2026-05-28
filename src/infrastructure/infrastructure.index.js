@@ -1,35 +1,53 @@
-// TODO: Add implementation
+// =============================================================================
+// infrastructure.index.js — RESQID
+//
+// Master infrastructure orchestrator.
+// Initializes all service adapters: Cache, Email, Push, SMS, Storage.
+//
+// Usage in server.js:
+//   import { initializeInfrastructure } from '#infrastructure/infrastructure.index.js';
+//   await initializeInfrastructure({ cache: {}, email: {}, sms: {}, storage: {} });
+// =============================================================================
+
 import { logger } from '#config/logger.js';
-import { initializeCache, getCache, TTL, CacheKey } from './cache/cache.index.js';
+import { initializeCache, getCache, shutdownCache, TTL, CacheKey } from './cache/cache.index.js';
 import { initializeEmail, getEmail } from './email/email.index.js';
 import { initializePush, getPush } from './push/push.index.js';
 import { initializeSms, getSms } from './sms/sms.index.js';
 import { initializeStorage, getStorage, StoragePath } from './storage/storage.index.js';
+import { closeAllConnections as closeSseConnections } from './sse/sse.service.js';
+
+// ─── Infrastructure Class ────────────────────────────────────────────────────
 
 export class Infrastructure {
   constructor(config = {}) {
     this.config = config;
     this.initialized = false;
-    this.modules = {};
   }
 
   async initialize() {
     if (this.initialized) {
-      logger.warn('[Infrastructure] Already initialized — skipping.');
-      return this.modules;
+      logger.warn('[Infrastructure] Already initialized');
+      return this;
     }
 
     try {
-      const cache = await initializeCache(this.config.cache);
-      const email = initializeEmail(this.config.email);
-      const push = initializePush(this.config.push);
-      const sms = initializeSms(this.config.sms);
-      const storage = initializeStorage(this.config.storage);
+      // Initialize in parallel where possible
+      const cache = await initializeCache(this.config.cache || {});
+      const email = initializeEmail(this.config.email || {});
+      const push = initializePush();
+      const sms = initializeSms(this.config.sms || {});
+      const storage = initializeStorage(this.config.storage || {});
 
-      this.modules = { cache, email, push, sms, storage };
+      this.cache = cache;
+      this.email = email;
+      this.push = push;
+      this.sms = sms;
+      this.storage = storage;
       this.initialized = true;
-      logger.info('[Infrastructure] All modules initialized successfully.');
-      return this.modules;
+
+      logger.info('[Infrastructure] All modules initialized');
+      return this;
     } catch (err) {
       logger.error({ err: err.message }, '[Infrastructure] Initialization failed');
       throw err;
@@ -38,23 +56,23 @@ export class Infrastructure {
 
   getCache() {
     this._assertReady();
-    return getCache();
+    return this.cache;
   }
   getEmail() {
     this._assertReady();
-    return getEmail();
+    return this.email;
   }
   getPush() {
     this._assertReady();
-    return getPush();
+    return this.push;
   }
   getSms() {
     this._assertReady();
-    return getSms();
+    return this.sms;
   }
   getStorage() {
     this._assertReady();
-    return getStorage();
+    return this.storage;
   }
 
   getConstants() {
@@ -62,11 +80,10 @@ export class Infrastructure {
   }
 
   async shutdown() {
-    if (typeof this.modules.cache?.disconnect === 'function') {
-      await this.modules.cache.disconnect();
-    }
+    if (this.cache) await shutdownCache();
+    closeSseConnections();
     this.initialized = false;
-    logger.info('[Infrastructure] Shutdown complete.');
+    logger.info('[Infrastructure] Shutdown complete');
   }
 
   _assertReady() {
@@ -75,6 +92,8 @@ export class Infrastructure {
     }
   }
 }
+
+// ─── Singleton ───────────────────────────────────────────────────────────────
 
 let infrastructureInstance = null;
 
@@ -91,6 +110,13 @@ export function getInfrastructure() {
     throw new Error('[Infrastructure] Not initialized. Call initializeInfrastructure() first.');
   }
   return infrastructureInstance;
+}
+
+export async function shutdownInfrastructure() {
+  if (infrastructureInstance) {
+    await infrastructureInstance.shutdown();
+    infrastructureInstance = null;
+  }
 }
 
 export { TTL, CacheKey, StoragePath };

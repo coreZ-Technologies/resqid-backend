@@ -1,17 +1,24 @@
-// TODO: Add implementation
+// =============================================================================
+// redis.adapter.js — RESQID
+//
+// Redis implementation of CacheProvider.
+// Creates its own Redis connection (separate from the 3 main clients).
+// =============================================================================
+
 import { createClient } from 'redis';
 import { CacheProvider } from './cache.provider.js';
+import { logger } from '#config/logger.js';
 
 export class RedisAdapter extends CacheProvider {
   constructor(config = {}) {
     super();
     this.client = null;
     this.config = {
-      url: config.REDIS_URL || process.env.REDIS_URL || 'redis://localhost:6379',
-      password: config.REDIS_PASSWORD || process.env.REDIS_PASSWORD,
-      db: config.REDIS_DB ?? parseInt(process.env.REDIS_DB, 10) ?? 0,
+      url: config.url || process.env.REDIS_URL || 'redis://localhost:6379',
+      password: config.password || process.env.REDIS_PASSWORD,
       socket: {
-        reconnectStrategy: retries => Math.min(retries * 50, 2000),
+        reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
+        connectTimeout: 10000,
       },
       ...config,
     };
@@ -22,29 +29,29 @@ export class RedisAdapter extends CacheProvider {
     try {
       this.client = createClient(this.config);
 
-      this.client.on('error', err => {
-        console.error('[Redis] Client error:', err.message);
+      this.client.on('error', (err) => {
+        logger.error({ err: err.message }, '[RedisAdapter] Client error');
         this.isConnected = false;
       });
 
       this.client.on('connect', () => {
-        console.info('[Redis] Connection established.');
+        logger.info('[RedisAdapter] Connected');
         this.isConnected = true;
       });
 
       this.client.on('reconnecting', () => {
-        console.warn('[Redis] Attempting to reconnect...');
+        logger.warn('[RedisAdapter] Reconnecting...');
       });
 
       this.client.on('end', () => {
-        console.warn('[Redis] Connection closed.');
+        logger.warn('[RedisAdapter] Connection closed');
         this.isConnected = false;
       });
 
       await this.client.connect();
       return this;
     } catch (err) {
-      console.error('[Redis] Failed to connect:', err.message);
+      logger.error({ err: err.message }, '[RedisAdapter] Failed to connect');
       throw err;
     }
   }
@@ -53,9 +60,11 @@ export class RedisAdapter extends CacheProvider {
     if (this.client) {
       await this.client.quit();
       this.isConnected = false;
-      console.info('[Redis] Connection gracefully closed.');
+      logger.info('[RedisAdapter] Disconnected');
     }
   }
+
+  // ─── Core Operations ──────────────────────────────────────────────────────
 
   async get(key) {
     try {
@@ -67,7 +76,7 @@ export class RedisAdapter extends CacheProvider {
         return value;
       }
     } catch (err) {
-      console.warn(`[Redis] GET failed for key "${key}":`, err.message);
+      logger.warn({ key, err: err.message }, '[RedisAdapter] GET failed');
       return null;
     }
   }
@@ -82,7 +91,7 @@ export class RedisAdapter extends CacheProvider {
       }
       return true;
     } catch (err) {
-      console.warn(`[Redis] SET failed for key "${key}":`, err.message);
+      logger.warn({ key, err: err.message }, '[RedisAdapter] SET failed');
       return false;
     }
   }
@@ -92,7 +101,7 @@ export class RedisAdapter extends CacheProvider {
     try {
       return await this.client.del(keys);
     } catch (err) {
-      console.warn(`[Redis] DEL failed for keys [${keys.join(', ')}]:`, err.message);
+      logger.warn({ keys, err: err.message }, '[RedisAdapter] DEL failed');
       return 0;
     }
   }
@@ -102,7 +111,6 @@ export class RedisAdapter extends CacheProvider {
       let cursor = 0;
       let deleted = 0;
       do {
-        // FIX: node-redis v4 scan() takes an options object, not positional args
         const reply = await this.client.scan(cursor, { MATCH: pattern, COUNT: 100 });
         cursor = reply.cursor;
         if (reply.keys.length) {
@@ -112,7 +120,7 @@ export class RedisAdapter extends CacheProvider {
       } while (cursor !== 0);
       return deleted;
     } catch (err) {
-      console.warn(`[Redis] DEL pattern "${pattern}" failed:`, err.message);
+      logger.warn({ pattern, err: err.message }, '[RedisAdapter] DEL pattern failed');
       return 0;
     }
   }
@@ -121,10 +129,12 @@ export class RedisAdapter extends CacheProvider {
     try {
       return (await this.client.exists(key)) === 1;
     } catch (err) {
-      console.warn(`[Redis] EXISTS failed for key "${key}":`, err.message);
+      logger.warn({ key, err: err.message }, '[RedisAdapter] EXISTS failed');
       return false;
     }
   }
+
+  // ─── Batch Operations ─────────────────────────────────────────────────────
 
   async mget(keys) {
     try {
@@ -141,7 +151,7 @@ export class RedisAdapter extends CacheProvider {
         return acc;
       }, {});
     } catch (err) {
-      console.warn(`[Redis] MGET failed for keys [${keys.join(', ')}]:`, err.message);
+      logger.warn({ keys, err: err.message }, '[RedisAdapter] MGET failed');
       return {};
     }
   }
@@ -159,20 +169,21 @@ export class RedisAdapter extends CacheProvider {
       }
       await pipeline.exec();
     } catch (err) {
-      console.warn('[Redis] MSET failed:', err.message);
+      logger.warn({ err: err.message }, '[RedisAdapter] MSET failed');
     }
   }
+
+  // ─── Atomic Operations ────────────────────────────────────────────────────
 
   async incr(key, by = 1, ttl = null) {
     try {
       const val = await this.client.incrBy(key, by);
-      // Set TTL only when the key is first created (val === by)
       if (val === by && ttl) {
         await this.client.expire(key, ttl);
       }
       return val;
     } catch (err) {
-      console.warn(`[Redis] INCR failed for key "${key}":`, err.message);
+      logger.warn({ key, err: err.message }, '[RedisAdapter] INCR failed');
       return 0;
     }
   }
@@ -188,11 +199,22 @@ export class RedisAdapter extends CacheProvider {
   async clear() {
     try {
       await this.client.flushDb();
-      console.info('[Redis] Database flushed successfully.');
+      logger.warn('[RedisAdapter] Database flushed');
     } catch (err) {
-      console.error('[Redis] FLUSHDB failed:', err.message);
+      logger.error({ err: err.message }, '[RedisAdapter] FLUSHDB failed');
       throw err;
     }
+  }
+
+  // ─── Locking ──────────────────────────────────────────────────────────────
+
+  async lock(key, ttl = 30) {
+    const result = await this.client.set(key, '1', { NX: true, EX: ttl });
+    return result === 'OK';
+  }
+
+  async unlock(key) {
+    await this.del(key);
   }
 }
 

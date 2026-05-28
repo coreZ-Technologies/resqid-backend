@@ -9,18 +9,17 @@ import crypto from 'crypto';
 import { ENV } from '#config/env.js';
 
 const TOKEN_BYTES = 32;
-const SEPARATOR = '.'; // safe separator — hex strings never contain '.'
-const COOKIE_NAME = '__Host-csrf';
-const HEADER_NAME = 'x-csrf-token';
+const SEPARATOR = '.';
+const COOKIE_NAME = ENV.CSRF_COOKIE_NAME || '__Host-csrf';
+const HEADER_NAME = ENV.CSRF_HEADER_NAME || 'x-csrf-token';
 const TTL_SECONDS = 24 * 60 * 60; // 24 hours
-const TTL_MS = TTL_SECONDS * 1000; // Express maxAge expects ms
+const TTL_MS = TTL_SECONDS * 1000;
 
 // ─── Generate ─────────────────────────────────────────────────────────────────
 
 /**
- * generateCsrfToken()
+ * Generate a CSRF token pair.
  *
- * Creates a signed token with an expiry baked in.
  * Cookie stores: "token.expiry.signature"
  * Header sends:  "token"
  *
@@ -31,13 +30,32 @@ const TTL_MS = TTL_SECONDS * 1000; // Express maxAge expects ms
  */
 export function generateCsrfToken() {
   const token = crypto.randomBytes(TOKEN_BYTES).toString('hex');
-  const expiry = (Date.now() + TTL_MS).toString(16); // hex timestamp
+  const expiry = (Date.now() + TTL_MS).toString(16);
   const payload = `${token}${SEPARATOR}${expiry}`;
   const sig = signCsrfPayload(payload);
 
   return {
-    token, // sent as header value
-    cookieValue: `${payload}${SEPARATOR}${sig}`, // stored in cookie
+    token,
+    cookieValue: `${payload}${SEPARATOR}${sig}`,
+    expiresAt: new Date(Date.now() + TTL_MS),
+  };
+}
+
+/**
+ * Generate a CSRF token bound to a specific session.
+ * Adds sessionId to payload for additional binding (optional enhancement).
+ */
+export function generateCsrfTokenForSession(sessionId) {
+  const token = crypto.randomBytes(TOKEN_BYTES).toString('hex');
+  const expiry = (Date.now() + TTL_MS).toString(16);
+  const sessionHash = crypto.createHash('sha256').update(sessionId).digest('hex').slice(0, 8);
+  const payload = `${token}${SEPARATOR}${expiry}${SEPARATOR}${sessionHash}`;
+  const sig = signCsrfPayload(payload);
+
+  return {
+    token,
+    cookieValue: `${payload}${SEPARATOR}${sig}`,
+    expiresAt: new Date(Date.now() + TTL_MS),
   };
 }
 
@@ -52,33 +70,36 @@ export function signCsrfPayload(payload) {
 }
 
 /**
- * verifyCsrfPair(headerToken, cookieValue)
+ * Verify a CSRF token pair (header + cookie).
  *
- * Returns true only if ALL of:
- *   1. Cookie format is valid      → token.expiry.signature
+ * Returns true only if ALL:
+ *   1. Cookie format is valid (token.expiry.signature or token.expiry.session.signature)
  *   2. Header token matches cookie token
- *   3. Token has not expired       → expiry baked into payload
- *   4. Signature is valid          → proves server issued this cookie
+ *   3. Token has not expired
+ *   4. Signature is valid
  */
 export function verifyCsrfPair(headerToken, cookieValue) {
   if (!headerToken || !cookieValue) return false;
 
   const parts = cookieValue.split(SEPARATOR);
 
-  // Expect exactly 3 parts: token . expiry . signature
-  if (parts.length !== 3) return false;
+  // Expect 3 parts (token.expiry.signature) or 4 (token.expiry.session.signature)
+  if (parts.length !== 3 && parts.length !== 4) return false;
 
-  const [cookieToken, expiry, cookieSignature] = parts;
+  const cookieToken = parts[0];
+  const expiry = parts[1];
+  const cookieSignature = parts[parts.length - 1];
 
   // 1. Header token must match cookie token
   if (cookieToken !== headerToken) return false;
 
-  // 2. Check expiry — parseInt hex timestamp
+  // 2. Check expiry
   const expiryMs = parseInt(expiry, 16);
   if (isNaN(expiryMs) || Date.now() > expiryMs) return false;
 
-  // 3. Verify HMAC signature over token.expiry payload
-  const payload = `${cookieToken}${SEPARATOR}${expiry}`;
+  // 3. Rebuild payload and verify HMAC
+  const payloadParts = parts.slice(0, -1); // All parts except signature
+  const payload = payloadParts.join(SEPARATOR);
   const expectedSignature = signCsrfPayload(payload);
 
   try {
@@ -94,25 +115,26 @@ export function verifyCsrfPair(headerToken, cookieValue) {
 // ─── Cookie Helpers ───────────────────────────────────────────────────────────
 
 /**
+ * Set CSRF cookie on response.
+ *
  * __Host- prefix requires:
- *   - secure: true       (ALWAYS — even in dev, __Host- won't set without it)
+ *   - secure: true       (ALWAYS — even in dev)
  *   - path: '/'          (exact match required)
  *   - no domain attr     (browser enforces host binding)
- *
- * NOTE: In local dev over HTTP, use __csrf (no prefix) instead.
- * Set COOKIE_NAME conditionally if needed, or run dev over HTTPS (recommended).
  */
 export function setCsrfCookie(res, cookieValue) {
   res.cookie(COOKIE_NAME, cookieValue, {
-    httpOnly: false, // MUST be false — frontend JS reads this to send as header
-    secure: true, // MUST always be true — __Host- prefix requires it
+    httpOnly: false, // Frontend JS must read this
+    secure: true, // Required by __Host- prefix
     sameSite: 'strict',
     maxAge: TTL_MS,
     path: '/',
-    // domain intentionally omitted — required by __Host- prefix spec
   });
 }
 
+/**
+ * Clear CSRF cookie
+ */
 export function clearCsrfCookie(res) {
   res.clearCookie(COOKIE_NAME, {
     httpOnly: false,
