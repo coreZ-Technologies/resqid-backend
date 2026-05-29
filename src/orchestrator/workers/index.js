@@ -5,7 +5,8 @@
 //   WORKER_ROLE=emergency     → EmergencyWorker only
 //   WORKER_ROLE=notification  → NotificationWorker only
 //   WORKER_ROLE=attendance    → AttendanceWorker only
-//   WORKER_ROLE=all           → All 5 workers
+//   WORKER_ROLE=timetable     → Timetable workers only
+//   WORKER_ROLE=all           → All 8 workers
 // =============================================================================
 
 process.env.WORKER_PROCESS = 'true';
@@ -16,6 +17,9 @@ import { startNotificationWorker, stopNotificationWorker } from './notification.
 import { startScanWorker, stopScanWorker } from './scan.worker.js';
 import { startMaintenanceWorker, stopMaintenanceWorker } from './maintenance.worker.js';
 import { startAttendanceWorker, stopAttendanceWorker } from './attendance.worker.js';
+import { startGenerateWorker, stopGenerateWorker } from './generate.worker.js';
+import { startSubstituteWorker, stopSubstituteWorker } from './substitute.worker.js';
+import { startSwapWorker, stopSwapWorker } from './swap.worker.js';
 import { closeAllQueues } from '../queues/queue.config.js';
 import { closeQueueConnection } from '../queues/queue.connection.js';
 import { flushDlqSlackBatch } from '../dlq/dlq.handler.js';
@@ -37,6 +41,8 @@ const c = {
   sky: '\x1b[38;5;117m',
   amber: '\x1b[38;5;214m',
   lime: '\x1b[38;5;154m',
+  pink: '\x1b[38;5;205m',
+  teal: '\x1b[38;5;51m',
 };
 
 const ok = `${c.green}${c.bold}✓${c.reset}`;
@@ -46,10 +52,11 @@ const pad = (s, n) => String(s).padEnd(n);
 const ROLE = (process.env.WORKER_ROLE ?? 'all').toLowerCase();
 
 // =============================================================================
-// WORKER REGISTRY
+// WORKER REGISTRY — 8 Workers
 // =============================================================================
 
 const ALL_WORKERS = [
+  // ── Core (Always On) ─────────────────────────────────────────────────────
   {
     name: 'EmergencyWorker',
     queue: 'emergency_queue',
@@ -80,6 +87,40 @@ const ALL_WORKERS = [
     start: startAttendanceWorker,
     stop: stopAttendanceWorker,
   },
+
+  // ── Timetable Workers ────────────────────────────────────────────────────
+  {
+    name: 'GenerateWorker',
+    queue: 'timetable_generate_queue',
+    conc: 2,
+    roles: ['all', 'timetable'],
+    col: c.teal,
+    desc: 'Timetable generation solver (MAC algorithm)',
+    start: startGenerateWorker,
+    stop: stopGenerateWorker,
+  },
+  {
+    name: 'SubstituteWorker',
+    queue: 'timetable_substitute_queue',
+    conc: 5,
+    roles: ['all', 'timetable'],
+    col: c.pink,
+    desc: 'Daily REPLACE for absent teachers',
+    start: startSubstituteWorker,
+    stop: stopSubstituteWorker,
+  },
+  {
+    name: 'SwapWorker',
+    queue: 'timetable_swap_queue',
+    conc: 3,
+    roles: ['all', 'timetable'],
+    col: c.amber,
+    desc: 'Long-term SWAP assignments + auto-revert',
+    start: startSwapWorker,
+    stop: stopSwapWorker,
+  },
+
+  // ── Background ───────────────────────────────────────────────────────────
   {
     name: 'ScanWorker',
     queue: 'setInterval/60s',
@@ -95,7 +136,7 @@ const ALL_WORKERS = [
     queue: 'setInterval/24h',
     conc: 1,
     roles: ['all'],
-    col: c.amber,
+    col: c.gray,
     desc: 'Token expiry · session cleanup · DB vacuum',
     start: startMaintenanceWorker,
     stop: stopMaintenanceWorker,
@@ -149,7 +190,7 @@ function printTopology() {
   console.log(`\n${SEP}`);
   console.log(`  ${c.bold}${c.cyan}Worker Topology${c.reset}`);
   console.log(SEP);
-  console.log(`  ${c.dim}${'Worker'.padEnd(24)} ${'Queue / Interval'.padEnd(22)} Conc${c.reset}`);
+  console.log(`  ${c.dim}${'Worker'.padEnd(24)} ${'Queue / Interval'.padEnd(24)} Conc${c.reset}`);
   console.log(SEP);
 
   ALL_WORKERS.forEach((w) => {
@@ -159,7 +200,7 @@ function printTopology() {
       ? `${w.col}${c.bold}${pad(w.name, 22)}${c.reset}`
       : `${c.gray}${pad(w.name, 22)}${c.reset}`;
     console.log(
-      `  ${dot}  ${name}${c.dim}${pad(w.queue, 22)}${c.reset}${c.gray}×${w.conc}${c.reset}`
+      `  ${dot}  ${name}${c.dim}${pad(w.queue, 24)}${c.reset}${c.gray}×${w.conc}${c.reset}`
     );
   });
 
@@ -239,7 +280,9 @@ export const startWorkers = async () => {
 
   if (ACTIVE.length === 0) {
     console.error(`\n  ${fail}  ${c.red}Unknown WORKER_ROLE="${ROLE}"${c.reset}`);
-    console.error(`  ${c.dim}Valid: all · emergency · notification · attendance${c.reset}\n`);
+    console.error(
+      `  ${c.dim}Valid: all · emergency · notification · attendance · timetable${c.reset}\n`
+    );
     process.exit(1);
   }
 

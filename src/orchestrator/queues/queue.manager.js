@@ -1,7 +1,7 @@
 // =============================================================================
 // orchestrator/queues/queue.manager.js — RESQID
 //
-// Manages all BullMQ queues + QueueEvents for cross-process monitoring.
+// Manages all 6 BullMQ queues + QueueEvents for cross-process monitoring.
 // =============================================================================
 
 import { QueueEvents } from 'bullmq';
@@ -16,9 +16,13 @@ import {
   emergencyAlertsQueue,
   notificationsQueue,
   attendanceBulkQueue,
+  generateQueue,
+  substituteQueue,
+  swapQueue,
   pipelineJobsQueue,
 } from './queue.config.js';
 
+// Re-export all queues
 export {
   allQueues,
   getQueueByName,
@@ -26,6 +30,9 @@ export {
   emergencyAlertsQueue,
   notificationsQueue,
   attendanceBulkQueue,
+  generateQueue,
+  substituteQueue,
+  swapQueue,
   pipelineJobsQueue,
 };
 
@@ -122,6 +129,16 @@ function setupQueueEventHandlers(queue, queueName) {
     logger.warn({ queue: queueName, jobId }, '[queue.manager] Job stalled — re-queuing');
   });
 
+  // ── Timetable-specific: Progress tracking ────────────────────────────────
+  qe.on('progress', ({ jobId, data }) => {
+    if (queueName.includes('timetable')) {
+      logger.info(
+        { queue: queueName, jobId, progress: data },
+        '[queue.manager] Timetable generation progress'
+      );
+    }
+  });
+
   return qe;
 }
 
@@ -169,16 +186,21 @@ export async function cleanOldJobs(olderThanDays = 7) {
   const results = {};
 
   for (const [name, queue] of Object.entries(allQueues)) {
-    const [completed, failed, delayed] = await Promise.all([
-      queue.clean(graceMs, 1000, 'completed'),
-      queue.clean(graceMs, 1000, 'failed'),
-      queue.clean(graceMs, 1000, 'delayed'),
-    ]);
-    results[name] = {
-      completed: completed.length,
-      failed: failed.length,
-      delayed: delayed.length,
-    };
+    try {
+      const [completed, failed, delayed] = await Promise.all([
+        queue.clean(graceMs, 1000, 'completed'),
+        queue.clean(graceMs, 1000, 'failed'),
+        queue.clean(graceMs, 1000, 'delayed'),
+      ]);
+      results[name] = {
+        completed: completed.length,
+        failed: failed.length,
+        delayed: delayed.length,
+      };
+    } catch (err) {
+      logger.error({ queue: name, err: err.message }, '[queue.manager] Clean failed');
+      results[name] = { error: err.message };
+    }
   }
 
   logger.info({ olderThanDays, results }, '[queue.manager] Cleaned old jobs');
