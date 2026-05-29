@@ -1,241 +1,107 @@
 // =============================================================================
-// parent.controller.js — RESQID
-//
-// HTTP layer for the Parent module.
-// Extracts req data → calls service → sends ApiResponse.
-//
-// All methods are wrapped by asyncHandler in routes.
-// req.user is attached by authenticate.middleware (PARENT role guaranteed).
+// modules/parents/parent.controller.js — RESQID
+// Thin HTTP wrappers.
 // =============================================================================
 
-import { parentService as service } from './parent.service.js';
 import { ApiResponse } from '#shared/response/ApiResponse.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import * as service from './parent.service.js';
+import { getStorage } from '#infrastructure/storage/storage.index.js';
+import { middlewareRedis as redis } from '#config/redis.js';
+import crypto from 'crypto';
 
-// =============================================================================
-// PROFILE
-// =============================================================================
+export const getMe = asyncHandler(async (req, res) => {
+  const data = await service.getParentHome(req.user.id);
+  if (!data) throw ApiError.notFound('Account not found');
+  return ApiResponse.ok(res, data);
+});
 
-/**
- * GET /api/v1/parents/me
- * Returns the authenticated parent's own profile
- */
-const getProfile = async (req, res) => {
-  const profile = await service.getProfile(req.user.id);
-  ApiResponse.ok(res, profile, 'Profile fetched successfully');
-};
+export const updateParentProfile = asyncHandler(async (req, res) => {
+  const result = await service.updateParentProfile(req.user.id, req.body);
+  return ApiResponse.ok(res, result, 'Profile updated');
+});
 
-/**
- * PATCH /api/v1/parents/me
- * Update name, email, or phone
- */
-const updateProfile = async (req, res) => {
-  const updated = await service.updateProfile(req.user.id, req.body);
-  ApiResponse.ok(res, updated, 'Profile updated successfully');
-};
-
-/**
- * DELETE /api/v1/parents/me
- * Soft-delete account after confirmation phrase check
- */
-const deleteAccount = async (req, res) => {
-  const result = await service.deleteAccount(req.user.id);
-  ApiResponse.ok(res, result, 'Account deleted successfully');
-};
-
-// =============================================================================
-// CHILDREN
-// =============================================================================
-
-/**
- * GET /api/v1/parents/me/children
- * List all students linked to this parent
- */
-const listChildren = async (req, res) => {
-  const { children, pagination } = await service.listChildren(req.user.id, req.query);
-  ApiResponse.paginated(res, children, pagination, 'Children fetched successfully');
-};
-
-/**
- * GET /api/v1/parents/me/children/:studentId
- * Get full profile of one linked child
- */
-const getChild = async (req, res) => {
-  const child = await service.getChild(req.user.id, req.params.studentId);
-  ApiResponse.ok(res, child, 'Student profile fetched successfully');
-};
-
-/**
- * POST /api/v1/parents/me/children
- * Link a child using a one-time school-issued link token
- */
-const linkChild = async (req, res) => {
-  const link = await service.linkChild(req.user.id, req.body);
-  ApiResponse.created(res, link, 'Student linked successfully');
-};
-
-/**
- * PATCH /api/v1/parents/me/children/:studentId
- * Update relation type or isPrimary flag
- */
-const updateChildLink = async (req, res) => {
-  const updated = await service.updateChildLink(
-    req.user.id,
-    req.params.studentId,
-    req.body
-  );
-  ApiResponse.ok(res, updated, 'Child link updated successfully');
-};
-
-/**
- * DELETE /api/v1/parents/me/children/:studentId
- * Unlink a child from this parent's account
- */
-const unlinkChild = async (req, res) => {
-  const result = await service.unlinkChild(req.user.id, req.params.studentId);
-  ApiResponse.ok(res, result, 'Student unlinked successfully');
-};
-
-// =============================================================================
-// CARD VISIBILITY
-// =============================================================================
-
-/**
- * PATCH /api/v1/parents/me/children/:studentId/visibility
- * Set what emergency responders see when scanning the child's QR
- */
-const updateCardVisibility = async (req, res) => {
-  const result = await service.updateCardVisibility(
+export const updateVisibility = asyncHandler(async (req, res) => {
+  const result = await service.updateVisibility(
     req.user.id,
     req.params.studentId,
     req.body.visibility
   );
-  ApiResponse.ok(res, result, 'Card visibility updated successfully');
-};
+  return ApiResponse.ok(res, result, 'Visibility updated');
+});
 
-// =============================================================================
-// NOTIFICATION PREFERENCES
-// =============================================================================
+export const updateNotifications = asyncHandler(async (req, res) => {
+  const result = await service.updateNotifications(req.user.id, req.body);
+  return ApiResponse.ok(res, result, 'Preferences updated');
+});
 
-/**
- * GET /api/v1/parents/me/notification-preferences
- */
-const getNotificationPreferences = async (req, res) => {
-  const prefs = await service.getNotificationPreferences(req.user.id);
-  ApiResponse.ok(res, prefs, 'Notification preferences fetched successfully');
-};
+export const lockCard = asyncHandler(async (req, res) => {
+  const result = await service.lockCard(req.user.id, req.params.studentId);
+  return ApiResponse.ok(res, result, 'Card locked');
+});
 
-/**
- * PATCH /api/v1/parents/me/notification-preferences
- */
-const updateNotificationPreferences = async (req, res) => {
-  const updated = await service.updateNotificationPreferences(req.user.id, req.body);
-  ApiResponse.ok(res, updated, 'Notification preferences updated successfully');
-};
+export const registerDeviceToken = asyncHandler(async (req, res) => {
+  const result = await service.registerDeviceToken(req.user.id, req.body);
+  return ApiResponse.ok(res, result, 'Device registered');
+});
 
-// =============================================================================
-// DEVICES
-// =============================================================================
+export const linkCard = asyncHandler(async (req, res) => {
+  const result = await service.linkCard(req.user.id, req.body);
+  return ApiResponse.ok(res, result, 'Child linked');
+});
 
-/**
- * GET /api/v1/parents/me/devices
- * List all registered devices for this parent
- */
-const listDevices = async (req, res) => {
-  const { devices, pagination } = await service.listDevices(req.user.id, req.query);
-  ApiResponse.paginated(res, devices, pagination, 'Devices fetched successfully');
-};
+export const setActiveStudent = asyncHandler(async (req, res) => {
+  const result = await service.setActiveStudent(req.user.id, req.body.studentId);
+  return ApiResponse.ok(res, result, 'Active child updated');
+});
 
-/**
- * DELETE /api/v1/parents/me/devices/:deviceId
- * Remove a specific device
- */
-const removeDevice = async (req, res) => {
-  const result = await service.removeDevice(req.user.id, req.params.deviceId);
-  ApiResponse.ok(res, result, 'Device removed successfully');
-};
+export const getScanHistory = asyncHandler(async (req, res) => {
+  const data = await service.getScanHistory(req.user.id, {
+    studentId: req.params.studentId,
+    page: req.query.page,
+    limit: req.query.limit,
+    filter: req.query.filter,
+  });
+  return ApiResponse.ok(res, data);
+});
 
-// =============================================================================
-// SESSIONS
-// =============================================================================
+export const generatePhotoUploadUrl = asyncHandler(async (req, res) => {
+  const storage = getStorage();
+  const { contentType } = req.body;
+  const studentId = req.params.studentId;
+  const ext = contentType === 'image/png' ? 'png' : 'jpg';
+  const key = `parents/${req.user.id}/students/${studentId}/photo-${Date.now()}.${ext}`;
 
-/**
- * GET /api/v1/parents/me/sessions
- * List all active sessions
- */
-const listSessions = async (req, res) => {
-  const { sessions, pagination } = await service.listSessions(req.user.id, req.query);
-  ApiResponse.paginated(res, sessions, pagination, 'Sessions fetched successfully');
-};
-
-/**
- * DELETE /api/v1/parents/me/sessions/:sessionId
- * Revoke a specific session
- */
-const revokeSession = async (req, res) => {
-  const result = await service.revokeSession(req.user.id, req.params.sessionId);
-  ApiResponse.ok(res, result, 'Session revoked successfully');
-};
-
-/**
- * DELETE /api/v1/parents/me/sessions
- * Revoke all sessions except the current one
- */
-const revokeAllSessions = async (req, res) => {
-  const currentSessionId = req.user.sessionId ?? null;
-  const result = await service.revokeAllSessions(req.user.id, currentSessionId);
-  ApiResponse.ok(res, result, 'All other sessions revoked successfully');
-};
-
-// =============================================================================
-// SCAN HISTORY
-// =============================================================================
-
-/**
- * GET /api/v1/parents/me/children/:studentId/scans
- * View scan logs for one of the parent's children
- */
-const listChildScans = async (req, res) => {
-  const { scans, pagination } = await service.listChildScans(
-    req.user.id,
-    req.params.studentId,
-    req.query
+  const nonce = crypto.randomBytes(16).toString('hex');
+  await redis.set(
+    `upload:nonce:${nonce}`,
+    JSON.stringify({
+      parentId: req.user.id,
+      studentId,
+      key,
+    }),
+    'EX',
+    300
   );
-  ApiResponse.paginated(res, scans, pagination, 'Scan history fetched successfully');
-};
 
-// =============================================================================
-// EXPORT
-// =============================================================================
+  const { uploadUrl } = await storage.getPresignedUploadUrl(key, { contentType });
+  return ApiResponse.ok(res, { uploadUrl, key, nonce });
+});
 
-export const parentController = {
-  // Profile
-  getProfile,
-  updateProfile,
-  deleteAccount,
+export const confirmPhotoUpload = asyncHandler(async (req, res) => {
+  const { key, nonce } = req.body;
+  const nonceData = await redis.get(`upload:nonce:${nonce}`);
+  if (!nonceData) throw ApiError.badRequest('Upload session expired');
 
-  // Children
-  listChildren,
-  getChild,
-  linkChild,
-  updateChildLink,
-  unlinkChild,
+  const { parentId: storedParentId, studentId } = JSON.parse(nonceData);
+  if (storedParentId !== req.user.id) throw ApiError.forbidden('Invalid upload');
 
-  // Card Visibility
-  updateCardVisibility,
+  const cdnDomain = process.env.AWS_CDN_DOMAIN || 'assets.getresqid.in';
+  const photoUrl = `https://${cdnDomain}/${key}`;
 
-  // Notification Preferences
-  getNotificationPreferences,
-  updateNotificationPreferences,
+  await prisma.student.update({ where: { id: studentId }, data: { photoUrl } });
+  await redis.del(`upload:nonce:${nonce}`);
 
-  // Devices
-  listDevices,
-  removeDevice,
-
-  // Sessions
-  listSessions,
-  revokeSession,
-  revokeAllSessions,
-
-  // Scan History
-  listChildScans,
-};
+  return ApiResponse.ok(res, { photoUrl });
+});

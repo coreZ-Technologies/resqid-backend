@@ -1,387 +1,142 @@
 // =============================================================================
-// parent.service.js — RESQID
-//
-// Business logic for the Parent module.
-// Orchestrates repository calls, enforces business rules, throws ApiErrors.
-//
-// Rules enforced here:
-//   - Parent can only access their own children
-//   - Phone/email uniqueness on update
-//   - Child link tokens are validated before linking
-//   - Last parent guard (can't unlink if no other parent exists)
-//   - Session ID excluded on revoke-all (stay logged in current device)
+// modules/parents/parent.service.js — RESQID
+// Business logic — emergency profile management moved to m2-emergency.
 // =============================================================================
 
-import { parentRepository as repo } from './parent.repository.js';
 import { ApiError } from '#shared/response/ApiError.js';
-import { paginate }  from '#shared/response/paginate.js';
-import { prisma }    from '#config/prisma.js';
-import { logger }    from '#config/logger.js';
+import { logger } from '#config/logger.js';
+import { middlewareRedis as redis } from '#config/redis.js';
+import * as repo from './parent.repository.js';
+import { publish } from '#orchestrator/events/event.publisher.js';
+import { EVENTS } from '#orchestrator/events/event.types.js';
+import { invalidateScanCache } from '#shared/cache/scan.cache.js';
 
-// =============================================================================
+const HOME_CACHE_KEY = (id) => `parent:home:${id}`;
+const HOME_CACHE_TTL = 5 * 60;
+
+const invalidateHomeCache = async (parentId) => {
+  await redis.del(HOME_CACHE_KEY(parentId)).catch(() => {});
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOME
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const getParentHome = async (parentId) => {
+  try {
+    const cached = await redis.get(HOME_CACHE_KEY(parentId));
+    if (cached) return JSON.parse(cached);
+  } catch {}
+
+  const data = await repo.getParentHome(parentId);
+  if (data) {
+    await redis
+      .set(HOME_CACHE_KEY(parentId), JSON.stringify(data), 'EX', HOME_CACHE_TTL)
+      .catch(() => {});
+  }
+  return data;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PROFILE
-// =============================================================================
+// ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Get the authenticated parent's own profile
- */
-const getProfile = async (parentId) => {
-  const parent = await repo.findById(parentId);
-  if (!parent) throw ApiError.notFound('Parent profile not found');
-  return parent;
+export const updateParentProfile = async (parentId, { name }) => {
+  await repo.updateParentProfile(parentId, { name });
+  await invalidateHomeCache(parentId);
+  return { success: true };
 };
 
-/**
- * Update profile fields (name, email, phone)
- * Guards: phone & email uniqueness
- */
-const updateProfile = async (parentId, data) => {
-  // Uniqueness guards
-  if (data.phone) {
-    const existing = await repo.findByPhone(data.phone);
-    if (existing && existing.id !== parentId) {
-      throw ApiError.conflict('Phone number is already in use');
-    }
-  }
-
-  if (data.email) {
-    const existing = await repo.findByEmail(data.email);
-    if (existing && existing.id !== parentId) {
-      throw ApiError.conflict('Email address is already in use');
-    }
-  }
-
-  return repo.updateProfile(parentId, data);
-};
-
-/**
- * Soft-delete parent account
- * Revokes all sessions and deactivates all devices first
- */
-const deleteAccount = async (parentId) => {
-  logger.warn({ parentId }, 'Parent requesting self-deletion');
-
-  // Revoke all active sessions
-  await repo.revokeAllSessions(parentId);
-
-  // Soft-delete
-  await repo.softDelete(parentId);
-
-  return { deleted: true };
-};
-
-// =============================================================================
-// CHILDREN
-// =============================================================================
-
-/**
- * List children linked to this parent (paginated)
- */
-const listChildren = async (parentId, query) => {
-  const { page, limit } = query;
-  const { skip, take }  = paginate(page, limit);
-
-  const [children, total] = await Promise.all([
-    repo.listChildren(parentId, { skip, take }),
-    repo.countChildren(parentId),
-  ]);
-
-  return { children, pagination: { page, limit, total } };
-};
-
-/**
- * Get a single child's full profile
- * Verifies that parent is actually linked to this student
- */
-const getChild = async (parentId, studentId) => {
-  const child = await repo.findChildById(parentId, studentId);
-  if (!child) {
-    throw ApiError.notFound('Student not found or not linked to your account');
-  }
-  return child;
-};
-
-/**
- * Link a child using a one-time link token
- * The token is generated by school admin and sent to parent
- *
- * Token format (stored in Student.metadata.linkToken):
- *   { token: string, expiresAt: ISO string, schoolId: string }
- */
-const linkChild = async (parentId, { linkToken, relation, isPrimary }) => {
-  // Find student with matching link token
-  const student = await prisma.student.findFirst({
-    where: {
-      metadata: {
-        path:   ['linkToken', 'token'],
-        equals: linkToken,
-      },
-    },
-    select: {
-      id:       true,
-      metadata: true,
-      parentLinks: {
-        where:  { parentId },
-        select: { id: true },
-      },
-    },
-  });
-
-  if (!student) {
-    throw ApiError.notFound('Invalid or expired link token');
-  }
-
-  // Check token expiry
-  const tokenMeta = student.metadata?.linkToken;
-  if (tokenMeta?.expiresAt && new Date(tokenMeta.expiresAt) < new Date()) {
-    throw ApiError.badRequest('Link token has expired. Please request a new one from the school.');
-  }
-
-  // Check if already linked
-  if (student.parentLinks.length > 0) {
-    throw ApiError.conflict('You are already linked to this student');
-  }
-
-  const link = await repo.createChildLink(parentId, student.id, { relation, isPrimary });
-
-  // Consume the token — remove from student metadata
-  await prisma.student.update({
-    where: { id: student.id },
-    data: {
-      metadata: {
-        ...(typeof student.metadata === 'object' ? student.metadata : {}),
-        linkToken: null,
-      },
-    },
-  });
-
-  logger.info({ parentId, studentId: student.id }, 'Parent linked to student');
-  return link;
-};
-
-/**
- * Update relation/isPrimary on an existing link
- */
-const updateChildLink = async (parentId, studentId, data) => {
-  const link = await repo.findChildLink(parentId, studentId);
-  if (!link) {
-    throw ApiError.notFound('Student is not linked to your account');
-  }
-
-  // If setting as primary, we could unset others — business decision: allow multiple primaries
-  return repo.updateChildLink(link.id, data);
-};
-
-/**
- * Unlink a child from this parent
- * Guard: cannot unlink if this is the only parent (orphan prevention)
- */
-const unlinkChild = async (parentId, studentId) => {
-  const link = await repo.findChildLink(parentId, studentId);
-  if (!link) {
-    throw ApiError.notFound('Student is not linked to your account');
-  }
-
-  const parentCount = await repo.countStudentParents(studentId);
-  if (parentCount <= 1) {
-    throw ApiError.badRequest(
-      'Cannot unlink — this student has no other linked parent. Contact the school to reassign.'
-    );
-  }
-
-  await repo.deleteChildLink(parentId, studentId);
-  logger.info({ parentId, studentId }, 'Parent unlinked from student');
-
-  return { unlinked: true };
-};
-
-// =============================================================================
+// ═══════════════════════════════════════════════════════════════════════════════
 // CARD VISIBILITY
-// =============================================================================
+// ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Update card visibility for one of the parent's children
- */
-const updateCardVisibility = async (parentId, studentId, visibility) => {
-  // Verify ownership
-  await getChild(parentId, studentId);
-
-  const result = await repo.upsertCardVisibility(studentId, visibility);
-  logger.info({ parentId, studentId, visibility }, 'Card visibility updated');
-  return result;
+export const updateVisibility = async (parentId, studentId, visibility) => {
+  await repo.verifyStudentOwnership(parentId, studentId);
+  await repo.updateCardVisibility(studentId, visibility);
+  await invalidateScanCache(studentId);
+  await invalidateHomeCache(parentId);
+  return { success: true };
 };
 
-// =============================================================================
-// NOTIFICATION PREFERENCES
-// =============================================================================
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Get notification preferences (returns defaults if not yet set)
- */
-const getNotificationPreferences = async (parentId) => {
-  const prefs = await repo.getNotificationPreferences(parentId);
+export const updateNotifications = async (parentId, prefs) => {
+  await repo.upsertNotificationPrefs(parentId, prefs);
+  await invalidateHomeCache(parentId);
+  return { success: true };
+};
 
-  // Return defaults if not configured
-  if (!prefs) {
-    return {
-      scanAlerts:          true,
-      attendanceAlerts:    true,
-      emergencyAlerts:     true,
-      communicationAlerts: true,
-      channels: {
-        push:  true,
-        sms:   true,
-        email: true,
-        inApp: true,
-      },
-    };
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOCK CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const lockCard = async (parentId, studentId) => {
+  await repo.verifyStudentOwnership(parentId, studentId);
+  const result = await repo.lockStudentCard(studentId);
+  await invalidateScanCache(studentId);
+  await invalidateHomeCache(parentId);
+
+  await publish({
+    type: EVENTS.PARENT_CARD_LOCKED,
+    actorId: parentId,
+    actorType: 'PARENT',
+    payload: { studentId },
+  }).catch(() => {});
+
+  return { locked: result.count > 0 };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const registerDeviceToken = (parentId, body) => repo.upsertParentDevice(parentId, body);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LINK CARD (Add Child)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const linkCard = async (parentId, { cardNumber }) => {
+  const card = await repo.findCardByNumber(cardNumber);
+  if (!card) throw ApiError.notFound('Card not found');
+
+  if (card.studentId) {
+    const existingLink = await repo.findParentStudentLink(parentId, card.studentId);
+    if (existingLink) throw ApiError.conflict('Already linked to your account');
   }
 
-  return prefs;
-};
-
-/**
- * Update notification preferences (upsert)
- */
-const updateNotificationPreferences = async (parentId, data) => {
-  return repo.upsertNotificationPreferences(parentId, data);
-};
-
-// =============================================================================
-// DEVICES
-// =============================================================================
-
-/**
- * List registered devices (paginated)
- */
-const listDevices = async (parentId, query) => {
-  const { page, limit } = query;
-  const { skip, take }  = paginate(page, limit);
-
-  const [devices, total] = await Promise.all([
-    repo.listDevices(parentId, { skip, take }),
-    repo.countDevices(parentId),
-  ]);
-
-  return { devices, pagination: { page, limit, total } };
-};
-
-/**
- * Remove a device — verifies ownership, then deactivates
- */
-const removeDevice = async (parentId, deviceId) => {
-  const device = await repo.findDevice(parentId, deviceId);
-  if (!device) {
-    throw ApiError.notFound('Device not found or does not belong to your account');
+  let studentId = card.studentId;
+  if (!studentId) {
+    const student = await repo.createStubStudent(card.schoolId);
+    studentId = student.id;
+    await repo.createEmergencyProfile(studentId);
+    await repo.activateCard(card.id, studentId);
   }
 
-  await repo.deactivateDevice(deviceId);
-  logger.info({ parentId, deviceId }, 'Device removed by parent');
+  const count = await repo.countParentChildren(parentId);
+  await repo.createParentStudentLink(parentId, studentId, count === 0);
 
-  return { removed: true };
+  await invalidateHomeCache(parentId);
+  return { success: true, studentId };
 };
 
-// =============================================================================
-// SESSIONS
-// =============================================================================
+// ═══════════════════════════════════════════════════════════════════════════════
+// SET ACTIVE STUDENT
+// ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * List active sessions (paginated)
- */
-const listSessions = async (parentId, query) => {
-  const { page, limit } = query;
-  const { skip, take }  = paginate(page, limit);
-
-  const [sessions, total] = await Promise.all([
-    repo.listSessions(parentId, { skip, take }),
-    repo.countSessions(parentId),
-  ]);
-
-  return { sessions, pagination: { page, limit, total } };
+export const setActiveStudent = async (parentId, studentId) => {
+  await repo.verifyStudentOwnership(parentId, studentId);
+  await repo.setActiveStudent(parentId, studentId);
+  await invalidateHomeCache(parentId);
+  return { success: true };
 };
 
-/**
- * Revoke a specific session by ID
- */
-const revokeSession = async (parentId, sessionId) => {
-  const session = await repo.findSession(parentId, sessionId);
-  if (!session) {
-    throw ApiError.notFound('Session not found or already revoked');
-  }
-
-  await repo.revokeSession(sessionId);
-  logger.info({ parentId, sessionId }, 'Session revoked by parent');
-
-  return { revoked: true };
-};
-
-/**
- * Revoke all other sessions (keep current one alive)
- */
-const revokeAllSessions = async (parentId, currentSessionId) => {
-  const { count } = await repo.revokeAllSessions(parentId, currentSessionId);
-  logger.info({ parentId, currentSessionId }, `Revoked ${count} sessions`);
-
-  return { revoked: count };
-};
-
-// =============================================================================
+// ═══════════════════════════════════════════════════════════════════════════════
 // SCAN HISTORY
-// =============================================================================
+// ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * List scan history for a child (paginated)
- * Verifies parent-child relationship before returning data
- */
-const listChildScans = async (parentId, studentId, query) => {
-  // Verify ownership
-  await getChild(parentId, studentId);
-
-  const { page, limit, from, to, result } = query;
-  const { skip, take } = paginate(page, limit);
-  const filters = { from, to, result };
-
-  const [scans, total] = await Promise.all([
-    repo.listChildScans(studentId, { skip, take, ...filters }),
-    repo.countChildScans(studentId, filters),
-  ]);
-
-  return { scans, pagination: { page, limit, total } };
-};
-
-// =============================================================================
-// EXPORT
-// =============================================================================
-
-export const parentService = {
-  // Profile
-  getProfile,
-  updateProfile,
-  deleteAccount,
-
-  // Children
-  listChildren,
-  getChild,
-  linkChild,
-  updateChildLink,
-  unlinkChild,
-
-  // Card Visibility
-  updateCardVisibility,
-
-  // Notification Preferences
-  getNotificationPreferences,
-  updateNotificationPreferences,
-
-  // Devices
-  listDevices,
-  removeDevice,
-
-  // Sessions
-  listSessions,
-  revokeSession,
-  revokeAllSessions,
-
-  // Scan History
-  listChildScans,
-};
+export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
+  repo.getScanHistory(parentId, { studentId, page, limit, filter });

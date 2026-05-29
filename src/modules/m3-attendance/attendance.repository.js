@@ -1,1 +1,180 @@
-// TODO: Add implementation
+// =============================================================================
+// modules/m3-attendance/attendance.repository.js — RESQID
+// All Prisma queries — no business logic.
+// =============================================================================
+
+import { prisma } from '#config/prisma.js';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SESSION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const createSession = ({ schoolId, teacherId, grade, section, subject }) =>
+  prisma.attendanceSession.create({
+    data: { schoolId, teacherId, grade, section, subject },
+  });
+
+export const findSessionById = (sessionId, schoolId) =>
+  prisma.attendanceSession.findFirst({
+    where: { id: sessionId, schoolId },
+  });
+
+export const findActiveSessionByClass = (schoolId, grade, section) =>
+  prisma.attendanceSession.findFirst({
+    where: { schoolId, grade, section, isActive: true },
+  });
+
+export const findActiveSession = (schoolId) =>
+  prisma.attendanceSession.findFirst({
+    where: { schoolId, isActive: true },
+    orderBy: { startedAt: 'desc' },
+  });
+
+export const closeSession = (sessionId) =>
+  prisma.attendanceSession.update({
+    where: { id: sessionId },
+    data: { isActive: false, endedAt: new Date() },
+  });
+
+export const listSessions = ({ schoolId, filters = {}, page = 1, limit = 20 }) => {
+  const where = {
+    schoolId,
+    ...(filters.grade && { grade: filters.grade }),
+    ...(filters.section && { section: filters.section }),
+    ...(filters.isActive !== undefined && { isActive: filters.isActive }),
+  };
+
+  return Promise.all([
+    prisma.attendanceSession.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { startedAt: 'desc' },
+    }),
+    prisma.attendanceSession.count({ where }),
+  ]);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TOKEN / STUDENT LOOKUP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const findTokenByUid = (rfidUid, schoolId) =>
+  prisma.token.findFirst({
+    where: { rfidUid, schoolId, status: 'ACTIVE' },
+    select: { id: true, studentId: true },
+  });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ATTENDANCE RECORD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const findRecord = (sessionId, studentId) =>
+  prisma.attendanceRecord.findUnique({
+    where: { sessionId_studentId: { sessionId, studentId } },
+  });
+
+export const upsertRecord = ({ sessionId, studentId, schoolId, status, markedAt }) =>
+  prisma.attendanceRecord.upsert({
+    where: { sessionId_studentId: { sessionId, studentId } },
+    create: { sessionId, studentId, schoolId, status, markedAt: markedAt || new Date() },
+    update: { status, markedAt: markedAt || new Date() },
+    include: {
+      student: {
+        select: { id: true, firstName: true, lastName: true, grade: true, section: true },
+      },
+    },
+  });
+
+export const listSessionRecords = (sessionId, page = 1, limit = 20) => {
+  const where = { sessionId };
+  return Promise.all([
+    prisma.attendanceRecord.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { markedAt: 'asc' },
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            grade: true,
+            section: true,
+            photoUrl: true,
+          },
+        },
+      },
+    }),
+    prisma.attendanceRecord.count({ where }),
+  ]);
+};
+
+export const listStudentRecords = (studentId, { page = 1, limit = 20, from, to }) => {
+  const where = {
+    studentId,
+    ...((from || to) && {
+      markedAt: {
+        ...(from && { gte: new Date(from) }),
+        ...(to && { lte: new Date(to) }),
+      },
+    }),
+  };
+
+  return Promise.all([
+    prisma.attendanceRecord.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { markedAt: 'desc' },
+      include: {
+        session: {
+          select: { id: true, grade: true, section: true, subject: true, startedAt: true },
+        },
+      },
+    }),
+    prisma.attendanceRecord.count({ where }),
+  ]);
+};
+
+export const listClassRecords = (schoolId, grade, section, from, to) =>
+  prisma.attendanceRecord.findMany({
+    where: {
+      schoolId,
+      session: { grade, section },
+      ...((from || to) && {
+        markedAt: {
+          ...(from && { gte: new Date(from) }),
+          ...(to && { lte: new Date(to) }),
+        },
+      }),
+    },
+    orderBy: { markedAt: 'desc' },
+    include: {
+      student: {
+        select: { id: true, firstName: true, lastName: true, grade: true, section: true },
+      },
+    },
+  });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const createDevice = ({ schoolId, name, location }) =>
+  prisma.attendanceDevice.create({
+    data: { schoolId, name, location, status: 'UNREGISTERED' },
+  });
+
+export const updateDeviceHeartbeat = (deviceId) =>
+  prisma.attendanceDevice.update({
+    where: { id: deviceId },
+    data: { lastSeenAt: new Date(), status: 'ONLINE' },
+  });
+
+export const listDevices = (schoolId) =>
+  prisma.attendanceDevice.findMany({
+    where: { schoolId },
+    orderBy: { createdAt: 'asc' },
+  });
