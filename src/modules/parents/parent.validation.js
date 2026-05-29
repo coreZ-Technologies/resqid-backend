@@ -1,216 +1,106 @@
 // =============================================================================
-// parent.validation.js — RESQID
-//
-// Validation schemas for the Parent module.
-// Covers: profile update, student linking, notification preferences,
-//         device management, session management, card visibility.
-//
-// Used by: validate.middleware.js → parent.routes.js
+// modules/parents/parent.validation.js — RESQID
+// Zod schemas for parent module endpoints.
 // =============================================================================
 
-import Joi from 'joi';
+import { z } from 'zod';
 
-// ─── Reusable Field Schemas ───────────────────────────────────────────────────
+const cuid = z.string().min(1, 'Invalid ID format');
+const phoneRegex = /^[6-9]\d{9}$/;
 
-const phoneSchema = Joi.string()
-  .pattern(/^\+?[1-9]\d{7,14}$/)
-  .messages({
-    'string.pattern.base': 'Phone number must be a valid international format (e.g. +919876543210)',
-  });
+// ─── Profile ──────────────────────────────────────────────────────────────────
 
-const paginationSchema = {
-  page:  Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(20),
-};
-
-// =============================================================================
-// PROFILE
-// =============================================================================
-
-/**
- * GET /parents/me — no body needed
- */
-export const getProfileSchema = Joi.object({});
-
-/**
- * PATCH /parents/me
- */
-export const updateProfileSchema = Joi.object({
-  name:  Joi.string().min(2).max(100).trim().optional(),
-  email: Joi.string().email().lowercase().trim().optional(),
-  phone: phoneSchema.optional(),
-}).min(1).messages({
-  'object.min': 'At least one field must be provided to update',
-});
-
-/**
- * DELETE /parents/me — account self-deletion
- */
-export const deleteAccountSchema = Joi.object({
-  confirmPhrase: Joi.string()
-    .valid('DELETE MY ACCOUNT')
-    .required()
-    .messages({
-      'any.only': 'You must type "DELETE MY ACCOUNT" to confirm',
-    }),
-});
-
-// =============================================================================
-// CHILDREN (ParentStudent links)
-// =============================================================================
-
-/**
- * GET /parents/me/children — list linked children
- */
-export const listChildrenSchema = Joi.object({
-  ...paginationSchema,
-});
-
-/**
- * POST /parents/me/children — link a child via invite/token
- */
-export const linkChildSchema = Joi.object({
-  linkToken: Joi.string().trim().required().messages({
-    'any.required': 'A link token is required to connect a student',
+export const parentProfileSchema = z.object({
+  body: z.object({
+    name: z.string().min(1).max(100).transform(v => v.trim()),
+    email: z.string().email().toLowerCase().optional(),
   }),
-  relation: Joi.string()
-    .valid('PARENT', 'GUARDIAN', 'GRANDPARENT', 'SIBLING', 'OTHER')
-    .default('PARENT'),
-  isPrimary: Joi.boolean().default(false),
 });
 
-/**
- * PATCH /parents/me/children/:studentId — update relation metadata
- */
-export const updateChildLinkSchema = Joi.object({
-  relation: Joi.string()
-    .valid('PARENT', 'GUARDIAN', 'GRANDPARENT', 'SIBLING', 'OTHER')
-    .optional(),
-  isPrimary: Joi.boolean().optional(),
-}).min(1);
+// ─── Card Visibility ──────────────────────────────────────────────────────────
 
-/**
- * DELETE /parents/me/children/:studentId — unlink a child
- */
-export const unlinkChildSchema = Joi.object({
-  studentId: Joi.string().required(),
-}).options({ allowUnknown: true }); // params schema
-
-// =============================================================================
-// CARD VISIBILITY
-// =============================================================================
-
-/**
- * PATCH /parents/me/children/:studentId/visibility
- * Controls what emergency responders see when they scan the child's QR
- */
-export const updateCardVisibilitySchema = Joi.object({
-  visibility: Joi.string()
-    .valid('PUBLIC', 'MINIMAL', 'HIDDEN')
-    .required()
-    .messages({
-      'any.only': 'Visibility must be PUBLIC, MINIMAL, or HIDDEN',
-      'any.required': 'Visibility level is required',
-    }),
+export const updateVisibilitySchema = z.object({
+  params: z.object({ studentId: cuid }),
+  body: z.object({
+    visibility: z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']),
+  }),
 });
 
-// =============================================================================
-// NOTIFICATION PREFERENCES
-// =============================================================================
+// ─── Notification Preferences ─────────────────────────────────────────────────
 
-/**
- * PATCH /parents/me/notification-preferences
- */
-export const updateNotificationPreferencesSchema = Joi.object({
-  scanAlerts:           Joi.boolean().optional(),
-  attendanceAlerts:     Joi.boolean().optional(),
-  emergencyAlerts:      Joi.boolean().optional(),
-  communicationAlerts:  Joi.boolean().optional(),
-  channels: Joi.object({
-    push:  Joi.boolean().optional(),
-    sms:   Joi.boolean().optional(),
-    email: Joi.boolean().optional(),
-    inApp: Joi.boolean().optional(),
-  }).optional(),
-}).min(1).messages({
-  'object.min': 'At least one preference must be provided',
+export const updateNotificationsSchema = z.object({
+  body: z.object({
+    pushEnabled: z.boolean().optional(),
+    smsEnabled: z.boolean().optional(),
+    emailEnabled: z.boolean().optional(),
+    onScan: z.boolean().optional(),
+    onAttendance: z.boolean().optional(),
+    onEmergency: z.boolean().optional(),
+    onAnnouncement: z.boolean().optional(),
+  }),
 });
 
-// =============================================================================
-// DEVICES
-// =============================================================================
+// ─── Lock Card ────────────────────────────────────────────────────────────────
 
-/**
- * GET /parents/me/devices — list registered devices
- */
-export const listDevicesSchema = Joi.object({
-  ...paginationSchema,
+export const lockCardSchema = z.object({
+  params: z.object({ studentId: cuid }),
+  body: z.object({
+    confirmation: z.literal('LOCK'),
+  }),
 });
 
-/**
- * DELETE /parents/me/devices/:deviceId — remove a device
- */
-export const removeDeviceSchema = Joi.object({
-  deviceId: Joi.string().required(),
-}).options({ allowUnknown: true });
+// ─── Device Token ─────────────────────────────────────────────────────────────
 
-// =============================================================================
-// SESSIONS
-// =============================================================================
-
-/**
- * GET /parents/me/sessions
- */
-export const listSessionsSchema = Joi.object({
-  ...paginationSchema,
+export const registerDeviceTokenSchema = z.object({
+  body: z.object({
+    token: z.string().min(10, 'Token is required'),
+    platform: z.enum(['IOS', 'ANDROID', 'WEB']),
+    deviceName: z.string().max(100).optional(),
+    deviceModel: z.string().max(100).optional(),
+    osVersion: z.string().max(50).optional(),
+  }),
 });
 
-/**
- * DELETE /parents/me/sessions/:sessionId — revoke a specific session
- */
-export const revokeSessionSchema = Joi.object({
-  sessionId: Joi.string().required(),
-}).options({ allowUnknown: true });
+// ─── Link Card (Add Child) ───────────────────────────────────────────────────
 
-/**
- * DELETE /parents/me/sessions — revoke all sessions except current
- */
-export const revokeAllSessionsSchema = Joi.object({});
+export const linkCardSchema = z.object({
+  body: z.object({
+    cardNumber: z.string().trim().min(5).max(20)
+      .transform(v => v.toUpperCase().replace(/[^A-Z0-9-]/g, '')),
+  }),
+});
 
-// =============================================================================
-// SCAN HISTORY (for parent's children)
-// =============================================================================
+// ─── Set Active Student ──────────────────────────────────────────────────────
 
-/**
- * GET /parents/me/children/:studentId/scans
- */
-export const listChildScansSchema = Joi.object({
-  ...paginationSchema,
-  from:   Joi.date().iso().optional(),
-  to:     Joi.date().iso().min(Joi.ref('from')).optional(),
-  result: Joi.string()
-    .valid('ACTIVE', 'INACTIVE', 'REVOKED', 'INVALID', 'SUSPICIOUS')
-    .optional(),
-}).options({ allowUnknown: true }); // allow params
+export const setActiveStudentSchema = z.object({
+  body: z.object({
+    studentId: cuid,
+  }),
+});
 
-// =============================================================================
-// EXPORT MAP (used by validate middleware)
-// =============================================================================
+// ─── Scan History ────────────────────────────────────────────────────────────
 
-export const parentValidation = {
-  getProfile:                    getProfileSchema,
-  updateProfile:                 updateProfileSchema,
-  deleteAccount:                 deleteAccountSchema,
-  listChildren:                  listChildrenSchema,
-  linkChild:                     linkChildSchema,
-  updateChildLink:               updateChildLinkSchema,
-  unlinkChild:                   unlinkChildSchema,
-  updateCardVisibility:          updateCardVisibilitySchema,
-  updateNotificationPreferences: updateNotificationPreferencesSchema,
-  listDevices:                   listDevicesSchema,
-  removeDevice:                  removeDeviceSchema,
-  listSessions:                  listSessionsSchema,
-  revokeSession:                 revokeSessionSchema,
-  revokeAllSessions:             revokeAllSessionsSchema,
-  listChildScans:                listChildScansSchema,
-};
+export const scanHistorySchema = z.object({
+  params: z.object({ studentId: cuid }),
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+    filter: z.enum(['all', 'emergency', 'success']).default('all'),
+  }),
+});
+
+// ─── Photo Upload ────────────────────────────────────────────────────────────
+
+export const generateUploadUrlSchema = z.object({
+  body: z.object({
+    contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+    fileSize: z.number().int().positive().max(5 * 1024 * 1024, 'Max 5MB'),
+  }),
+});
+
+export const confirmUploadSchema = z.object({
+  body: z.object({
+    key: z.string().min(10),
+    nonce: z.string().min(10),
+  }),
+});
