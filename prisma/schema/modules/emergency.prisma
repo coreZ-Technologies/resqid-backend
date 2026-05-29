@@ -28,6 +28,9 @@ model EmergencyProfile {
 
   contacts    EmergencyContact[]
 
+  // Multi‑tenancy – school ownership
+  school     School    @relation(fields: [schoolId], references: [id])
+
   @@index([schoolId])
   @@map("emergency_profiles")
 }

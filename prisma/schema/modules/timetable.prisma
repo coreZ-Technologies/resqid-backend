@@ -1,4 +1,29 @@
 // =============================================================================
+<<<<<<< HEAD
+// timetable.prisma — RESQID
+// Module m1: Timetable management, teachers, subjects, periods, substitutions
+// =============================================================================
+
+model Teacher {
+  id        String   @id @default(cuid())
+  schoolId  String
+  userId    String?  @unique   // optional link to User (if teacher has login)
+  name      String
+  phone     String?
+  subjectIds String[] // subjects they teach (Subject.code or Subject.id)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  periods        Period[]
+  substitutions  Substitution[] @relation("SubstituteTeacher")
+
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
+  user     User?   @relation(fields: [userId], references: [id])
+=======
 // prisma/schema/modules/timetable.prisma — RESQID
 // School-specific timetable with substitution support
 // =============================================================================
@@ -53,6 +78,7 @@ model Teacher {
 
   periods         Period[]
   substitutions   Substitution[]   @relation("SubstituteTeacher")
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 
   @@index([schoolId])
   @@index([userId])
@@ -74,6 +100,9 @@ model Subject {
   isActive  Boolean @default(true)
 
   periods   Period[]
+
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
 
   @@unique([schoolId, code])
   @@index([schoolId])
@@ -132,10 +161,16 @@ model Period {
 
   substitutions Substitution[]
 
+<<<<<<< HEAD
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
+
+=======
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   @@unique([schoolId, classId, dayOfWeek, periodNumber])
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   @@index([schoolId])
   @@index([teacherId, dayOfWeek])
   @@map("periods")
@@ -156,6 +191,13 @@ model Substitution {
   reason            String?
   status            String   @default("PENDING")
 
+<<<<<<< HEAD
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@index([date])
+=======
   approvedBy        String?
   approvedAt        DateTime?
   notifiedAt        DateTime?
@@ -167,5 +209,6 @@ model Substitution {
   @@index([schoolId, date])
   @@index([periodId])
   @@index([substituteId])
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   @@map("substitutions")
 }
