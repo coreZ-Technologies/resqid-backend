@@ -65,46 +65,92 @@ model SchoolUser {
 
 model ParentUser {
   id           String          @id @default(cuid())
-  name         String?
+  
+  // Basic Information
+  firstName    String?         // Split name into first/last for better UX
+  lastName     String?
+  name         String?         // Keep for backward compatibility (full name)
   phone        String          @unique
   email        String?
-
+  photoUrl     String?         // Profile photo
+  
+  // Address (for emergency situations)
+  address      String?
+  city         String?
+  state        String?
+  pincode      String?
+  
+  // Occupation (useful for school records)
+  occupation   String?
+  
+  // Communication Preferences
+  canCall      Boolean         @default(true)
+  canWhatsapp  Boolean         @default(true)
+  canEmail     Boolean         @default(true)
+  canSMS       Boolean         @default(true)
+  
+  // OTP Authentication
   otp          String?
   otpExpiresAt DateTime?
   otpAttempts  Int             @default(0)
-
+  otpRequestedAt DateTime?     // Track when last OTP was requested
+  isPhoneVerified Boolean      @default(false)
+  
+  // Status
   isActive     Boolean         @default(true)
   lastLoginAt  DateTime?
-
+  lastSeenAt   DateTime?       // For online status
+  
+  // Emergency Contact Priority (default for all children)
+  isEmergencyContact Boolean   @default(true)
+  emergencyPriority Int        @default(1)  // 1 = First to call
+  
+  // Metadata for extensibility
+  metadata     Json?
+  
+  // Timestamps
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
-  deletedAt    DateTime?
+  deletedAt    DateTime?       // Soft delete
 
+  // Relations
   students     ParentStudent[]
   sessions     UserSession[]
   devices      ParentDevice[]
   notifications Notification[]
   preferences  NotificationPreference?
+  emergencyContacts EmergencyContact[]  // Parents can have their own emergency contacts
 
   @@index([phone])
+  @@index([email])
+  @@index([firstName, lastName])
   @@map("parent_users")
 }
 
 // ─── Parent ↔ Student Link ────────────────────────────────────────────────────
 
 model ParentStudent {
-  id        String      @id @default(cuid())
-  parentId  String
-  parent    ParentUser  @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  studentId String
-  student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  relation  String      @default("PARENT")
-
-  isPrimary Boolean     @default(false)
-  createdAt DateTime    @default(now())
+  id           String       @id @default(cuid())
+  parentId     String
+  parent       ParentUser   @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  relation     Relationship @default(GUARDIAN)
+  
+  isPrimary    Boolean      @default(false)
+  isEmergency  Boolean      @default(true)
+  priority     Int          @default(1)
+  canPickup    Boolean      @default(true)
+  
+  isActive     Boolean      @default(true)
+  
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@unique([parentId, studentId])
   @@index([studentId])
+  @@index([parentId])
   @@map("parent_students")
 }
 
