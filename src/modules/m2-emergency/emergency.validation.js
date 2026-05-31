@@ -1,39 +1,49 @@
 // =============================================================================
-// modules/m2-emergency/emergency.validation.js — RESQID
+// modules/emergency/emergency.validation.js — RESQID
 // =============================================================================
-
 import { z } from 'zod';
+import {
+  INCIDENT_TYPES,
+  INCIDENT_SEVERITIES,
+  INCIDENT_STATUSES,
+} from './emergency.constants.js';
 
-const cuid = z.string().min(1, 'Invalid ID format');
-
-export const getProfileSchema = z.object({
-  params: z.object({ studentId: cuid }),
+export const studentQuerySchema = z.object({
+  search: z.string().optional(),
+  class: z.string().optional(),
+  section: z.string().optional(),
+  risk: z.enum(['high', 'low', 'all']).optional().default('all'),
 });
 
-export const updateProfileSchema = z.object({
-  params: z.object({ studentId: cuid }),
-  body: z.object({
-    bloodGroup: z
-      .enum(['A_POS', 'A_NEG', 'B_POS', 'B_NEG', 'O_POS', 'O_NEG', 'AB_POS', 'AB_NEG'])
-      .optional(),
-    allergies: z.string().max(500).optional(),
-    conditions: z.string().max(500).optional(),
-    medications: z.string().max(500).optional(),
-    doctorName: z.string().max(100).optional(),
-    doctorPhone: z.string().max(15).optional(),
-    notes: z.string().max(1000).optional(),
-    contacts: z
-      .array(
-        z.object({
-          id: z.string().optional(),
-          name: z.string().min(1).max(100),
-          phone: z.string().min(10).max(15),
-          relation: z.string().max(50).optional(),
-          priority: z.number().int().min(1).max(10),
-          isPrimary: z.boolean().optional(),
-        })
-      )
-      .max(10)
-      .optional(),
-  }),
+export const studentIdParamSchema = z.object({
+  studentId: z.string().min(1),
 });
+
+export const incidentQuerySchema = z.object({
+  studentId: z.string().optional(),
+  status: z.enum(INCIDENT_STATUSES).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+export const createIncidentSchema = z.object({
+  studentId: z.string().min(1),
+  type: z.enum(INCIDENT_TYPES),
+  severity: z.enum(INCIDENT_SEVERITIES),
+  description: z.string().min(1),
+  actionTaken: z.string().optional(),
+  location: z.string().optional(),
+  medicationGiven: z.string().optional(),
+  ambulanceCalled: z.boolean().optional().default(false),
+});
+
+export const statsQuerySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // for incidents today, optional
+});
+
+export default {
+  studentQuery: studentQuerySchema,
+  studentIdParam: studentIdParamSchema,
+  incidentQuery: incidentQuerySchema,
+  createIncident: createIncidentSchema,
+  statsQuery: statsQuerySchema,
+};

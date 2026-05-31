@@ -1,117 +1,33 @@
 // =============================================================================
-// modules/m3-attendance/attendance.routes.js — RESQID
-// Mounted at /api/attendance
+// modules/attendance/attendance.routes.js — RESQID
 // =============================================================================
-
 import { Router } from 'express';
-import { validate, validateAll } from '#middleware/validate.middleware.js';
+import attendanceController from './attendance.controller.js';
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
-import { authorize } from '#middleware/auth/rbac.middleware.js';
-import { ROLES } from '#shared/constants/roles.js';
-import * as controller from './attendance.controller.js';
-import {
-  openSessionSchema,
-  closeSessionSchema,
-  listSessionsSchema,
-  tapSchema,
-  bulkTapSchema,
-  markAttendanceSchema,
-  bulkMarkAttendanceSchema,
-  updateAttendanceSchema,
-  sessionRecordsSchema,
-  studentAttendanceSchema,
-  classAttendanceSchema,
-  registerDeviceSchema,
-} from './attendance.validation.js';
+import { authorize } from '#middleware/auth/authorize.middleware.js';
+import { tenantScope } from '#middleware/auth/tenantScope.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { auditLog } from '#middleware/logging/auditLog.middleware.js';
+import { requireModule } from '#middleware/requireModule.middleware.js';
+import attendanceValidation from './attendance.validation.js';
 
 const router = Router();
 
-const STAFF = [ROLES.TEACHER, ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN];
-const ADMIN = [ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN];
+router.use(authenticate);
+router.use(tenantScope);
+router.use(requireModule('attendance'));
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SESSIONS
-// ═══════════════════════════════════════════════════════════════════════════════
+// All routes require at least teacher access
+router.use(authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']));
 
-router.post(
-  '/sessions',
-  authenticate,
-  authorize(STAFF),
-  validate(openSessionSchema),
-  controller.openSession
-);
-router.post(
-  '/sessions/:sessionId/close',
-  authenticate,
-  authorize(STAFF),
-  validateAll(closeSessionSchema),
-  controller.closeSession
-);
-router.get('/sessions', authenticate, authorize(STAFF), controller.listSessions);
+router.get('/', validate(attendanceValidation.getAttendance, 'query'), attendanceController.list);
+router.get('/stats', validate(attendanceValidation.stats, 'query'), attendanceController.stats);
+router.get('/monthly', validate(attendanceValidation.monthly, 'query'), attendanceController.monthly);
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// RFID TAP — Device Auth (no JWT)
-// ═══════════════════════════════════════════════════════════════════════════════
+router.post('/mark', validate(attendanceValidation.markAttendance), auditLog('attendance.mark'), attendanceController.mark);
+router.post('/bulk', validate(attendanceValidation.bulkMark), auditLog('attendance.bulk'), attendanceController.bulkMark);
 
-router.post('/tap', validate(tapSchema), controller.processTap);
+const attendanceRoutes = Router();
+attendanceRoutes.use('/attendance', router);
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// BULK SYNC — ESP32 Offline
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.post('/bulk', validate(bulkTapSchema), controller.processBulkTaps);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DEVICE
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.post('/device/heartbeat', controller.deviceHeartbeat);
-router.post(
-  '/device/register',
-  authenticate,
-  authorize(ADMIN),
-  validate(registerDeviceSchema),
-  controller.registerDevice
-);
-router.get('/devices', authenticate, authorize(ADMIN), controller.listDevices);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// MANUAL MARKS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.post(
-  '/sessions/:sessionId/records',
-  authenticate,
-  authorize(STAFF),
-  validateAll(markAttendanceSchema),
-  controller.markAttendance
-);
-router.post(
-  '/sessions/:sessionId/records/bulk',
-  authenticate,
-  authorize(STAFF),
-  validateAll(bulkMarkAttendanceSchema),
-  controller.bulkMarkAttendance
-);
-router.patch(
-  '/sessions/:sessionId/records/:studentId',
-  authenticate,
-  authorize(STAFF),
-  validateAll(updateAttendanceSchema),
-  controller.updateAttendance
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// QUERIES
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.get(
-  '/sessions/:sessionId/records',
-  authenticate,
-  authorize(STAFF),
-  controller.getSessionRecords
-);
-router.get('/students/:studentId', authenticate, authorize(STAFF), controller.getStudentAttendance);
-router.get('/class', authenticate, authorize(STAFF), controller.getClassAttendance);
-
-export default router;
+export default attendanceRoutes;

@@ -1,49 +1,321 @@
 // =============================================================================
 // prisma/schema/modules/communication.prisma — RESQID
-// Announcements and parent messaging
+// Announcements, parent messaging, and notifications
+// Uses: SchoolUser (staff), Student, ParentUser
 // =============================================================================
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum AnnouncementPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum AnnouncementTarget {
+  ALL               // Entire school
+  GRADE             // Specific grade(s)
+  SECTION           // Specific section(s)
+  STUDENT           // Specific student(s)
+  PARENT            // All parents
+  STAFF             // Staff only
+  CUSTOM            // Custom filter
+}
+
+enum MessageDirection {
+  SCHOOL_TO_PARENT   // School → Parent
+  PARENT_TO_SCHOOL   // Parent → School
+  SYSTEM             // Auto-generated
+}
+
+enum MessageType {
+  GENERAL
+  ATTENDANCE
+  FEE_REMINDER
+  EVENT_INVITATION
+  REPORT_CARD
+  EMERGENCY
+  ABSENT_NOTIFICATION
+  HOMEWORK
+  EXAM_SCHEDULE
+  PAYMENT_RECEIPT
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  REPLIED
+  FAILED
+}
+
+// ─── Announcement Model ──────────────────────────────────────────────────────
 
 model Announcement {
   id        String    @id @default(cuid())
   schoolId  String
   school    School    @relation(fields: [schoolId], references: [id])
+  
+  // Author (SchoolUser - teacher/admin)
   authorId  String
-
+  author    SchoolUser @relation(fields: [authorId], references: [id])
+  
+  // Content
   title     String
   body      String
   imageUrl  String?
-
-  targetAll     Boolean  @default(true)
-  targetGrades  String[]
-
+  attachments String[]  // URLs to attached files
+  priority  AnnouncementPriority @default(NORMAL)
+  
+  // Targeting
+  target    AnnouncementTarget @default(ALL)
+  targetGrades   String[]   // ["10", "11", "12"]
+  targetSections String[]   // ["A", "B"]
+  targetStudentIds String[] // Specific student IDs
+  isPublic   Boolean  @default(false)  // Visible to parents without login
+  
+  // Scheduling
   publishedAt   DateTime?
   expiresAt     DateTime?
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  isArchived    Boolean  @default(false)
+  
+  // Stats
+  totalRecipients Int    @default(0)
+  deliveredCount  Int    @default(0)
+  readCount       Int    @default(0)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  deliveries  AnnouncementDelivery[]
 
   @@index([schoolId])
+  @@index([schoolId, target])
   @@index([publishedAt])
+  @@index([expiresAt])
   @@map("announcements")
 }
 
+// ─── Announcement Delivery (Track who received/read) ──────────────────────────
+
+model AnnouncementDelivery {
+  id              String       @id @default(cuid())
+  announcementId  String
+  announcement    Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  
+  // Recipient (can be parent or staff)
+  parentId   String?
+  parent     ParentUser? @relation(fields: [parentId], references: [id])
+  staffId    String?
+  staff      SchoolUser? @relation(fields: [staffId], references: [id])
+  
+  // Delivery Status
+  channel     NotificationChannel
+  status      MessageStatus @default(SENT)
+  deliveredAt DateTime?
+  readAt      DateTime?
+  
+  // For SMS/Email tracking
+  externalId  String?     // External service message ID
+  error       String?     // Delivery error message
+  
+  createdAt   DateTime    @default(now())
+  
+  @@unique([announcementId, parentId])
+  @@unique([announcementId, staffId])
+  @@index([announcementId])
+  @@index([parentId])
+  @@index([staffId])
+  @@index([status])
+  @@map("announcement_deliveries")
+}
+
+// ─── Message Model (Direct Communication) ─────────────────────────────────────
+
 model Message {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   schoolId   String
-  school     School   @relation(fields: [schoolId], references: [id])
-
-  senderId   String
-  parentId   String
-  studentId  String
-
+  school     School    @relation(fields: [schoolId], references: [id])
+  
+  // Thread ID for conversation grouping
+  threadId   String?
+  
+  // Direction & Type
+  direction  MessageDirection @default(SCHOOL_TO_PARENT)
+  type       MessageType      @default(GENERAL)
+  
+  // Participants
+  senderId   String?    // SchoolUser ID (if school → parent)
+  sender     SchoolUser? @relation(fields: [senderId], references: [id])
+  parentId   String?    // ParentUser ID
+  parent     ParentUser? @relation(fields: [parentId], references: [id])
+  studentId  String?    // Related student (optional)
+  student    Student?   @relation(fields: [studentId], references: [id])
+  
+  // Content
+  subject    String?
   body       String
+  attachments String[]  // URLs to attached files
+  
+  // Status Tracking
+  status     MessageStatus @default(SENT)
   isRead     Boolean  @default(false)
   readAt     DateTime?
-
+  repliedTo  String?   // Message ID this is replying to
+  
+  // Delivery Channels
+  channels   NotificationChannel[]  // ["APP_PUSH", "SMS"]
+  
+  // Metadata
+  metadata   Json?
+  
+  // Timestamps
   createdAt  DateTime @default(now())
-
+  updatedAt  DateTime @updatedAt
+  
+  // Relations
+  replies    Message[] @relation("MessageReplies")
+  parentMessage Message? @relation("MessageReplies", fields: [repliedTo], references: [id])
+  
   @@index([schoolId])
+  @@index([threadId])
   @@index([parentId])
   @@index([studentId])
+  @@index([senderId])
+  @@index([createdAt])
   @@map("messages")
+}
+
+// ─── Message Template (Pre-defined message templates) ─────────────────────────
+
+model MessageTemplate {
+  id        String    @id @default(cuid())
+  schoolId  String
+  school    School    @relation(fields: [schoolId], references: [id])
+  
+  // Template Details
+  name      String    // "Absent Notification", "Fee Reminder"
+  type      MessageType
+  subject   String
+  body      String    // Can contain variables: {{studentName}}, {{date}}, {{amount}}
+  
+  // Who created it
+  createdById String
+  createdBy   SchoolUser @relation(fields: [createdById], references: [id])
+  
+  // Status
+  isActive  Boolean   @default(true)
+  isDefault Boolean   @default(false)  // System default template
+  
+  // Usage Stats
+  usageCount Int      @default(0)
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  @@index([schoolId, type])
+  @@index([isDefault])
+  @@map("message_templates")
+}
+
+// ─── Notification Queue (For batch processing) ────────────────────────────────
+
+model NotificationQueue {
+  id              String    @id @default(cuid())
+  schoolId        String
+  
+  // Recipient
+  parentId        String?
+  parent          ParentUser? @relation(fields: [parentId], references: [id])
+  
+  // Content
+  title           String
+  body            String
+  type            MessageType
+  referenceId     String?    // Related entity ID (attendance, fee, etc.)
+  referenceType   String?    // "ATTENDANCE", "FEE", "EXAM", "EVENT"
+  
+  // Delivery
+  channel         NotificationChannel
+  status          MessageStatus @default(SENT)
+  priority        Int          @default(5)  // 1-10, lower = higher priority
+  
+  // Scheduling
+  scheduledFor    DateTime?
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  
+  // Tracking
+  externalId      String?    // External service ID
+  attemptCount    Int        @default(0)
+  maxAttempts     Int        @default(3)
+  lastAttemptAt   DateTime?
+  error           String?
+  
+  // Metadata
+  metadata        Json?
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([parentId])
+  @@index([priority])
+  @@map("notification_queue")
+}
+
+// ─── Bulk Communication Campaign ──────────────────────────────────────────────
+
+model CommunicationCampaign {
+  id          String    @id @default(cuid())
+  schoolId    String
+  school      School    @relation(fields: [schoolId], references: [id])
+  
+  // Campaign Details
+  name        String
+  description String?
+  type        MessageType
+  
+  // Content
+  subject     String
+  body        String
+  templateId  String?    // If using a template
+  
+  // Targeting
+  target      AnnouncementTarget
+  targetGrades   String[]
+  targetSections String[]
+  targetFilters  Json?    // { status: "ACTIVE", feeStatus: "PENDING" }
+  
+  // Schedule
+  scheduledFor DateTime?
+  sentAt       DateTime?
+  completedAt  DateTime?
+  
+  // Stats
+  totalRecipients Int
+  sentCount       Int  @default(0)
+  deliveredCount  Int  @default(0)
+  readCount       Int  @default(0)
+  failedCount     Int  @default(0)
+  
+  // Status
+  status      String  @default("DRAFT")  // DRAFT, SCHEDULED, SENDING, COMPLETED, FAILED
+  
+  // Created by
+  createdById String
+  createdBy   SchoolUser @relation(fields: [createdById], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([schoolId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@map("communication_campaigns")
 }

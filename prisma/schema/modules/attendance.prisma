@@ -1,7 +1,10 @@
 // =============================================================================
 // prisma/schema/modules/attendance.prisma — RESQID
-// Attendance sessions, taps, and records
+// Attendance sessions, taps, and records for BOTH Students & Staff
+// Uses: SchoolUser (teachers/staff), Student (students)
 // =============================================================================
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
 
 enum AttendanceStatus {
   PRESENT
@@ -9,72 +12,342 @@ enum AttendanceStatus {
   LATE
   EXCUSED
   HALF_DAY
+  HOLIDAY
 }
 
-// ── Session (e.g., morning/afternoon class block) ──────────────────────────
+enum SessionType {
+  MORNING
+  AFTERNOON
+  FULL_DAY
+  EVENT
+  EXAM
+  STAFF_MEETING
+  DUTY
+}
+
+enum AttendanceMode {
+  RFID
+  BIOMETRIC
+  QR_CODE
+  MANUAL
+  GPS
+  SELF
+}
+
+// ─── Attendance Session ───────────────────────────────────────────────────────
+
 model AttendanceSession {
-  id          String    @id @default(cuid())
+  id          String        @id @default(cuid())
   schoolId    String
-  teacherId   String
-  grade       String
-  section     String
-  subject     String?
-
-  startedAt   DateTime  @default(now())
-  endedAt     DateTime?
-  isActive    Boolean   @default(true)
-
-  records     AttendanceRecord[]
-  taps        AttendanceTap[]
-
+  school      School        @relation(fields: [schoolId], references: [id])
+  
+  // Session Details
+  name        String        // "Morning Attendance - Class 10A" or "Staff Morning Check-in"
+  type        SessionType   @default(MORNING)
+  mode        AttendanceMode @default(RFID)
+  
+  // For Student Sessions
+  grade       String?       // "10" (null for staff sessions)
+  section     String?       // "A" (null for staff sessions)
+  subject     String?       // Subject name (for class-specific attendance)
+  
+  // For Staff Sessions
+  isStaffSession Boolean    @default(false)
+  
+  // Session Timing
+  scheduledStart DateTime   // Planned start time
+  scheduledEnd   DateTime?  // Planned end time
+  startedAt      DateTime?  // Actual start time
+  endedAt        DateTime?  // Actual end time
+  lateThreshold  Int        @default(15)     // Minutes after which marked LATE
+  
+  // Created by SchoolUser (teacher/admin)
+  createdById  String
+  createdBy    SchoolUser    @relation(fields: [createdById], references: [id])
+  
+  // Status
+  isActive     Boolean      @default(true)
+  isArchived   Boolean      @default(false)
+  
+  // Timestamps
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  
   // Relations
-  school      School    @relation(fields: [schoolId], references: [id])
-  teacher     User      @relation(fields: [teacherId], references: [id])
+  studentRecords  StudentAttendanceRecord[]
+  staffRecords    StaffAttendanceRecord[]
+  taps            AttendanceTap[]
+  reports         AttendanceReport[]
 
-  @@index([schoolId])
-  @@index([teacherId])
-  @@index([isActive])
+  @@index([schoolId, type])
+  @@index([schoolId, isActive])
+  @@index([grade, section])
+  @@index([isStaffSession])
   @@map("attendance_sessions")
 }
 
-// ── Raw tap from RFID reader (before processing) ───────────────────────────
+// ─── Raw Tap from Device (RFID/Biometric/QR) ──────────────────────────────────
+
 model AttendanceTap {
   id          String            @id @default(cuid())
   sessionId   String
   session     AttendanceSession @relation(fields: [sessionId], references: [id])
-  studentId   String
-  student     Student           @relation(fields: [studentId], references: [id])
   schoolId    String
-
-  uidHash     String
-  tappedAt    DateTime          @default(now())
-  deviceId    String?
-  processed   Boolean           @default(false)
-
-  // Relations
   school      School            @relation(fields: [schoolId], references: [id])
+  
+  // Who tapped (student OR staff, not both)
+  studentId   String?
+  student     Student?          @relation(fields: [studentId], references: [id])
+  staffId     String?
+  staff       SchoolUser?       @relation(fields: [staffId], references: [id])
+  
+  // Tap Data
+  uidHash     String            // Hashed card/fingerprint ID
+  tapType     String            // "RFID_CARD", "FINGERPRINT", "QR_CODE", "FACE"
+  deviceId    String?           // Reference to AttendanceDevice
+  deviceName  String?           // "Main Gate Reader", "Class 10A Reader"
+  
+  // Location Data (for GPS-based attendance)
+  latitude    Float?
+  longitude   Float?
+  location    String?           // "Main Building, Gate 1"
+  
+  // Processing
+  tappedAt    DateTime          @default(now())
+  processed   Boolean           @default(false)
+  processedAt DateTime?
+  error       String?           // "Invalid card", "Duplicate tap", "Unknown user"
+  
+  // Metadata
+  metadata    Json?
 
   @@index([sessionId])
   @@index([studentId])
+  @@index([staffId])
   @@index([processed])
+  @@index([tappedAt])
   @@map("attendance_taps")
 }
 
-// ── Processed attendance record (one per student per session) ──────────────
-model AttendanceRecord {
+// ─── Student Attendance Record ────────────────────────────────────────────────
+
+model StudentAttendanceRecord {
   id          String            @id @default(cuid())
   sessionId   String
   session     AttendanceSession @relation(fields: [sessionId], references: [id])
   studentId   String
   student     Student           @relation(fields: [studentId], references: [id])
   schoolId    String
-
+  school      School            @relation(fields: [schoolId], references: [id])
+  
+  // Attendance Details
   status      AttendanceStatus  @default(PRESENT)
-  markedAt    DateTime          @default(now())
-  markedBy    String?
+  mode        AttendanceMode    @default(RFID)
+  
+  // Timing
+  scheduledTime DateTime?       // When student was expected
+  markedAt      DateTime        @default(now())
+  lateBy        Int?            // Minutes late (if LATE status)
+  
+  // Who marked it
+  markedBy     String?          // SchoolUser ID (null if auto/RFID)
+  markedByUser SchoolUser?      @relation(fields: [markedBy], references: [id])
+  tapId        String?          // Reference to the tap
+  tap          AttendanceTap?   @relation(fields: [tapId], references: [id])
+  
+  // Additional Info
+  reason       String?          // Reason for absence/late
+  remark       String?          // Teacher's remark
+  isVerified   Boolean          @default(false)
+  verifiedBy   String?          // SchoolUser who verified
+  verifiedByUser SchoolUser?    @relation(fields: [verifiedBy], references: [id])
+  
+  // Parent Notification
+  parentNotified      Boolean   @default(false)
+  parentNotifiedAt    DateTime?
+  parentAcknowledged  Boolean   @default(false)
+  
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   @@unique([sessionId, studentId])
-  @@index([schoolId])
-  @@index([studentId])
-  @@map("attendance_records")
+  @@index([schoolId, sessionId])
+  @@index([studentId, createdAt])
+  @@index([status])
+  @@index([markedAt])
+  @@map("student_attendance_records")
+}
+
+// ─── Staff Attendance Record ──────────────────────────────────────────────────
+
+model StaffAttendanceRecord {
+  id          String            @id @default(cuid())
+  sessionId   String
+  session     AttendanceSession @relation(fields: [sessionId], references: [id])
+  staffId     String
+  staff       SchoolUser        @relation(fields: [staffId], references: [id])
+  schoolId    String
+  school      School            @relation(fields: [schoolId], references: [id])
+  
+  // Attendance Details
+  status      AttendanceStatus  @default(PRESENT)
+  mode        AttendanceMode    @default(RFID)
+  
+  // Timing
+  scheduledTime DateTime?       // Expected check-in time
+  checkInAt     DateTime?       // Actual check-in time
+  checkOutAt    DateTime?       // Check-out time
+  lateBy        Int?            // Minutes late
+  
+  // Work Hours
+  totalHours    Float?          // Total hours present
+  overtimeHours Float?          // Overtime hours
+  
+  // Who marked it
+  markedBy     String?          // SchoolUser ID (null if self/RFID)
+  markedByUser SchoolUser?      @relation(fields: [markedBy], references: [id])
+  tapId        String?          // Reference to the tap
+  tap          AttendanceTap?   @relation(fields: [tapId], references: [id])
+  
+  // Additional Info
+  reason       String?          // Reason for absence/late
+  remark       String?          // Admin remark
+  isApproved   Boolean          @default(false)
+  approvedBy   String?          // SchoolUser who approved
+  approvedByUser SchoolUser?    @relation(fields: [approvedBy], references: [id])
+  
+  // Leave Integration
+  leaveType    String?          // "SICK", "CASUAL", "EMERGENCY"
+  leaveApplied Boolean          @default(false)
+  leaveId      String?          // Reference to leave record
+  
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([sessionId, staffId])
+  @@index([schoolId, sessionId])
+  @@index([staffId, createdAt])
+  @@index([status])
+  @@index([checkInAt])
+  @@map("staff_attendance_records")
+}
+
+// ─── Attendance Report ────────────────────────────────────────────────────────
+
+model AttendanceReport {
+  id          String            @id @default(cuid())
+  schoolId    String
+  school      School            @relation(fields: [schoolId], references: [id])
+  
+  // Report Details
+  title       String            // "Monthly Attendance - Class 10 - January 2024"
+  type        String            // "STUDENT", "STAFF", "CLASS", "DAILY", "MONTHLY"
+  
+  // Filters Applied
+  filters     Json?             // { grade: "10", section: "A", month: "2024-01" }
+  
+  // Report Data
+  summary     Json              // { total: 50, present: 45, absent: 3, late: 2 }
+  details     Json?             // Full report data
+  
+  // Generated By (SchoolUser)
+  generatedById String
+  generatedBy   SchoolUser      @relation(fields: [generatedById], references: [id])
+  
+  // Session Reference (optional)
+  sessionId   String?
+  session     AttendanceSession? @relation(fields: [sessionId], references: [id])
+  
+  // Export Info
+  format      String            @default("JSON")  // JSON, PDF, CSV, EXCEL
+  fileUrl     String?           // If exported to file
+  
+  // Date Range
+  startDate   DateTime
+  endDate     DateTime
+  
+  createdAt   DateTime          @default(now())
+  
+  @@index([schoolId, type])
+  @@index([startDate, endDate])
+  @@map("attendance_reports")
+}
+
+// ─── Attendance Settings ──────────────────────────────────────────────────────
+
+model AttendanceSettings {
+  id          String    @id @default(cuid())
+  schoolId    String    @unique
+  school      School    @relation(fields: [schoolId], references: [id])
+  
+  // Student Settings
+  studentCheckInStart  String  @default("07:00")
+  studentCheckInEnd    String  @default("09:00")
+  studentLateThreshold Int     @default(15)
+  studentHalfDayAfter  Int     @default(120)
+  
+  // Staff Settings
+  staffCheckInStart    String  @default("07:00")
+  staffCheckInEnd      String  @default("10:00")
+  staffLateThreshold   Int     @default(15)
+  staffWorkingHours    Float   @default(8.0)
+  
+  // Auto-mark settings
+  autoMarkAbsent       Boolean @default(true)
+  autoMarkAfter        Int     @default(60)
+  
+  // Notification Settings
+  notifyParentsOnAbsent      Boolean @default(true)
+  notifyParentsOnLate        Boolean @default(true)
+  notifyAdminsOnStaffAbsent  Boolean @default(true)
+  
+  // GPS Settings
+  gpsEnabled           Boolean @default(false)
+  gpsRadius            Int?
+  
+  // Updated by (SchoolUser)
+  updatedById String?
+  updatedBy   SchoolUser? @relation(fields: [updatedById], references: [id])
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("attendance_settings")
+}
+
+// ─── Attendance Summary (Pre-computed) ────────────────────────────────────────
+
+model AttendanceSummary {
+  id          String    @id @default(cuid())
+  schoolId    String
+  
+  // Entity (student or staff)
+  entityType  String    // "STUDENT" or "STAFF"
+  entityId    String    // studentId or staffId (SchoolUser ID)
+  
+  // Period
+  period      String    // "DAILY", "WEEKLY", "MONTHLY", "YEARLY"
+  periodStart DateTime
+  periodEnd   DateTime
+  
+  // Stats
+  totalSessions     Int
+  presentCount      Int
+  absentCount       Int
+  lateCount         Int
+  excusedCount      Int
+  halfDayCount      Int
+  attendancePercent Float
+  
+  // For staff
+  totalHours        Float?
+  overtimeHours     Float?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@unique([entityType, entityId, period, periodStart])
+  @@index([schoolId, entityType])
+  @@index([entityId, period])
+  @@map("attendance_summaries")
 }
