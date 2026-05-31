@@ -1,3 +1,10 @@
+<<<<<<< HEAD
+<<<<<<< HEAD
+// TODO: Add implementation
+=======
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 // src/infrastructure/sse/sse.service.js
 // FIXED: Removed CONNECTION_TIMEOUT_MS. Heartbeat alone keeps connection alive.
 // FIXED: Removed lastActivity dead state.
@@ -79,7 +86,15 @@ export const registerClient = (userId, userType, res) => {
   });
 
   // Handle errors
+<<<<<<< HEAD
+<<<<<<< HEAD
+  res.on('error', err => {
+=======
   res.on('error', (err) => {
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+  res.on('error', (err) => {
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
     logger.error({ userId, error: err.message }, '[SSE] Connection error');
     cleanupConnection(userId, heartbeatInterval, res);
   });
@@ -119,7 +134,15 @@ const cleanupConnection = (userId, heartbeatInterval, res) => {
 /**
  * Remove all connections for a user
  */
+<<<<<<< HEAD
+<<<<<<< HEAD
+export const removeClient = userId => {
+=======
 export const removeClient = (userId) => {
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+export const removeClient = (userId) => {
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   const userConnections = clients.get(userId);
   if (userConnections) {
     for (const conn of userConnections) {
@@ -190,7 +213,15 @@ export const pushSSEToAll = (userIds, event) => {
 /**
  * Broadcast to all connected clients
  */
+<<<<<<< HEAD
+<<<<<<< HEAD
+export const broadcastToAll = event => {
+=======
 export const broadcastToAll = (event) => {
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+export const broadcastToAll = (event) => {
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   let sent = 0;
   const deadConnections = [];
 
@@ -244,7 +275,15 @@ export const getConnectedClients = () => {
   return result;
 };
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+export const isUserConnected = userId => {
+=======
 export const isUserConnected = (userId) => {
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+export const isUserConnected = (userId) => {
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   const connections = clients.get(userId);
   return connections ? connections.size > 0 : false;
 };
