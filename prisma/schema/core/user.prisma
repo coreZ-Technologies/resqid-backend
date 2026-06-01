@@ -1,6 +1,8 @@
 // =============================================================================
 // prisma/schema/core/user.prisma — RESQID
 // Identity models for all authenticated actors
+// Relationship enum is in core/student.prisma
+// Emergency contacts are in modules/emergency.prisma
 // =============================================================================
 
 enum SchoolUserRole {
@@ -44,7 +46,7 @@ model SchoolUser {
   passwordHash String
   role         SchoolUserRole @default(TEACHER)
 
-  isPasswordDefault  Boolean  @default(true)   // Must change on first login
+  isPasswordDefault  Boolean  @default(true)
   passwordChangedAt  DateTime?
 
   isActive     Boolean        @default(true)
@@ -54,10 +56,13 @@ model SchoolUser {
   updatedAt    DateTime       @updatedAt
   deletedAt    DateTime?
 
+  // ─── Relations ───
   sessions     UserSession[]
+  teacher      Teacher?       // Link to timetable teacher profile
 
   @@index([schoolId])
   @@index([email])
+  @@index([schoolId, role])
   @@map("school_users")
 }
 
@@ -66,60 +71,48 @@ model SchoolUser {
 model ParentUser {
   id           String          @id @default(cuid())
   
-  // Basic Information
-  firstName    String?         // Split name into first/last for better UX
+  firstName    String?
   lastName     String?
-  name         String?         // Keep for backward compatibility (full name)
+  name         String?
   phone        String          @unique
   email        String?
-  photoUrl     String?         // Profile photo
+  photoUrl     String?
   
-  // Address (for emergency situations)
   address      String?
   city         String?
   state        String?
   pincode      String?
   
-  // Occupation (useful for school records)
   occupation   String?
   
-  // Communication Preferences
   canCall      Boolean         @default(true)
   canWhatsapp  Boolean         @default(true)
   canEmail     Boolean         @default(true)
   canSMS       Boolean         @default(true)
   
-  // OTP Authentication
   otp          String?
   otpExpiresAt DateTime?
   otpAttempts  Int             @default(0)
-  otpRequestedAt DateTime?     // Track when last OTP was requested
+  otpRequestedAt DateTime?
   isPhoneVerified Boolean      @default(false)
   
-  // Status
   isActive     Boolean         @default(true)
   lastLoginAt  DateTime?
-  lastSeenAt   DateTime?       // For online status
+  lastSeenAt   DateTime?
   
-  // Emergency Contact Priority (default for all children)
   isEmergencyContact Boolean   @default(true)
-  emergencyPriority Int        @default(1)  // 1 = First to call
+  emergencyPriority Int        @default(1)
   
-  // Metadata for extensibility
   metadata     Json?
   
-  // Timestamps
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
-  deletedAt    DateTime?       // Soft delete
+  deletedAt    DateTime?
 
-  // Relations
+  // ─── Relations ───
   students     ParentStudent[]
   sessions     UserSession[]
   devices      ParentDevice[]
-  notifications Notification[]
-  preferences  NotificationPreference?
-  emergencyContacts EmergencyContact[]  // Parents can have their own emergency contacts
 
   @@index([phone])
   @@index([email])
@@ -136,7 +129,7 @@ model ParentStudent {
   studentId    String
   student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   
-  relation     Relationship @default(GUARDIAN)
+  relation     Relationship @default(GUARDIAN)  // Enum from student.prisma
   
   isPrimary    Boolean      @default(false)
   isEmergency  Boolean      @default(true)

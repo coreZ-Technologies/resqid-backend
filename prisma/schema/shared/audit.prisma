@@ -3,6 +3,8 @@
 // Central audit log for all business-level actions
 // =============================================================================
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
 enum AuditSeverity {
   INFO
   WARNING
@@ -10,34 +12,132 @@ enum AuditSeverity {
   CRITICAL
 }
 
+enum AuditActorType {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+  PARENT
+  SYSTEM
+  API
+  ANONYMOUS
+}
+
+enum AuditEntity {
+  SCHOOL
+  USER
+  TEACHER
+  STUDENT
+  PARENT
+  TIMETABLE
+  TIMETABLE_TEMPLATE
+  CLASS_GROUP
+  SUBJECT
+  ROOM
+  SUBSTITUTION
+  CRISIS_EVENT
+  WELLNESS
+  CONSTRAINT_PRESET
+  BULK_UPLOAD
+  ATTENDANCE
+  SCAN
+  NOTIFICATION
+  FEATURE_FLAG
+  SUBSCRIPTION
+  OTHER
+}
+
+// ─── Audit Log Model ──────────────────────────────────────────────────────────
+
 model AuditLog {
   id         String        @id @default(cuid())
 
-  action     String
+  // ─── What happened ───
+  action     String        // "TIMETABLE_GENERATED", "TEACHER_SUBSTITUTED", "CRISIS_RESOLVED"
   severity   AuditSeverity @default(INFO)
+  description String?       // Human-readable summary
+
+  // ─── Who did it ───
+  actorId    String?
+  actorType  AuditActorType?
+  actorName  String?        // Denormalized for quick display
+
+  // ─── What was affected ───
+  entity     AuditEntity?
+  entityId   String?
+  entityLabel String?       // "Timetable 2024-25 First Term"
+
+  // ─── Changes made ───
+  oldValue   Json?          // Before state
+  newValue   Json?          // After state
+  changes    Json?          // Diff summary: [{field, oldValue, newValue}]
+
+  // ─── Context ───
+  schoolId   String?
+  school     School?        @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+
+  // ─── Technical details ───
+  ipAddress  String?
+  userAgent  String?
+  device     String?
+  requestId  String?        // For tracing across services
+  sessionId  String?
+
+  // ─── Extended metadata ───
+  metadata   Json?          // Any additional context
+
+  // ─── Status ───
+  isSensitive Boolean @default(false)  // Contains PII or confidential data
+  retentionUntil DateTime?             // Auto-delete after this date
+
+  createdAt  DateTime      @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([actorId, actorType, createdAt])
+  @@index([action, createdAt])
+  @@index([entity, entityId])
+  @@index([severity, createdAt])
+  @@index([requestId])
+  @@index([retentionUntil])
+  @@map("audit_logs")
+}
+
+// ─── Audit Log Archive (for old records) ──────────────────────────────────────
+
+model AuditLogArchive {
+  id         String        @id @default(cuid())
+
+  action     String
+  severity   AuditSeverity
+  description String?
 
   actorId    String?
-  actorType  String?
+  actorType  AuditActorType?
+  actorName  String?
 
-  entity     String?
+  entity     AuditEntity?
   entityId   String?
+  entityLabel String?
+
   oldValue   Json?
   newValue   Json?
+  changes    Json?
 
   schoolId   String?
 
   ipAddress  String?
   userAgent  String?
   device     String?
+  requestId  String?
 
   metadata   Json?
 
-  createdAt  DateTime      @default(now())
+  isSensitive Boolean
 
-  @@index([schoolId, createdAt])
-  @@index([actorId, createdAt])
-  @@index([action, createdAt])
+  originalCreatedAt DateTime   // When the original log was created
+  archivedAt        DateTime   @default(now())
+
+  @@index([schoolId, originalCreatedAt])
   @@index([entity, entityId])
-  @@index([severity])
-  @@map("audit_logs")
+  @@index([archivedAt])
+  @@map("audit_logs_archive")
 }
