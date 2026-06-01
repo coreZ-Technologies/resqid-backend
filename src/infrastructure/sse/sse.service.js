@@ -1,5 +1,3 @@
-<<<<<<< HEAD:src/infrastructure/sse/sse.service .js
-=======
 <<<<<<< HEAD
 <<<<<<< HEAD
 // TODO: Add implementation
@@ -7,7 +5,6 @@
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd:src/infrastructure/sse/sse.service.js
 // src/infrastructure/sse/sse.service.js
 // FIXED: Removed CONNECTION_TIMEOUT_MS. Heartbeat alone keeps connection alive.
 // FIXED: Removed lastActivity dead state.
@@ -89,9 +86,6 @@ export const registerClient = (userId, userType, res) => {
   });
 
   // Handle errors
-<<<<<<< HEAD:src/infrastructure/sse/sse.service .js
-  res.on('error', (err) => {
-=======
 <<<<<<< HEAD
 <<<<<<< HEAD
   res.on('error', err => {
@@ -101,7 +95,6 @@ export const registerClient = (userId, userType, res) => {
 =======
   res.on('error', (err) => {
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd:src/infrastructure/sse/sse.service.js
     logger.error({ userId, error: err.message }, '[SSE] Connection error');
     cleanupConnection(userId, heartbeatInterval, res);
   });
@@ -141,9 +134,6 @@ const cleanupConnection = (userId, heartbeatInterval, res) => {
 /**
  * Remove all connections for a user
  */
-<<<<<<< HEAD:src/infrastructure/sse/sse.service .js
-export const removeClient = (userId) => {
-=======
 <<<<<<< HEAD
 <<<<<<< HEAD
 export const removeClient = userId => {
@@ -153,7 +143,6 @@ export const removeClient = (userId) => {
 =======
 export const removeClient = (userId) => {
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd:src/infrastructure/sse/sse.service.js
   const userConnections = clients.get(userId);
   if (userConnections) {
     for (const conn of userConnections) {
@@ -224,9 +213,6 @@ export const pushSSEToAll = (userIds, event) => {
 /**
  * Broadcast to all connected clients
  */
-<<<<<<< HEAD:src/infrastructure/sse/sse.service .js
-export const broadcastToAll = (event) => {
-=======
 <<<<<<< HEAD
 <<<<<<< HEAD
 export const broadcastToAll = event => {
@@ -236,7 +222,6 @@ export const broadcastToAll = (event) => {
 =======
 export const broadcastToAll = (event) => {
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd:src/infrastructure/sse/sse.service.js
   let sent = 0;
   const deadConnections = [];
 
@@ -290,9 +275,6 @@ export const getConnectedClients = () => {
   return result;
 };
 
-<<<<<<< HEAD:src/infrastructure/sse/sse.service .js
-export const isUserConnected = (userId) => {
-=======
 <<<<<<< HEAD
 <<<<<<< HEAD
 export const isUserConnected = userId => {
@@ -302,7 +284,6 @@ export const isUserConnected = (userId) => {
 =======
 export const isUserConnected = (userId) => {
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd:src/infrastructure/sse/sse.service.js
   const connections = clients.get(userId);
   return connections ? connections.size > 0 : false;
 };

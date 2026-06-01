@@ -1,301 +1,227 @@
-<<<<<<< HEAD
-// TODO: Add implementation
 // =============================================================================
 // modules/scan/scan.redirect.controller.js — RESQID
-//
-// Handles redirect endpoints for calls and WhatsApp.
-// Decrypts phone numbers and issues 302 redirects.
-// Phone numbers NEVER appear in HTML or API responses.
+// Redirect endpoints for calls and WhatsApp from emergency QR scans.
 // =============================================================================
 
 import { asyncHandler } from '#shared/response/asyncHandler.js';
-import { decryptField } from '#shared/security/encryption.js';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
-import { decodeScanCode } from '#services/token/token.helpers.js';
-import { escapeHtml as esc } from '#shared/security/escapeHtml.js';
+import { decodeScanCode } from '#shared/helpers/token.helper.js';
+import { ApiError } from '#shared/response/ApiError.js';
 
-// =============================================================================
-// HELPER — Find token by UUID or scan code
-// =============================================================================
-async function findTokenByIdOrCode(token) {
-  // Try UUID first (id field)
-  let tokenRecord = await prisma.token.findUnique({
+/**
+ * Find token by various identifiers (UUID, scan code, QR code, RFID)
+ */
+const findToken = async (token) => {
+  if (!token) return null;
+
+  // Try UUID first
+  let record = await prisma.token.findUnique({
     where: { id: token },
-    select: { id: true, status: true, expires_at: true, school_id: true },
+    select: { 
+      id: true, 
+      status: true, 
+      expiresAt: true, 
+      schoolId: true, 
+      studentId: true,
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+    },
   });
 
-  // If not found, try by token_hash (64-char hex)
-  if (!tokenRecord && token && token.length === 64) {
-    tokenRecord = await prisma.token.findFirst({
-      where: { token_hash: token },
-      select: { id: true, status: true, expires_at: true, school_id: true },
+  // Try QR code
+  if (!record) {
+    record = await prisma.token.findFirst({
+      where: { qrCode: token },
+      select: { 
+        id: true, 
+        status: true, 
+        expiresAt: true, 
+        schoolId: true, 
+        studentId: true,
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
     });
   }
 
-  // If still not found and looks like scan code (43 chars), decode it to UUID
-  if (!tokenRecord && token && token.length === 43) {
+  // Try RFID UID
+  if (!record) {
+    record = await prisma.token.findFirst({
+      where: { rfidUid: token },
+      select: { 
+        id: true, 
+        status: true, 
+        expiresAt: true, 
+        schoolId: true, 
+        studentId: true,
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+  }
+
+  // Try scan code decode (encrypted)
+  if (!record && token.length === 43) {
     try {
-      const decodedUuid = decodeScanCode(token);
-      console.log('[findTokenByIdOrCode] Decoded base62 to UUID:', decodedUuid);
-      tokenRecord = await prisma.token.findUnique({
-        where: { id: decodedUuid },
-        select: { id: true, status: true, expires_at: true, school_id: true },
+      const uuid = decodeScanCode(token);
+      record = await prisma.token.findUnique({
+        where: { id: uuid },
+        select: { 
+          id: true, 
+          status: true, 
+          expiresAt: true, 
+          schoolId: true, 
+          studentId: true,
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
       });
     } catch (err) {
-      console.log('[findTokenByIdOrCode] Failed to decode base62:', err.message);
+      logger.debug({ err: err.message, token: token.slice(0, 10) }, 'Invalid scan code');
     }
   }
 
-  return tokenRecord;
-}
+  return record;
+};
 
-// =============================================================================
-// CALL CONTACT — Redirect to tel:
-// =============================================================================
-export const callContact = asyncHandler(async (req, res) => {
-  const { contactId, token } = req.params;
+/**
+ * Check if token is valid for emergency actions
+ */
+const isValidTokenForEmergency = (tokenRecord) => {
+  if (!tokenRecord) return false;
+  if (tokenRecord.status === 'REVOKED') return false;
+  if (tokenRecord.status === 'EXPIRED') return false;
+  if (tokenRecord.status === 'INACTIVE') return false;
+  return true;
+};
 
-  const tokenRecord = await findTokenByIdOrCode(token);
-
-  if (!tokenRecord || tokenRecord.status === 'REVOKED') {
-    return res.status(404).json({ error: 'Invalid token' });
-  }
-
-  if (tokenRecord.expires_at && tokenRecord.expires_at < new Date()) {
-    return res.status(404).json({ error: 'Token expired' });
-  }
-
-  const contact = await prisma.emergencyContact.findUnique({
-    where: { id: contactId, is_active: true },
-    select: { phone_encrypted: true, name: true },
-  });
-
-  if (!contact?.phone_encrypted) {
-    return res.status(404).json({ error: 'Contact not found' });
-  }
-
-  try {
-    const phone = decryptField(contact.phone_encrypted);
-
-    // Return HTML that auto-triggers the dialer
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Calling...</title>
-          <style>
-            body {
-              margin: 0;
-              min-height: 100vh;
-              background: #0a0f1e;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-family: system-ui, -apple-system, sans-serif;
-            }
-            .container {
-              text-align: center;
-              padding: 24px;
-            }
-            .spinner {
-              width: 48px;
-              height: 48px;
-              border: 3px solid rgba(232, 69, 69, 0.2);
-              border-top-color: #e84545;
-              border-radius: 50%;
-              animation: spin 0.8s linear infinite;
-              margin: 0 auto 20px;
-            }
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-            .message {
-              color: #f1f5f9;
-              font-size: 16px;
-              margin-bottom: 8px;
-            }
-            .number {
-              color: #e84545;
-              font-size: 20px;
-              font-weight: 600;
-              margin-bottom: 20px;
-            }
-            .fallback {
-              color: #64748b;
-              font-size: 14px;
-            }
-            .fallback a {
-              color: #3b82f6;
-              text-decoration: none;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="spinner"></div>
-            <div class="message">Opening dialer for</div>
-            <div class="number">${phone}</div>
-            <div class="fallback">
-              <a href="tel:${phone}">Tap here if dialer doesn't open</a>
-            </div>
-          </div>
-          <script>
-            // Try multiple methods to open dialer
-            window.location.href = 'tel:${phone}';
-            setTimeout(() => {
-              // Fallback after 1 second
-              if (!document.hidden) {
-                window.location.href = 'tel:${phone}';
-              }
-            }, 1000);
-          </script>
-        </body>
-      </html>
-    `);
-  } catch (err) {
-    logger.error({ err: err.message, contactId }, '[redirect] Decrypt failed');
-    return res.status(500).json({ error: 'Unable to process request' });
-  }
-});
-
-// =============================================================================
-// WHATSAPP CONTACT — Redirect to wa.me
-// =============================================================================
-export const whatsappContact = asyncHandler(async (req, res) => {
-  const { contactId, token } = req.params;
-
-  const tokenRecord = await findTokenByIdOrCode(token);
-
-  if (!tokenRecord || tokenRecord.status === 'REVOKED') {
-    return res.status(404).json({ error: 'Invalid token' });
-  }
-
-  if (tokenRecord.expires_at && tokenRecord.expires_at < new Date()) {
-    return res.status(404).json({ error: 'Token expired' });
-  }
-
-  const contact = await prisma.emergencyContact.findUnique({
-    where: { id: contactId, is_active: true },
-    select: { phone_encrypted: true, name: true },
-  });
-
-  if (!contact?.phone_encrypted) {
-    logger.warn({ contactId, token }, '[redirect] Contact not found');
-    return res.status(404).json({ error: 'Contact not found' });
-  }
-
-  try {
-    const phone = decryptField(contact.phone_encrypted).replace(/\D/g, '');
-    logger.info({ contactId, token: token.slice(0, 8) }, '[redirect] WhatsApp initiated');
-    return res.redirect(302, `https://wa.me/${phone}`);
-  } catch (err) {
-    logger.error({ err: err.message, contactId }, '[redirect] Decrypt failed');
-    return res.status(500).json({ error: 'Unable to process request' });
-  }
-});
-
-// =============================================================================
-// CALL SCHOOL — Redirect to tel:
-// =============================================================================
-export const callSchool = asyncHandler(async (req, res) => {
-  const { token } = req.params;
-
-  const tokenRecord = await findTokenByIdOrCode(token);
-
-  if (!tokenRecord || tokenRecord.status === 'REVOKED') {
-    return res.status(404).json({ error: 'Invalid token' });
-  }
-
-  if (tokenRecord.expires_at && tokenRecord.expires_at < new Date()) {
-    return res.status(404).json({ error: 'Token expired' });
-  }
-
-  const school = await prisma.school.findUnique({
-    where: { id: tokenRecord.school_id },
-    select: { phone: true, name: true },
-  });
-
-  const phone = school?.phone;
-  if (!phone) {
-    return res.status(404).json({ error: 'School phone not available' });
-  }
-
-  // Return HTML that auto-triggers the dialer
+/**
+ * Render HTML dialer page for phone calls
+ */
+const renderDialer = (res, phone, title, subtitle, color, studentName = null) => {
+  const displayTitle = title || (studentName ? `Emergency Contact for ${studentName}` : 'Emergency Call');
+  
   res.send(`
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Calling School...</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+        <title>${displayTitle}</title>
         <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
           body {
             margin: 0;
             min-height: 100vh;
-            background: #0a0f1e;
+            background: linear-gradient(135deg, #0a0f1e 0%, #0f1424 100%);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            padding: 20px;
           }
           .container {
             text-align: center;
-            padding: 24px;
+            padding: 32px 24px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 32px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            max-width: 400px;
+            width: 100%;
           }
           .spinner {
-            width: 48px;
-            height: 48px;
-            border: 3px solid rgba(59, 130, 246, 0.2);
-            border-top-color: #3b82f6;
+            width: 56px;
+            height: 56px;
+            border: 3px solid rgba(232, 69, 69, 0.2);
+            border-top-color: ${color};
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            margin: 0 auto 20px;
+            margin: 0 auto 24px;
           }
           @keyframes spin {
             to { transform: rotate(360deg); }
           }
-          .message {
+          .title {
             color: #f1f5f9;
-            font-size: 16px;
-            margin-bottom: 8px;
-          }
-          .school-name {
-            color: #3b82f6;
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 8px;
           }
-          .number {
-            color: #e84545;
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 20px;
-          }
-          .fallback {
+          .subtitle {
             color: #64748b;
             font-size: 14px;
+            margin-bottom: 20px;
           }
-          .fallback a {
-            color: #3b82f6;
+          .phone-number {
+            color: ${color};
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            letter-spacing: 1px;
+          }
+          .fallback-link {
+            display: inline-block;
+            color: ${color};
             text-decoration: none;
+            font-size: 14px;
+            padding: 10px 20px;
+            border: 1px solid ${color};
+            border-radius: 50px;
+            transition: all 0.3s ease;
+          }
+          .fallback-link:hover {
+            background: ${color};
+            color: white;
+          }
+          .student-name {
+            color: #94a3b8;
+            font-size: 13px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255,255,255,0.1);
           }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="spinner"></div>
-          <div class="message">Calling</div>
-          <div class="school-name">${esc(school.name)}</div>
-          <div class="number">${phone}</div>
-          <div class="fallback">
-            <a href="tel:${phone}">Tap here if dialer doesn't open</a>
-          </div>
+          <div class="title">${displayTitle}</div>
+          ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
+          <div class="phone-number">${phone}</div>
+          <a href="tel:${phone}" class="fallback-link">Tap if dialer doesn't open</a>
+          ${studentName ? `<div class="student-name">Student: ${studentName}</div>` : ''}
         </div>
         <script>
+          // Attempt to open native dialer
           window.location.href = 'tel:${phone}';
+          
+          // Fallback: if page remains visible after 1 second, try again
           setTimeout(() => {
             if (!document.hidden) {
               window.location.href = 'tel:${phone}';
@@ -305,251 +231,301 @@ export const callSchool = asyncHandler(async (req, res) => {
       </body>
     </html>
   `);
-});
-
-// =============================================================================
-// CALL DOCTOR — Redirect to tel:
-// =============================================================================
-export const callDoctor = asyncHandler(async (req, res) => {
-  const { token } = req.params;
-
-  const tokenRecord = await findTokenByIdOrCode(token);
-
-  if (!tokenRecord || tokenRecord.status === 'REVOKED') {
-    return res.status(404).json({ error: 'Invalid token' });
-  }
-
-  if (tokenRecord.expires_at && tokenRecord.expires_at < new Date()) {
-    return res.status(404).json({ error: 'Token expired' });
-  }
-=======
-// =============================================================================
-// modules/scan/scan.redirect.controller.js — RESQID
-// Redirect endpoints for calls and WhatsApp.
-// =============================================================================
-
-import { asyncHandler } from '#shared/response/asyncHandler.js';
-import { prisma } from '#config/prisma.js';
-import { logger } from '#config/logger.js';
-import { decodeScanCode } from '#shared/helpers/token.helper.js';
-
-const findToken = async (token) => {
-  // Try UUID first
-  let record = await prisma.token.findUnique({
-    where: { id: token },
-    select: { id: true, status: true, expiresAt: true, schoolId: true, studentId: true },
-  });
-
-  // Try scan code decode
-  if (!record && token.length === 43) {
-    try {
-      const uuid = decodeScanCode(token);
-      record = await prisma.token.findUnique({
-        where: { id: uuid },
-        select: { id: true, status: true, expiresAt: true, schoolId: true, studentId: true },
-      });
-    } catch {
-      /* invalid code */
-    }
-  }
-
-  return record;
 };
 
-const renderDialer = (res, phone, title, subtitle, color) => {
-  res.send(`
-    <!DOCTYPE html><html><head>
-      <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-      <title>${title}</title>
-      <style>
-        body{margin:0;min-height:100vh;background:#0a0f1e;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif}
-        .spinner{width:48px;height:48px;border:3px solid rgba(232,69,69,.2);border-top-color:${color};border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 20px}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        .msg{color:#f1f5f9;font-size:16px;margin-bottom:8px;text-align:center}
-        .num{color:${color};font-size:20px;font-weight:600;margin-bottom:20px;text-align:center}
-        a{color:${color};text-decoration:none}
-      </style></head>
-      <body>
-        <div style="text-align:center;padding:24px">
-          <div class="spinner"></div>
-          <div class="msg">${title}</div>
-          ${subtitle ? `<div class="msg" style="color:#64748b;font-size:14px">${subtitle}</div>` : ''}
-          <div class="num">${phone}</div>
-          <a href="tel:${phone}">Tap here if dialer doesn't open</a>
-        </div>
-        <script>
-          window.location.href='tel:${phone}';
-          setTimeout(()=>{if(!document.hidden)window.location.href='tel:${phone}';},1000);
-        </script>
-      </body></html>`);
-};
+// =============================================================================
+// CONTACT ENDPOINTS
+// =============================================================================
 
+/**
+ * GET /s/call/:contactId/:token
+ * Initiate a phone call to an emergency contact
+ */
 export const callContact = asyncHandler(async (req, res) => {
   const { contactId, token } = req.params;
-  const tokenRecord = await findToken(token);
-  if (!tokenRecord || tokenRecord.status === 'REVOKED')
-    return res.status(404).json({ error: 'Invalid token' });
 
+  // Validate token
+  const tokenRecord = await findToken(token);
+  if (!isValidTokenForEmergency(tokenRecord)) {
+    logger.warn({ contactId, tokenPrefix: token?.slice(0, 10) }, 'Invalid token for call contact');
+    return res.status(404).json({ error: 'Invalid or expired token' });
+  }
+
+  // Get contact
+  const contact = await prisma.emergencyContact.findUnique({
+    where: { id: contactId, isActive: true },
+    select: { phone: true, name: true, relationship: true },
+  });
+
+  if (!contact?.phone) {
+    return res.status(404).json({ error: 'Contact not found or has no phone number' });
+  }
+
+  const studentName = tokenRecord.student 
+    ? `${tokenRecord.student.firstName} ${tokenRecord.student.lastName}`
+    : null;
+
+  renderDialer(
+    res, 
+    contact.phone, 
+    `Calling ${contact.name}`, 
+    contact.relationship ? `(${contact.relationship})` : null,
+    '#e84545',
+    studentName
+  );
+});
+
+/**
+ * GET /s/whatsapp/:contactId/:token
+ * Redirect to WhatsApp chat with emergency contact
+ */
+export const whatsappContact = asyncHandler(async (req, res) => {
+  const { contactId, token } = req.params;
+
+  // Validate token
+  const tokenRecord = await findToken(token);
+  if (!isValidTokenForEmergency(tokenRecord)) {
+    logger.warn({ contactId, tokenPrefix: token?.slice(0, 10) }, 'Invalid token for WhatsApp');
+    return res.status(404).json({ error: 'Invalid or expired token' });
+  }
+
+  // Get contact
   const contact = await prisma.emergencyContact.findUnique({
     where: { id: contactId, isActive: true },
     select: { phone: true, name: true },
   });
-  if (!contact?.phone) return res.status(404).json({ error: 'Contact not found' });
 
-  renderDialer(res, contact.phone, `Calling ${contact.name}`, null, '#e84545');
+  if (!contact?.phone) {
+    return res.status(404).json({ error: 'Contact not found' });
+  }
+
+  // Clean phone number for WhatsApp (remove all non-digits)
+  const cleanPhone = contact.phone.replace(/\D/g, '');
+  
+  logger.info({ contactId, phone: cleanPhone.slice(0, 6) + '...' }, 'WhatsApp redirect');
+  
+  // Redirect to WhatsApp
+  return res.redirect(302, `https://wa.me/${cleanPhone}`);
 });
 
-export const whatsappContact = asyncHandler(async (req, res) => {
-  const { contactId, token } = req.params;
-  const tokenRecord = await findToken(token);
-  if (!tokenRecord || tokenRecord.status === 'REVOKED')
-    return res.status(404).json({ error: 'Invalid token' });
+// =============================================================================
+// SCHOOL ENDPOINTS
+// =============================================================================
 
-  const contact = await prisma.emergencyContact.findUnique({
-    where: { id: contactId, isActive: true },
-    select: { phone: true },
-  });
-  if (!contact?.phone) return res.status(404).json({ error: 'Contact not found' });
-
-  return res.redirect(302, `https://wa.me/${contact.phone.replace(/\D/g, '')}`);
-});
-
+/**
+ * GET /s/call/school/:token
+ * Initiate a phone call to the school
+ */
 export const callSchool = asyncHandler(async (req, res) => {
   const { token } = req.params;
-  const tokenRecord = await findToken(token);
-  if (!tokenRecord || tokenRecord.status === 'REVOKED')
-    return res.status(404).json({ error: 'Invalid token' });
 
+  // Validate token
+  const tokenRecord = await findToken(token);
+  if (!isValidTokenForEmergency(tokenRecord)) {
+    logger.warn({ tokenPrefix: token?.slice(0, 10) }, 'Invalid token for call school');
+    return res.status(404).json({ error: 'Invalid or expired token' });
+  }
+
+  // Get school phone
   const school = await prisma.school.findUnique({
     where: { id: tokenRecord.schoolId },
     select: { phone: true, name: true },
   });
-  if (!school?.phone) return res.status(404).json({ error: 'School phone not available' });
 
-  renderDialer(res, school.phone, `Calling ${school.name}`, null, '#3b82f6');
+  if (!school?.phone) {
+    return res.status(404).json({ error: 'School phone number not available' });
+  }
+
+  const studentName = tokenRecord.student 
+    ? `${tokenRecord.student.firstName} ${tokenRecord.student.lastName}`
+    : null;
+
+  renderDialer(
+    res, 
+    school.phone, 
+    `Calling ${school.name}`, 
+    'School Administration',
+    '#3b82f6',
+    studentName
+  );
 });
 
+// =============================================================================
+// DOCTOR ENDPOINTS
+// =============================================================================
+
+/**
+ * GET /s/call/doctor/:token
+ * Initiate a phone call to the student's registered doctor
+ */
 export const callDoctor = asyncHandler(async (req, res) => {
   const { token } = req.params;
-  const tokenRecord = await findToken(token);
-  if (!tokenRecord || tokenRecord.status === 'REVOKED')
-    return res.status(404).json({ error: 'Invalid token' });
->>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
 
+  // Validate token
+  const tokenRecord = await findToken(token);
+  if (!isValidTokenForEmergency(tokenRecord)) {
+    logger.warn({ tokenPrefix: token?.slice(0, 10) }, 'Invalid token for call doctor');
+    return res.status(404).json({ error: 'Invalid or expired token' });
+  }
+
+  // Get student's emergency profile with doctor info
   const tokenWithStudent = await prisma.token.findUnique({
     where: { id: tokenRecord.id },
     select: {
       student: {
-<<<<<<< HEAD
         select: {
-          emergency: {
-            select: { doctor_phone_encrypted: true, doctor_name: true },
+          firstName: true,
+          lastName: true,
+          emergencyProfile: {
+            select: {
+              doctorPhone: true,
+              doctorName: true,
+            },
           },
         },
-=======
-        select: { emergencyProfile: { select: { doctorPhone: true, doctorName: true } } },
->>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
       },
     },
   });
 
-<<<<<<< HEAD
-  const encryptedPhone = tokenWithStudent?.student?.emergency?.doctor_phone_encrypted;
-  if (!encryptedPhone) {
-    return res.status(404).json({ error: 'Doctor phone not available' });
-  }
-
-  try {
-    const phone = decryptField(encryptedPhone);
-
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Calling Doctor...</title>
-          <style>
-            body {
-              margin: 0;
-              min-height: 100vh;
-              background: #0a0f1e;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-family: system-ui, -apple-system, sans-serif;
-            }
-            .container {
-              text-align: center;
-              padding: 24px;
-            }
-            .spinner {
-              width: 48px;
-              height: 48px;
-              border: 3px solid rgba(16, 185, 129, 0.2);
-              border-top-color: #10b981;
-              border-radius: 50%;
-              animation: spin 0.8s linear infinite;
-              margin: 0 auto 20px;
-            }
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-            .message {
-              color: #f1f5f9;
-              font-size: 16px;
-              margin-bottom: 8px;
-            }
-            .number {
-              color: #10b981;
-              font-size: 20px;
-              font-weight: 600;
-              margin-bottom: 20px;
-            }
-            .fallback {
-              color: #64748b;
-              font-size: 14px;
-            }
-            .fallback a {
-              color: #10b981;
-              text-decoration: none;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="spinner"></div>
-            <div class="message">Calling Doctor</div>
-            <div class="number">${phone}</div>
-            <div class="fallback">
-              <a href="tel:${phone}">Tap here if dialer doesn't open</a>
-            </div>
-          </div>
-          <script>
-            window.location.href = 'tel:${phone}';
-            setTimeout(() => {
-              if (!document.hidden) {
-                window.location.href = 'tel:${phone}';
-              }
-            }, 1000);
-          </script>
-        </body>
-      </html>
-    `);
-  } catch (err) {
-    logger.error({ err: err.message, token }, '[redirect] Doctor decrypt failed');
-    return res.status(500).json({ error: 'Unable to process request' });
-  }
-=======
   const phone = tokenWithStudent?.student?.emergencyProfile?.doctorPhone;
-  if (!phone) return res.status(404).json({ error: 'Doctor phone not available' });
+  const doctorName = tokenWithStudent?.student?.emergencyProfile?.doctorName;
+  const studentName = tokenWithStudent?.student 
+    ? `${tokenWithStudent.student.firstName} ${tokenWithStudent.student.lastName}`
+    : null;
+
+  if (!phone) {
+    return res.status(404).json({ error: 'Doctor contact not available for this student' });
+  }
 
   renderDialer(
     res,
     phone,
-    'Calling Doctor',
-    tokenWithStudent?.student?.emergencyProfile?.doctorName,
-    '#10b981'
+    doctorName ? `Calling Dr. ${doctorName}` : 'Calling Doctor',
+    doctorName ? 'Registered Medical Professional' : 'Emergency Medical Contact',
+    '#10b981',
+    studentName
   );
->>>>>>> d6d1c2d1f9491eb08dd3635a1ab69697f9d14590
+});
+
+// =============================================================================
+// UTILITY ENDPOINTS
+// =============================================================================
+
+/**
+ * GET /s/status/:token
+ * Check token validity (for frontend to verify before showing emergency actions)
+ */
+export const checkTokenStatus = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const tokenRecord = await findToken(token);
+  const isValid = isValidTokenForEmergency(tokenRecord);
+
+  res.json({
+    success: true,
+    data: {
+      isValid,
+      student: isValid && tokenRecord.student ? {
+        id: tokenRecord.student.id,
+        name: `${tokenRecord.student.firstName} ${tokenRecord.student.lastName}`,
+      } : null,
+      schoolId: isValid ? tokenRecord.schoolId : null,
+    },
+  });
+});
+
+/**
+ * GET /s/contacts/:token
+ * Get all emergency contacts for a token (for frontend to display)
+ */
+export const getEmergencyContacts = asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const tokenRecord = await findToken(token);
+  if (!isValidTokenForEmergency(tokenRecord)) {
+    throw ApiError.unauthorized('Invalid or expired token');
+  }
+
+  // Get student with emergency contacts
+  const student = await prisma.student.findUnique({
+    where: { id: tokenRecord.studentId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      emergencyProfile: {
+        select: {
+          doctorName: true,
+          doctorPhone: true,
+          bloodGroup: true,
+          allergies: true,
+          conditions: true,
+        },
+      },
+      parentLinks: {
+        where: { isEmergency: true },
+        include: {
+          parent: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+              isEmergencyContact: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!student) {
+    throw ApiError.notFound('Student not found');
+  }
+
+  // Format contacts
+  const contacts = [];
+
+  // Add parents as emergency contacts
+  for (const link of student.parentLinks) {
+    if (link.parent.phone) {
+      contacts.push({
+        id: link.parent.id,
+        name: `${link.parent.firstName} ${link.parent.lastName}`,
+        phone: link.parent.phone,
+        type: 'parent',
+        relationship: link.relation,
+        priority: link.priority,
+      });
+    }
+  }
+
+  // Add doctor as emergency contact
+  if (student.emergencyProfile?.doctorPhone) {
+    contacts.push({
+      id: 'doctor',
+      name: student.emergencyProfile.doctorName || 'Family Doctor',
+      phone: student.emergencyProfile.doctorPhone,
+      type: 'doctor',
+      relationship: 'Family Doctor',
+      priority: 2,
+    });
+  }
+
+  // Sort by priority
+  contacts.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+
+  res.json({
+    success: true,
+    data: {
+      student: {
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`,
+        bloodGroup: student.emergencyProfile?.bloodGroup,
+        allergies: student.emergencyProfile?.allergies || [],
+        conditions: student.emergencyProfile?.conditions || [],
+      },
+      contacts,
+    },
+  });
 });

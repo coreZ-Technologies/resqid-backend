@@ -1,6 +1,4 @@
 <<<<<<< HEAD
-=======
-<<<<<<< HEAD
 <<<<<<< HEAD
 // TODO: Add implementation
 import { RedisAdapter } from './redis.adapter.js';
@@ -47,7 +45,6 @@ export const CacheKey = {
 =======
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 // =============================================================================
 // cache.index.js — RESQID
 //
@@ -97,18 +94,13 @@ export const CacheKey = {
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
 <<<<<<< HEAD
-=======
-<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 let cacheInstance = null;
 
 export async function initializeCache(config = {}) {
   if (!cacheInstance) {
-<<<<<<< HEAD
-=======
 <<<<<<< HEAD
 <<<<<<< HEAD
     const adapter = new RedisAdapter(config);
@@ -117,7 +109,6 @@ export async function initializeCache(config = {}) {
 =======
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
     const adapter = new RedisAdapter({
       url: config.REDIS_URL || ENV.REDIS_URL,
       password: config.REDIS_PASSWORD || ENV.REDIS_PASSWORD,
@@ -127,21 +118,15 @@ export async function initializeCache(config = {}) {
     cacheInstance = adapter;
     logger.info('[Cache] Infrastructure cache initialized');
 <<<<<<< HEAD
-=======
-<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   }
   return cacheInstance;
 }
 
 export function getCache() {
   if (!cacheInstance) {
-<<<<<<< HEAD
-    throw new Error('[Cache] Not initialized. Call initializeCache() first.');
-=======
 <<<<<<< HEAD
 <<<<<<< HEAD
     throw new Error('[Cache] Not initialized. Call initializeCache() before use.');
@@ -151,19 +136,15 @@ export function getCache() {
 =======
     throw new Error('[Cache] Not initialized. Call initializeCache() first.');
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   }
   return cacheInstance;
 }
 
 <<<<<<< HEAD
-=======
-<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 export async function shutdownCache() {
   if (cacheInstance) {
     await cacheInstance.disconnect();
@@ -173,10 +154,7 @@ export async function shutdownCache() {
 }
 
 <<<<<<< HEAD
-=======
-<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 export { CacheProvider, RedisAdapter };

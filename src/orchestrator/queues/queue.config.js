@@ -1,7 +1,7 @@
 // =============================================================================
 // orchestrator/queues/queue.config.js — RESQID
 //
-// RAILWAY (24/7): emergency, notification, attendance
+// RAILWAY (24/7): emergency, notification, attendance, timetable
 // LOCAL ONLY:    pipeline (when ENABLE_PIPELINE_QUEUE=true)
 // =============================================================================
 
@@ -71,6 +71,40 @@ export const attendanceBulkQueue = makeQueue(QUEUE_NAMES.ATTENDANCE_BULK, {
   },
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// TIMETABLE QUEUES — NEW
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const generateQueue = makeQueue(QUEUE_NAMES.TIMETABLE_GENERATE, {
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 5000 },
+    priority: 5,
+    removeOnComplete: { age: 86400, count: 50 },
+    removeOnFail: { age: 604800, count: 100 },
+  },
+});
+
+export const substituteQueue = makeQueue(QUEUE_NAMES.TIMETABLE_SUBSTITUTE, {
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'fixed', delay: 5000 },
+    priority: 1, // Highest — must run before school starts
+    removeOnComplete: { age: 86400, count: 500 },
+    removeOnFail: { age: 604800, count: 1000 },
+  },
+});
+
+export const swapQueue = makeQueue(QUEUE_NAMES.TIMETABLE_SWAP, {
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 1000 },
+    priority: 3,
+    removeOnComplete: { age: 86400, count: 100 },
+    removeOnFail: { age: 604800, count: 500 },
+  },
+});
+
 // =============================================================================
 // LOCAL-ONLY QUEUE — npm run worker:pipeline
 // =============================================================================
@@ -96,6 +130,9 @@ export const allQueues = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: emergencyAlertsQueue,
   [QUEUE_NAMES.NOTIFICATIONS]: notificationsQueue,
   [QUEUE_NAMES.ATTENDANCE_BULK]: attendanceBulkQueue,
+  [QUEUE_NAMES.TIMETABLE_GENERATE]: generateQueue,
+  [QUEUE_NAMES.TIMETABLE_SUBSTITUTE]: substituteQueue,
+  [QUEUE_NAMES.TIMETABLE_SWAP]: swapQueue,
   ...(pipelineJobsQueue ? { [QUEUE_NAMES.PIPELINE_JOBS]: pipelineJobsQueue } : {}),
 };
 

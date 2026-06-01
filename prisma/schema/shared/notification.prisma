@@ -1,138 +1,279 @@
 // =============================================================================
-<<<<<<< HEAD
-<<<<<<< HEAD
 // prisma/schema/shared/notification.prisma — RESQID
-// Multi-channel notifications for parents and school users
-// =============================================================================
-=======
-// notification.prisma — RESQID
-// Shared notification models: logs, preferences
+// Multi-channel notifications for parents, students, and school users
 // =============================================================================
 
-model Notification {
-  id         String             @id @default(cuid())
-
-  // Recipient — polymorphic (parent or school staff)
-  parentId     String?
-  schoolUserId String?
-
-  parent       Parent?          @relation(fields: [parentId], references: [id])
-  schoolUser   User?            @relation(fields: [schoolUserId], references: [id])
-
-  schoolId     String?
-  school       School?          @relation(fields: [schoolId], references: [id])
-
-  title        String
-  body         String
-  type         String            // from EVENTS constants (e.g., 'EMERGENCY_TRIGGERED')
-
-  data         Json?             // deep link payload (studentId, incidentId, etc.)
-
-  channel      NotificationChannel
-  status       NotificationStatus  @default(PENDING)
-
-  sentAt       DateTime?
-  readAt       DateTime?
-  failReason   String?
-
-  createdAt    DateTime          @default(now())
-
-  @@index([parentId])
-  @@index([schoolUserId])
-  @@index([status])
-  @@index([type])
-  @@map("notifications")
-}
-
-model NotificationPreference {
-  id           String  @id @default(cuid())
-  parentId     String  @unique
-  parent       Parent  @relation(fields: [parentId], references: [id])
-
-  smsEnabled   Boolean @default(true)
-  emailEnabled Boolean @default(false)
-  pushEnabled  Boolean @default(true)
-
-  // Per‑event preferences
-  onScan          Boolean @default(true)
-  onAttendance    Boolean @default(true)
-  onEmergency     Boolean @default(true)
-  onAnnouncement  Boolean @default(true)
-
-  updatedAt    DateTime @updatedAt
-
-  @@index([parentId])
-  @@map("notification_preferences")
-}
->>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
-=======
-// prisma/schema/shared/notification.prisma — RESQID
-// Multi-channel notifications for parents and school users
-// =============================================================================
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
+// ─── Enums ────────────────────────────────────────────────────────────────────
 
 enum NotificationChannel {
   SMS
   EMAIL
   PUSH
   IN_APP
+  WHATSAPP
 }
 
 enum NotificationStatus {
   PENDING
   QUEUED
+  PROCESSING
   SENT
   DELIVERED
   READ
   FAILED
   CANCELLED
+  BOUNCED
+  SPAM
 }
 
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationCategory {
+  ATTENDANCE
+  FEE
+  EXAM
+  EVENT
+  EMERGENCY
+  ANNOUNCEMENT
+  SCAN_ALERT
+  HOMEWORK
+  REPORT_CARD
+  SYSTEM
+  OTHER
+}
+
+// ─── Notification Model ───────────────────────────────────────────────────────
+
 model Notification {
-  id           String             @id @default(cuid())
-
+  id           String              @id @default(cuid())
+  
+  // Recipient (at least one required: parent, staff, or student)
   parentId     String?
-  parent       ParentUser?        @relation(fields: [parentId], references: [id])
+  parent       ParentUser?         @relation(fields: [parentId], references: [id], onDelete: Cascade)
   schoolUserId String?
+  schoolUser   SchoolUser?         @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
+  studentId    String?
+  student      Student?            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  // School context
   schoolId     String?
-  school       School?            @relation(fields: [schoolId], references: [id])
-
+  school       School?             @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  
+  // Content
   title        String
   body         String
-  type         String
+  shortBody    String?             // For SMS/push notification preview
+  category     NotificationCategory
+  priority     NotificationPriority @default(NORMAL)
+  
+  // Action (deep link or action button)
+  actionUrl    String?
+  actionLabel  String?
+  
+  // Rich Content
+  imageUrl     String?
   data         Json?
-
+  
+  // Reference (link to related entity)
+  referenceId    String?
+  referenceType  String?
+  
+  // Channel & Status
   channel      NotificationChannel
-  status       NotificationStatus @default(PENDING)
-
-  sentAt       DateTime?
-  readAt       DateTime?
+  status       NotificationStatus  @default(PENDING)
   failReason   String?
-
-  createdAt    DateTime           @default(now())
+  retryCount   Int                 @default(0)
+  maxRetries   Int                 @default(3)
+  
+  // External Tracking
+  externalId        String?
+  providerResponse  Json?
+  
+  // Grouping
+  groupId      String?
+  isRead       Boolean             @default(false)
+  isArchived   Boolean             @default(false)
+  
+  // Scheduling
+  scheduledFor DateTime?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  readAt       DateTime?
+  
+  // Expiry
+  expiresAt    DateTime?
+  
+  // Timestamps
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   @@index([parentId])
   @@index([schoolUserId])
+  @@index([studentId])
   @@index([schoolId])
   @@index([status])
+  @@index([category])
+  @@index([scheduledFor])
+  @@index([createdAt])
+  @@index([groupId])
   @@map("notifications")
 }
 
+// ─── Notification Preference Model ────────────────────────────────────────────
+
 model NotificationPreference {
-  id           String  @id @default(cuid())
-  parentId     String  @unique
-  parent       ParentUser? @relation(fields: [parentId], references: [id])
-
-  smsEnabled   Boolean @default(true)
-  emailEnabled Boolean @default(false)
-  pushEnabled  Boolean @default(true)
-
-  onScan       Boolean @default(true)
-  onAttendance Boolean @default(true)
-  onEmergency  Boolean @default(true)
-  onAnnouncement Boolean @default(true)
-
-  updatedAt    DateTime @updatedAt
-
+  id           String       @id @default(cuid())
+  
+  // Whose preferences
+  parentId     String?      @unique
+  parent       ParentUser?  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  schoolUserId String?      @unique
+  schoolUser   SchoolUser?  @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
+  
+  // Channel Preferences
+  smsEnabled      Boolean   @default(true)
+  emailEnabled    Boolean   @default(false)
+  pushEnabled     Boolean   @default(true)
+  inAppEnabled    Boolean   @default(true)
+  whatsappEnabled Boolean   @default(false)
+  
+  // Category Preferences
+  onScan          Boolean   @default(true)
+  onAttendance    Boolean   @default(true)
+  onAbsent        Boolean   @default(true)
+  onLate          Boolean   @default(true)
+  onFee           Boolean   @default(true)
+  onExam          Boolean   @default(true)
+  onEvent         Boolean   @default(true)
+  onEmergency     Boolean   @default(true)
+  onAnnouncement  Boolean   @default(true)
+  onHomework      Boolean   @default(false)
+  onReportCard    Boolean   @default(true)
+  
+  // Quiet Hours
+  quietHoursEnabled   Boolean   @default(false)
+  quietHoursStart     String?
+  quietHoursEnd       String?
+  quietHoursTimezone  String?
+  
+  // Language
+  language    String     @default("en")
+  
+  // Per-Student Override
+  studentOverrides Json?
+  
+  // Frequency Control
+  maxPerHour   Int?
+  digestMode   Boolean   @default(false)
+  
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
   @@map("notification_preferences")
+}
+
+// ─── Notification Template Model ──────────────────────────────────────────────
+
+model NotificationTemplate {
+  id          String              @id @default(cuid())
+  schoolId    String?
+  school      School?             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  // Template Details
+  name        String
+  category    NotificationCategory
+  isSystem    Boolean             @default(false)
+  
+  // Content Templates
+  titleTemplate   String
+  bodyTemplate    String
+  smsTemplate     String?
+  
+  // Default Channel
+  defaultChannel  NotificationChannel @default(PUSH)
+  
+  // Variables
+  variables       String[]
+  
+  // Status
+  isActive    Boolean             @default(true)
+  
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  
+  @@index([schoolId])
+  @@index([category])
+  @@index([isSystem])
+  @@map("notification_templates")
+}
+
+// ─── Notification Batch ───────────────────────────────────────────────────────
+
+model NotificationBatch {
+  id          String    @id @default(cuid())
+  schoolId    String
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  // Batch Details
+  name        String
+  templateId  String?
+  category    NotificationCategory?
+  
+  // Stats
+  totalCount      Int   @default(0)
+  sentCount       Int   @default(0)
+  deliveredCount  Int   @default(0)
+  readCount       Int   @default(0)
+  failedCount     Int   @default(0)
+  
+  // Status
+  status      String    @default("PENDING")
+  
+  // Created by
+  createdById String?
+  createdBy   SchoolUser? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@index([schoolId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("notification_batches")
+}
+
+// ─── Notification Device Token ────────────────────────────────────────────────
+
+model NotificationDeviceToken {
+  id          String    @id @default(cuid())
+  
+  // Owner (parent or staff)
+  parentId    String?
+  parent      ParentUser? @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  schoolUserId String?
+  schoolUser  SchoolUser? @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
+  
+  // Device Info
+  token       String    @unique
+  platform    String    // "ios", "android", "web"
+  deviceModel String?
+  appVersion  String?
+  
+  // Status
+  isActive    Boolean   @default(true)
+  lastUsedAt  DateTime?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@unique([parentId, token])
+  @@unique([schoolUserId, token])
+  @@index([token])
+  @@index([platform])
+  @@map("notification_device_tokens")
 }

@@ -1,67 +1,108 @@
-// =============================================================================
-// modules/m4-communication/communication.controller.js — RESQID
-// Thin HTTP layer.
-// =============================================================================
-
+// src/modules/communication/communication.controller.js
+import { CommunicationService } from './communication.service.js';
 import { ApiResponse } from '#shared/response/ApiResponse.js';
-import * as service from './communication.service.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import {
+  createAnnouncementSchema,
+  updateAnnouncementSchema,
+  listAnnouncementsQuerySchema,
+  scheduleAnnouncementSchema,
+  listDeliveryLogsQuerySchema,
+  createThreadSchema,
+  sendMessageSchema,
+  listThreadsQuerySchema,
+} from './communication.validation.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ANNOUNCEMENTS (Teacher/Admin)
-// ═══════════════════════════════════════════════════════════════════════════════
+const service = new CommunicationService();
 
-export const createAnnouncement = async (req, res) => {
-  const result = await service.createAnnouncement({
-    schoolId: req.schoolId,
-    authorId: req.user.id,
-    ...req.body,
-  });
-  return ApiResponse.created(res, result, 'Announcement queued for delivery');
-};
+// ─── Announcements ─────────────────────────────────────────
+export const createAnnouncement = asyncHandler(async (req, res) => {
+  const validated = createAnnouncementSchema.parse(req.body);
+  const result = await service.createAnnouncement(validated, req.user.id, req.schoolId, req);
+  res.status(201).json(ApiResponse.success('Announcement created', result));
+});
 
-export const listAnnouncements = async (req, res) => {
-  const { page, limit } = req.query;
-  const result = await service.listAnnouncements(req.schoolId, page, limit);
-  return ApiResponse.paginated(res, result.announcements, {
-    page: result.page,
-    limit: result.limit,
-    total: result.total,
-  });
-};
+export const updateAnnouncement = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const validated = updateAnnouncementSchema.parse(req.body);
+  const result = await service.updateAnnouncement(id, validated, req.user.id, req.schoolId, req);
+  res.json(ApiResponse.success('Announcement updated', result));
+});
 
-export const getAnnouncement = async (req, res) => {
-  const announcement = await service.getAnnouncement(req.params.id, req.schoolId);
-  return ApiResponse.ok(res, announcement);
-};
+export const deleteAnnouncement = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await service.deleteAnnouncement(id, req.user.id, req.schoolId, req);
+  res.json(ApiResponse.success('Announcement deleted'));
+});
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DIRECT MESSAGES (Teacher/Admin → Parent)
-// ═══════════════════════════════════════════════════════════════════════════════
+export const listAnnouncements = asyncHandler(async (req, res) => {
+  const query = listAnnouncementsQuerySchema.parse(req.query);
+  const { announcements, total } = await service.listAnnouncements(query, req.schoolId);
+  res.json(ApiResponse.paginate(announcements, total, query.page, query.limit));
+});
 
-export const sendMessage = async (req, res) => {
-  const message = await service.sendMessage({
-    schoolId: req.schoolId,
-    senderId: req.user.id,
-    ...req.body,
-  });
-  return ApiResponse.created(res, message, 'Message sent');
-};
+export const getAnnouncementStats = asyncHandler(async (req, res) => {
+  const stats = await service.getAnnouncementStats(req.schoolId);
+  res.json(ApiResponse.success('Stats', stats));
+});
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MESSAGES (Parent view)
-// ═══════════════════════════════════════════════════════════════════════════════
+export const incrementAnnouncementViews = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await service.incrementAnnouncementViews(id, req.schoolId);
+  res.json(ApiResponse.success('View counted'));
+});
 
-export const listMessages = async (req, res) => {
-  const { page, limit, studentId } = req.query;
-  const result = await service.listMessages(req.user.id, page, limit, studentId);
-  return ApiResponse.paginated(res, result.messages, {
-    page: result.page,
-    limit: result.limit,
-    total: result.total,
-  });
-};
+export const scheduleAnnouncement = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { scheduledFor } = scheduleAnnouncementSchema.parse(req.body);
+  await service.scheduleAnnouncement(id, scheduledFor, req.schoolId);
+  res.json(ApiResponse.success('Announcement scheduled'));
+});
 
-export const markRead = async (req, res) => {
-  await service.markMessageRead(req.params.id, req.user.id);
-  return ApiResponse.ok(res, null, 'Marked as read');
-};
+// ─── Delivery Logs ─────────────────────────────────────────
+export const listDeliveryLogs = asyncHandler(async (req, res) => {
+  const query = listDeliveryLogsQuerySchema.parse(req.query);
+  const { logs, total } = await service.listDeliveryLogs(query, req.schoolId);
+  res.json(ApiResponse.paginate(logs, total, query.page, query.limit));
+});
+
+export const getDeliveryStats = asyncHandler(async (req, res) => {
+  const stats = await service.getDeliveryStats(req.schoolId);
+  res.json(ApiResponse.success('Delivery stats', stats));
+});
+
+export const retryDelivery = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const result = await service.retryDelivery(id, req.schoolId);
+  res.json(ApiResponse.accepted(result, 'Retry queued'));
+});
+
+// ─── Messages & Threads ────────────────────────────────────
+export const createThread = asyncHandler(async (req, res) => {
+  const { parentId, studentName, studentClass } = createThreadSchema.parse(req.body);
+  const thread = await service.getOrCreateThread(parentId, req.user.id, req.schoolId, studentName, studentClass);
+  res.status(201).json(ApiResponse.success('Thread created', thread));
+});
+
+export const sendMessage = asyncHandler(async (req, res) => {
+  const validated = sendMessageSchema.parse(req.body);
+  const message = await service.sendMessage(validated, req.user.id, req.user.role.toLowerCase(), req.schoolId, req);
+  res.status(201).json(ApiResponse.success('Message sent', message));
+});
+
+export const listThreads = asyncHandler(async (req, res) => {
+  const query = listThreadsQuerySchema.parse(req.query);
+  const { threads, total } = await service.listThreads(query, req.user.id, req.schoolId);
+  res.json(ApiResponse.paginate(threads, total, query.page, query.limit));
+});
+
+export const getThreadDetails = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const thread = await service.getThreadDetails(id, req.user.id, req.schoolId);
+  res.json(ApiResponse.success('Thread details', thread));
+});
+
+export const getUnreadCount = asyncHandler(async (req, res) => {
+  const count = await service.getUnreadCount(req.user.id, req.schoolId);
+  res.json(ApiResponse.success('Unread count', { count }));
+});

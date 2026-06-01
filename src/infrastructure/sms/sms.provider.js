@@ -1,6 +1,4 @@
 <<<<<<< HEAD
-=======
-<<<<<<< HEAD
 <<<<<<< HEAD
 import { TwoFactorAdapter } from './twofactor.adapter.js';
 import { MSG91Adapter } from './msg91.adapter.js';
@@ -34,7 +32,6 @@ export { SmsProvider, TwoFactorAdapter, MSG91Adapter };
 =======
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 /**
  * SMS Provider Interface
  * Defines the contract for all SMS adapter implementations.
@@ -63,9 +60,6 @@ export class SmsProvider {
 
 export default SmsProvider;
 <<<<<<< HEAD
-=======
-<<<<<<< HEAD
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd

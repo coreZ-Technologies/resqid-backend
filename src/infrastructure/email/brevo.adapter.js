@@ -31,9 +31,6 @@ export class BrevoAdapter extends EmailProvider {
         {
           sender,
 <<<<<<< HEAD
-          to: recipients.map((email) => ({ email })),
-=======
-<<<<<<< HEAD
 <<<<<<< HEAD
           to: recipients.map(email => ({ email })),
 =======
@@ -42,7 +39,6 @@ export class BrevoAdapter extends EmailProvider {
 =======
           to: recipients.map((email) => ({ email })),
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
           subject,
           htmlContent: html,
           ...(text && { textContent: text }),
@@ -84,9 +80,6 @@ export class BrevoAdapter extends EmailProvider {
 
   async sendBulk(emails) {
 <<<<<<< HEAD
-    const results = await Promise.allSettled(emails.map((e) => this.send(e)));
-=======
-<<<<<<< HEAD
 <<<<<<< HEAD
     const results = await Promise.allSettled(emails.map(e => this.send(e)));
 =======
@@ -95,7 +88,6 @@ export class BrevoAdapter extends EmailProvider {
 =======
     const results = await Promise.allSettled(emails.map((e) => this.send(e)));
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
->>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
     return results.map((r, i) =>
       r.status === 'fulfilled'
         ? r.value
