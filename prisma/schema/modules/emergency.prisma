@@ -1,11 +1,16 @@
 // =============================================================================
 <<<<<<< HEAD
+<<<<<<< HEAD
 // prisma/schema/modules/emergency.prisma — RESQID
 // Emergency profile and contacts — displayed on QR scan
 =======
 // emergency.prisma — RESQID
 // Module m2: Emergency profiles & contacts
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+// prisma/schema/modules/emergency.prisma — RESQID
+// Emergency profile and contacts — displayed on QR scan
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 // =============================================================================
 
 model EmergencyProfile {
@@ -22,10 +27,14 @@ model EmergencyProfile {
   doctorPhone  String?
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   showBloodGroup   Boolean @default(true)
   showAllergies    Boolean @default(true)
   showMedications  Boolean @default(false)
   showContacts     Boolean @default(true)
+<<<<<<< HEAD
 =======
   // Card visibility – parent controls what shows on scan
   showBloodGroup  Boolean @default(true)
@@ -33,6 +42,8 @@ model EmergencyProfile {
   showMedications Boolean @default(false)
   showContacts    Boolean @default(true)
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 
   isComplete  Boolean @default(false)
 

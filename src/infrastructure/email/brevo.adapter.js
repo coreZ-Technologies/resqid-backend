@@ -30,7 +30,19 @@ export class BrevoAdapter extends EmailProvider {
         `${this.baseUrl}/smtp/email`,
         {
           sender,
+<<<<<<< HEAD
           to: recipients.map((email) => ({ email })),
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+          to: recipients.map(email => ({ email })),
+=======
+          to: recipients.map((email) => ({ email })),
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+          to: recipients.map((email) => ({ email })),
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
           subject,
           htmlContent: html,
           ...(text && { textContent: text }),
@@ -71,7 +83,19 @@ export class BrevoAdapter extends EmailProvider {
   }
 
   async sendBulk(emails) {
+<<<<<<< HEAD
     const results = await Promise.allSettled(emails.map((e) => this.send(e)));
+=======
+<<<<<<< HEAD
+<<<<<<< HEAD
+    const results = await Promise.allSettled(emails.map(e => this.send(e)));
+=======
+    const results = await Promise.allSettled(emails.map((e) => this.send(e)));
+>>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
+=======
+    const results = await Promise.allSettled(emails.map((e) => this.send(e)));
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
     return results.map((r, i) =>
       r.status === 'fulfilled'
         ? r.value

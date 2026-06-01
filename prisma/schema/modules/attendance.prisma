@@ -1,5 +1,8 @@
 // =============================================================================
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 // prisma/schema/modules/attendance.prisma — RESQID
 // Attendance sessions, taps, and records
 // =============================================================================
@@ -11,16 +14,20 @@ enum AttendanceStatus {
   EXCUSED
   HALF_DAY
 }
+<<<<<<< HEAD
 =======
 // attendance.prisma — RESQID
 // Module m3: Attendance tracking via RFID taps
 // =============================================================================
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 
 // ── Session (e.g., morning/afternoon class block) ──────────────────────────
 model AttendanceSession {
   id          String    @id @default(cuid())
   schoolId    String
+<<<<<<< HEAD
 <<<<<<< HEAD
   teacherId   String
   grade       String
@@ -28,6 +35,10 @@ model AttendanceSession {
   teacherId   String    // references User.id (role = TEACHER)
   classGrade  String
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+  teacherId   String
+  grade       String
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   section     String
   subject     String?
 
@@ -58,10 +69,14 @@ model AttendanceTap {
   schoolId    String
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   uidHash     String
 =======
   uidHash     String            // SHA-256 of NFC UID (privacy-safe)
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+  uidHash     String
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   tappedAt    DateTime          @default(now())
   deviceId    String?
   processed   Boolean           @default(false)
@@ -87,6 +102,7 @@ model AttendanceRecord {
   status      AttendanceStatus  @default(PRESENT)
   markedAt    DateTime          @default(now())
 <<<<<<< HEAD
+<<<<<<< HEAD
   markedBy    String?
 =======
   markedBy    String?           // optional teacherId if manually overridden
@@ -94,11 +110,15 @@ model AttendanceRecord {
   // Relations
   school      School            @relation(fields: [schoolId], references: [id])
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+  markedBy    String?
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 
   @@unique([sessionId, studentId])
   @@index([schoolId])
   @@index([studentId])
   @@map("attendance_records")
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 }
@@ -110,4 +130,6 @@ enum AttendanceStatus {
   LATE
   EXCUSED
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 }

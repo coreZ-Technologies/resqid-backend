@@ -1,5 +1,32 @@
 // =============================================================================
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+// timetable.prisma — RESQID
+// Module m1: Timetable management, teachers, subjects, periods, substitutions
+// =============================================================================
+
+model Teacher {
+  id        String   @id @default(cuid())
+  schoolId  String
+  userId    String?  @unique   // optional link to User (if teacher has login)
+  name      String
+  phone     String?
+  subjectIds String[] // subjects they teach (Subject.code or Subject.id)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  periods        Period[]
+  substitutions  Substitution[] @relation("SubstituteTeacher")
+
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
+  user     User?   @relation(fields: [userId], references: [id])
+=======
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 // prisma/schema/modules/timetable.prisma — RESQID
 // School-specific timetable with substitution support
 // =============================================================================
@@ -54,6 +81,7 @@ model Teacher {
 
   periods         Period[]
   substitutions   Substitution[]   @relation("SubstituteTeacher")
+<<<<<<< HEAD
 =======
 // timetable.prisma — RESQID
 // Module m1: Timetable management, teachers, subjects, periods, substitutions
@@ -79,6 +107,9 @@ model Teacher {
   school   School  @relation(fields: [schoolId], references: [id])
   user     User?   @relation(fields: [userId], references: [id])
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
 
   @@index([schoolId])
   @@index([userId])
@@ -162,15 +193,26 @@ model Period {
   substitutions Substitution[]
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
+
+=======
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   @@unique([schoolId, classId, dayOfWeek, periodNumber])
+<<<<<<< HEAD
 =======
   // Relations
   school   School  @relation(fields: [schoolId], references: [id])
 
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   @@index([schoolId])
   @@index([teacherId, dayOfWeek])
   @@map("periods")
@@ -192,6 +234,15 @@ model Substitution {
   status            String   @default("PENDING")
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+  // Relations
+  school   School  @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@index([date])
+=======
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   approvedBy        String?
   approvedAt        DateTime?
   notifiedAt        DateTime?
@@ -203,6 +254,7 @@ model Substitution {
   @@index([schoolId, date])
   @@index([periodId])
   @@index([substituteId])
+<<<<<<< HEAD
 =======
   // Relations
   school   School  @relation(fields: [schoolId], references: [id])
@@ -210,5 +262,8 @@ model Substitution {
   @@index([schoolId])
   @@index([date])
 >>>>>>> e674064afecbcf65dfae0ef363dfc4b63404f201
+=======
+>>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+>>>>>>> 2a55dd6fd25bf258ef26b2ee6e87c613a8887fbd
   @@map("substitutions")
 }
