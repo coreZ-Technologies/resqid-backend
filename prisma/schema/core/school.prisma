@@ -20,44 +20,80 @@ enum SchoolStatus {
   TRIAL
 }
 
+enum SchoolType {
+  PRIMARY
+  SECONDARY
+  HIGHER_SECONDARY
+  K12
+  PRE_SCHOOL
+  OTHER
+}
+
+enum SchoolAffiliation {
+  GOVERNMENT
+  PRIVATE
+  AIDED
+  UNAIDED
+  INTERNATIONAL
+  OTHER
+}
+
 model School {
   id         String       @id @default(cuid())
   name       String
   code       String?      @unique
 
-  // Board affiliation
+  // ─── Basic Info ───
   board      Board        @default(OTHER)
-
-  // Address (structured)
+  type       SchoolType   @default(K12)
+  affiliation SchoolAffiliation @default(PRIVATE)
+  estYear    Int?         // Establishment year
+  
+  // ─── Address ───
   street     String?
   city       String?
   state      String?
   country    String?      @default("India")
   postalCode String?
+  latitude   Float?
+  longitude  Float?
 
-  // Contact
+  // ─── Contact ───
   email      String?
   phone      String?
   website    String?
   logoUrl    String?
 
-  // Timezone
+  // ─── Timezone ───
   timezone   String       @default("Asia/Kolkata")
 
-  // Subscription
+  // ─── Academic Calendar ───
+  academicYearStart  DateTime?  // e.g., "2024-04-01"
+  academicYearEnd    DateTime?  // e.g., "2025-03-31"
+  
+  // ─── School Timing ───
+  schoolStartTime    String?    // "08:00"
+  schoolEndTime      String?    // "15:00"
+  workingDays        Int[]      @default([1,2,3,4,5,6]) // 1=Mon
+  currentTerm        String?    // "First Term", "Second Term"
+
+  // ─── Subscription ───
   planId     String?
   plan       Plan?        @relation(fields: [planId], references: [id])
   status     SchoolStatus @default(TRIAL)
 
-  // Feature toggles — {"emergency":true,"attendance":true,"timetable":false}
+  // ─── Feature Toggles ───
   features   Json         @default("{}")
+  // Example: {"emergency":true, "attendance":true, "timetable":false, "transport":false}
 
+  // ─── Timestamps ───
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
-  // Relations
+  // ─── Relations ───
   users               SchoolUser[]
   students            Student[]
+  teachers            Teacher[]
   tokens              Token[]
   scans               Scan[]
   subscriptions       Subscription[]
@@ -66,6 +102,31 @@ model School {
   announcements       Announcement[]
   messages            Message[]
   notifications       Notification[]
+  
+  // Timetable Relations
+  timetableConfig     SchoolTimetableConfig?
+  rooms               Room[]
+  subjects            Subject[]
+  classGroups         ClassGroup[]
+  timetableTemplates  TimetableTemplate[]
+  timetables          Timetable[]
+  crisisEvents        CrisisEvent[]
+  substitution        Substitution[]
+  timetableJobs       TimetableJob[]
+  bulkUploads         BulkUpload[]
+  constraintPresets   ConstraintPreset[]
+  
+  // Emergency Relations
+  emergencyProfiles   EmergencyProfile[]
+  emergencyIncidents  EmergencyIncident[]
+  emergencyDrills     EmergencyDrill[]
+  emergencyAccessLogs EmergencyAccessLog[]
+  
+  // Audit Relations
+  auditLogs           AuditLog[]
 
+  @@index([status])
+  @@index([board])
+  @@index([city, state])
   @@map("schools")
 }

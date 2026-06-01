@@ -1,7 +1,7 @@
 // =============================================================================
 // prisma/schema/core/student.prisma — RESQID
-// Student entity with parent links and card visibility
-// Emergency profile in modules/emergency.prisma
+// Student entity with parent links, emergency profile & card visibility
+// Supports: Smart Attendance, Emergency Profile, QR Card System
 // =============================================================================
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -21,9 +21,9 @@ enum StudentStatus {
 }
 
 enum VisibilityLevel {
-  PUBLIC    // Full profile visible on scan
-  MINIMAL   // Only name, blood group, primary contact
-  HIDDEN    // No data visible on scan
+  PUBLIC
+  MINIMAL
+  HIDDEN
 }
 
 enum Relationship {
@@ -34,94 +34,6 @@ enum Relationship {
   SIBLING
   OTHER
 }
-
-// ─── Student Model ────────────────────────────────────────────────────────────
-
-model Student {
-  id         String   @id @default(cuid())
-  schoolId   String
-  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-
-  // Personal Information
-  firstName   String
-  lastName    String
-  dateOfBirth DateTime?
-  gender      Gender?
-  bloodGroup  BloodGroup?
-  photoUrl    String?
-
-  // Academic Information
-  grade       String?
-  section     String?
-  rollNumber  String?
-  studentId   String?
-
-  // Medical Quick Info
-  allergies   String[]
-  conditions  String[]
-  medications String[]
-
-  // Status
-  status      StudentStatus @default(ACTIVE)
-  isActive    Boolean       @default(true)
-  enrolledAt  DateTime      @default(now())
-
-  // Card Visibility Control
-  cardVisibilityId String?
-  cardVisibility   CardVisibility? @relation(fields: [cardVisibilityId], references: [id])
-
-  // Metadata
-  metadata    Json?
-
-  // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  // Relations
-  tokens              Token[]
-  scans               Scan[]
-  attendanceRecords   StudentAttendanceRecord[]    // ✅ FIXED
-  attendanceTaps      AttendanceTap[]
-  emergencyProfile    EmergencyProfile?
-  parentLinks         ParentStudent[]
-  documents           StudentDocument[]
-  notifications       Notification[]
-  auditLogs           AuditLog[]
-
-  @@index([schoolId])
-  @@index([schoolId, grade, section])
-  @@index([schoolId, status])
-  @@index([firstName, lastName])
-  @@index([studentId])
-  @@map("students")
-}
-
-// ─── Card Visibility Configuration ────────────────────────────────────────────
-
-model CardVisibility {
-  id          String          @id @default(cuid())
-  visibility  VisibilityLevel @default(PUBLIC)
-  
-  // Granular controls for MINIMAL mode
-  showName    Boolean         @default(true)
-  showBloodGroup Boolean      @default(true)
-  showAllergies Boolean       @default(false)
-  showConditions Boolean      @default(false)
-  showEmergencyContacts Boolean @default(true)
-  showParentInfo Boolean      @default(false)
-
-  // Optional expiration
-  expiresAt   DateTime?
-
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-
-  students    Student[]
-
-  @@map("card_visibility")
-}
-
-// ─── Student Document Model ────────────────────────────────────────────────────
 
 enum DocumentType {
   BIRTH_CERTIFICATE
@@ -135,6 +47,108 @@ enum DocumentType {
   PHOTO
   OTHER
 }
+
+// ─── Student Model ────────────────────────────────────────────────────────────
+
+model Student {
+  id         String   @id @default(cuid())
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  // ─── Personal Information ───
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime?
+  gender      Gender?
+  bloodGroup  BloodGroup?
+  photoUrl    String?
+
+  // ─── Academic Information ───
+  grade       String?
+  section     String?
+  rollNumber  String?
+  studentId   String?       // School-issued student ID (e.g., "SCT-2024-001")
+  classGroupId String?      // Link to timetable class group
+  classGroup   ClassGroup?  @relation(fields: [classGroupId], references: [id])
+
+  // ─── Medical Quick Info (for emergencies) ───
+  allergies   String[]
+  conditions  String[]
+  medications String[]
+  medicalNotes String?      // Additional medical instructions
+
+  // ─── Status ───
+  status      StudentStatus @default(ACTIVE)
+  isActive    Boolean       @default(true)
+  enrolledAt  DateTime      @default(now())
+  graduatedAt DateTime?
+
+  // ─── Card Visibility Control ───
+  cardVisibilityId String?
+  cardVisibility   CardVisibility? @relation(fields: [cardVisibilityId], references: [id])
+
+  // ─── Transport ───
+  transportRoute   String?   // Bus route number
+  transportStop    String?   // Pickup/Drop point
+  rfidTagNumber    String?   @unique  // For RFID-based attendance
+
+  // ─── Metadata ───
+  metadata    Json?
+
+  // ─── Timestamps ───
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // ─── Relations ───
+  tokens              Token[]
+  scans               Scan[]
+  attendanceRecords   StudentAttendanceRecord[]
+  attendanceTaps      AttendanceTap[]
+  emergencyProfile    EmergencyProfile?
+  parentLinks         ParentStudent[]
+  documents           StudentDocument[]
+  notifications       Notification[]
+
+  @@index([schoolId])
+  @@index([schoolId, grade, section])
+  @@index([schoolId, status])
+  @@index([firstName, lastName])
+  @@index([studentId])
+  @@index([rfidTagNumber])
+  @@index([classGroupId])
+  @@map("students")
+}
+
+// ─── Card Visibility Configuration ────────────────────────────────────────────
+
+model CardVisibility {
+  id          String          @id @default(cuid())
+  visibility  VisibilityLevel @default(PUBLIC)
+  
+  // ─── Granular controls for MINIMAL mode ───
+  showName              Boolean @default(true)
+  showBloodGroup        Boolean @default(true)
+  showAllergies         Boolean @default(false)
+  showConditions        Boolean @default(false)
+  showMedications       Boolean @default(false)
+  showEmergencyContacts Boolean @default(true)
+  showParentInfo        Boolean @default(false)
+  showTransportInfo     Boolean @default(false)
+  showPhoto             Boolean @default(true)
+  showGrade             Boolean @default(true)
+
+  // ─── Optional expiration ───
+  expiresAt   DateTime?
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  students    Student[]
+
+  @@map("card_visibility")
+}
+
+// ─── Student Document Model ────────────────────────────────────────────────────
 
 model StudentDocument {
   id          String       @id @default(cuid())
