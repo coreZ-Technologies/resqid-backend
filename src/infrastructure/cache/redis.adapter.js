@@ -1,11 +1,4 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-// TODO: Add implementation
-import { createClient } from 'redis';
-import { CacheProvider } from './cache.provider.js';
-=======
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+
 // =============================================================================
 // redis.adapter.js — RESQID
 //
@@ -16,7 +9,7 @@ import { CacheProvider } from './cache.provider.js';
 import { createClient } from 'redis';
 import { CacheProvider } from './cache.provider.js';
 import { logger } from '#config/logger.js';
-<<<<<<< HEAD
+
 >>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
 =======
 >>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
