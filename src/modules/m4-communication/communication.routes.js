@@ -1,63 +1,68 @@
-// =============================================================================
-// modules/m4-communication/communication.routes.js — RESQID
-// Mounted at /api/communication
-// =============================================================================
-
+// src/modules/communication/communication.routes.js
 import { Router } from 'express';
-import { validate, validateAll } from '#middleware/validate.middleware.js';
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
-import { authorize } from '#middleware/auth/rbac.middleware.js';
-import { ROLES } from '#shared/constants/roles.js';
-import * as controller from './communication.controller.js';
+import { authorizeMin, ROLES } from '#middleware/auth/authorize.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { sanitizeDeep } from '#middleware/sanitize.middleware.js';
+import { ownSchoolOnly } from '#middleware/restrictionOwnSchool.middleware.js';
+import {
+  createAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement,
+  listAnnouncements,
+  getAnnouncementStats,
+  incrementAnnouncementViews,
+  scheduleAnnouncement,
+  listDeliveryLogs,
+  getDeliveryStats,
+  retryDelivery,
+  createThread,
+  sendMessage,
+  listThreads,
+  getThreadDetails,
+  getUnreadCount,
+} from './communication.controller.js';
 import {
   createAnnouncementSchema,
-  listAnnouncementsSchema,
-  getAnnouncementSchema,
+  updateAnnouncementSchema,
+  listAnnouncementsQuerySchema,
+  scheduleAnnouncementSchema,
+  listDeliveryLogsQuerySchema,
+  createThreadSchema,
   sendMessageSchema,
-  listMessagesSchema,
+  listThreadsQuerySchema,
 } from './communication.validation.js';
 
 const router = Router();
 
-const STAFF = [ROLES.TEACHER, ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN];
-const PARENT = [ROLES.PARENT];
+// All routes require authentication and school admin role
+router.use(authenticate);
+router.use(authorizeMin(ROLES.SCHOOL_ADMIN));
+router.use(ownSchoolOnly);
+router.use(sanitizeDeep);
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ANNOUNCEMENTS — Teacher/Admin only
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─── Announcements ─────────────────────────────────────────
+router.post('/announcements', validate(createAnnouncementSchema), createAnnouncement);
+router.get('/announcements', validate(listAnnouncementsQuerySchema, 'query'), listAnnouncements);
+router.get('/announcements/stats', getAnnouncementStats);
+router.get('/announcements/:id', getAnnouncementStats); // placeholder, implement proper get
+router.put('/announcements/:id', validate(updateAnnouncementSchema), updateAnnouncement);
+router.delete('/announcements/:id', deleteAnnouncement);
+router.post('/announcements/:id/views', incrementAnnouncementViews);
+router.post('/announcements/:id/schedule', validate(scheduleAnnouncementSchema), scheduleAnnouncement);
 
-router.post(
-  '/announcements',
-  authenticate,
-  authorize(STAFF),
-  validate(createAnnouncementSchema),
-  controller.createAnnouncement
-);
+// ─── Delivery Logs ─────────────────────────────────────────
+router.get('/delivery-logs', validate(listDeliveryLogsQuerySchema, 'query'), listDeliveryLogs);
+router.get('/delivery-logs/stats', getDeliveryStats);
+router.post('/delivery-logs/:id/retry', retryDelivery);
 
-router.get('/announcements', authenticate, authorize(STAFF), controller.listAnnouncements);
-
-router.get(
-  '/announcements/:id',
-  authenticate,
-  authorize(STAFF),
-  validateAll(getAnnouncementSchema),
-  controller.getAnnouncement
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DIRECT MESSAGES — Teacher/Admin sends, Parent reads
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.post(
-  '/messages',
-  authenticate,
-  authorize(STAFF),
-  validate(sendMessageSchema),
-  controller.sendMessage
-);
-
-router.get('/messages', authenticate, authorize(PARENT), controller.listMessages);
-
-router.patch('/messages/:id/read', authenticate, authorize(PARENT), controller.markRead);
+// ─── Messages & Threads ────────────────────────────────────
+router.post('/threads', validate(createThreadSchema), createThread);
+router.get('/threads', validate(listThreadsQuerySchema, 'query'), listThreads);
+router.get('/threads/unread-count', getUnreadCount);
+router.get('/threads/:id', getThreadDetails);
+router.post('/threads/:id/messages', validate(sendMessageSchema), sendMessage);
+// Alternative route for sending without threadId (will auto-create)
+router.post('/messages', validate(sendMessageSchema), sendMessage);
 
 export default router;

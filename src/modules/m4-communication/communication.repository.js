@@ -1,182 +1,234 @@
-// =============================================================================
-// modules/m4-communication/communication.repository.js — RESQID
-// All DB queries — no business logic.
-// =============================================================================
-
+// src/modules/communication/communication.repository.js
 import { prisma } from '#config/prisma.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ANNOUNCEMENTS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createAnnouncement = ({
-  schoolId,
-  authorId,
-  title,
-  body,
-  targetAll,
-  targetGrades,
-  channels,
-}) =>
-  prisma.announcement.create({
-    data: { schoolId, authorId, title, body, targetAll, targetGrades, channels },
-    select: {
-      id: true,
-      title: true,
-      targetAll: true,
-      targetGrades: true,
-      channels: true,
-      createdAt: true,
-    },
-  });
-
-export const listAnnouncements = (schoolId, page = 1, limit = 20) => {
-  const where = { schoolId };
-  return Promise.all([
-    prisma.announcement.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        targetAll: true,
-        targetGrades: true,
-        channels: true,
-        sentAt: true,
-        createdAt: true,
-        author: { select: { id: true, name: true } },
-      },
-    }),
-    prisma.announcement.count({ where }),
-  ]);
-};
-
-export const findAnnouncement = (id, schoolId) =>
-  prisma.announcement.findFirst({
-    where: { id, schoolId },
-    select: {
-      id: true,
-      title: true,
-      body: true,
-      targetAll: true,
-      targetGrades: true,
-      channels: true,
-      sentAt: true,
-      createdAt: true,
-      author: { select: { id: true, name: true } },
-    },
-  });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// RECIPIENT LOOKUP (for worker)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const findRecipients = async (schoolId, targetGrades, targetAll) => {
-  const where = {
-    schoolId,
-    isActive: true,
-  };
-
-  if (!targetAll && targetGrades.length > 0) {
-    where.grade = { in: targetGrades };
+export class CommunicationRepository {
+  // ─── Announcements ─────────────────────────────────────────
+  async createAnnouncement(data) {
+    return prisma.announcement.create({ data });
   }
 
-  const students = await prisma.student.findMany({
-    where,
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      grade: true,
-      section: true,
-      parentLinks: {
-        select: {
-          parent: {
-            select: {
-              id: true,
-              phone: true,
-              email: true,
-              notificationPref: {
-                select: {
-                  pushEnabled: true,
-                  smsEnabled: true,
-                  emailEnabled: true,
-                  onAnnouncement: true,
-                },
-              },
-              devices: {
-                where: { isActive: true, expoPushToken: { not: null } },
-                select: { expoPushToken: true },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
+  async findAnnouncementById(id, schoolId) {
+    return prisma.announcement.findFirst({
+      where: { id, schoolId },
+      include: { deliveries: true },
+    });
+  }
 
-  // Flatten: each parent gets unique entry with their children info
-  const parentMap = new Map();
-  for (const student of students) {
-    for (const link of student.parentLinks) {
-      const parent = link.parent;
-      if (!parentMap.has(parent.id)) {
-        parentMap.set(parent.id, {
-          parentId: parent.id,
-          phone: parent.phone,
-          email: parent.email,
-          prefs: parent.notificationPref || {},
-          expoTokens: parent.devices.map((d) => d.expoPushToken),
-          students: [],
-        });
-      }
-      parentMap.get(parent.id).students.push({
-        id: student.id,
-        name: `${student.firstName} ${student.lastName}`.trim(),
-        grade: student.grade,
-        section: student.section,
+  async updateAnnouncement(id, schoolId, data) {
+    return prisma.announcement.updateMany({
+      where: { id, schoolId },
+      data,
+    });
+  }
+
+  async deleteAnnouncement(id, schoolId) {
+    return prisma.announcement.deleteMany({
+      where: { id, schoolId },
+    });
+  }
+
+  async listAnnouncements({ page, limit, search, category, status, audience, schoolId }) {
+    const skip = (page - 1) * limit;
+    const where = { schoolId };
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { body: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (category) where.category = category;
+    if (status) where.status = status;
+    if (audience) where.audience = audience;
+
+    const [announcements, total] = await Promise.all([
+      prisma.announcement.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
+        include: { deliveries: true },
+      }),
+      prisma.announcement.count({ where }),
+    ]);
+    return { announcements, total };
+  }
+
+  async getAnnouncementStats(schoolId) {
+    const [total, published, pinned, viewsSum] = await Promise.all([
+      prisma.announcement.count({ where: { schoolId } }),
+      prisma.announcement.count({ where: { schoolId, status: 'Published' } }),
+      prisma.announcement.count({ where: { schoolId, pinned: true } }),
+      prisma.announcement.aggregate({
+        where: { schoolId },
+        _sum: { views: true },
+      }),
+    ]);
+    return { total, published, pinned, totalViews: viewsSum._sum.views || 0 };
+  }
+
+  async incrementAnnouncementViews(id) {
+    return prisma.announcement.update({
+      where: { id },
+      data: { views: { increment: 1 } },
+    });
+  }
+
+  // ─── Delivery Logs ─────────────────────────────────────────
+  async createDeliveryLog(data) {
+    return prisma.deliveryLog.create({ data });
+  }
+
+  async listDeliveryLogs({ page, limit, channel, status, type, search, schoolId }) {
+    const skip = (page - 1) * limit;
+    const where = { schoolId };
+
+    if (channel) where.channel = channel;
+    if (status) where.status = status;
+    if (type) where.type = type;
+    if (search) {
+      where.OR = [
+        { recipientName: { contains: search, mode: 'insensitive' } },
+        { message: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
+      ];
+    }
+
+    const [logs, total] = await Promise.all([
+      prisma.deliveryLog.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { sentAt: 'desc' },
+      }),
+      prisma.deliveryLog.count({ where }),
+    ]);
+    return { logs, total };
+  }
+
+  async getDeliveryStats(schoolId) {
+    const [total, delivered, failed, pending] = await Promise.all([
+      prisma.deliveryLog.count({ where: { schoolId } }),
+      prisma.deliveryLog.count({ where: { schoolId, status: 'Delivered' } }),
+      prisma.deliveryLog.count({ where: { schoolId, status: 'Failed' } }),
+      prisma.deliveryLog.count({ where: { schoolId, status: 'Pending' } }),
+    ]);
+    const rate = total ? Math.round((delivered / total) * 100) : 0;
+    return { total, delivered, failed, pending, rate };
+  }
+
+  async findDeliveryLogById(id, schoolId) {
+    return prisma.deliveryLog.findFirst({
+      where: { id, schoolId },
+    });
+  }
+
+  async updateDeliveryLogStatus(id, status, errorDetails = null) {
+    return prisma.deliveryLog.update({
+      where: { id },
+      data: {
+        status,
+        deliveredAt: status === 'Delivered' ? new Date() : undefined,
+        errorDetails,
+        retries: { increment: 1 },
+      },
+    });
+  }
+
+  // ─── Message Threads ──────────────────────────────────────
+  async createThread(data) {
+    return prisma.messageThread.create({ data });
+  }
+
+  async findOrCreateThread(parentId, schoolAdminId, schoolId, studentName, studentClass) {
+    let thread = await prisma.messageThread.findFirst({
+      where: { parentId, schoolAdminId, schoolId, isActive: true },
+    });
+    if (!thread) {
+      thread = await prisma.messageThread.create({
+        data: {
+          parentId,
+          schoolAdminId,
+          schoolId,
+          studentName,
+          studentClass,
+        },
       });
     }
+    return thread;
   }
 
-  return Array.from(parentMap.values());
-};
+  async listThreads({ page, limit, search, schoolAdminId, schoolId }) {
+    const skip = (page - 1) * limit;
+    const where = { schoolId, schoolAdminId, isActive: true };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DIRECT MESSAGES
-// ═══════════════════════════════════════════════════════════════════════════════
+    if (search) {
+      where.OR = [
+        { studentName: { contains: search, mode: 'insensitive' } },
+        { parent: { firstName: { contains: search, mode: 'insensitive' } } },
+        { parent: { lastName: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
 
-export const createMessage = ({ schoolId, senderId, parentId, studentId, body }) =>
-  prisma.message.create({
-    data: { schoolId, senderId, parentId, studentId, body },
-    select: { id: true, parentId: true, studentId: true, body: true, createdAt: true },
-  });
+    const [threads, total] = await Promise.all([
+      prisma.messageThread.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+          parent: { select: { firstName: true, lastName: true, phone: true } },
+        },
+      }),
+      prisma.messageThread.count({ where }),
+    ]);
+    return { threads, total };
+  }
 
-export const listMessages = (parentId, page = 1, limit = 20, studentId) => {
-  const where = { parentId, ...(studentId && { studentId }) };
-  return Promise.all([
-    prisma.message.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        body: true,
-        isRead: true,
-        createdAt: true,
-        student: { select: { id: true, firstName: true, lastName: true } },
-        sender: { select: { id: true, name: true } },
+  async findThreadById(id, schoolId) {
+    return prisma.messageThread.findFirst({
+      where: { id, schoolId, isActive: true },
+      include: {
+        messages: { orderBy: { createdAt: 'asc' } },
+        parent: true,
       },
-    }),
-    prisma.message.count({ where }),
-  ]);
-};
+    });
+  }
 
-export const markMessageRead = (id, parentId) =>
-  prisma.message.updateMany({
-    where: { id, parentId, isRead: false },
-    data: { isRead: true, readAt: new Date() },
-  });
+  async updateThreadLastMessage(threadId, lastMessage, senderRole) {
+    const unreadDelta = senderRole === 'parent' ? 1 : 0; // if parent sends, admin unread increases
+    return prisma.messageThread.update({
+      where: { id: threadId },
+      data: {
+        lastMessage,
+        lastMessageAt: new Date(),
+        unreadCount: { increment: unreadDelta },
+      },
+    });
+  }
+
+  async markThreadAsRead(threadId) {
+    await prisma.messageThread.update({
+      where: { id: threadId },
+      data: { unreadCount: 0 },
+    });
+    await prisma.message.updateMany({
+      where: { threadId, isRead: false, senderRole: 'parent' },
+      data: { isRead: true, readAt: new Date() },
+    });
+  }
+
+  async getTotalUnreadCount(schoolAdminId, schoolId) {
+    const result = await prisma.messageThread.aggregate({
+      where: { schoolAdminId, schoolId, isActive: true },
+      _sum: { unreadCount: true },
+    });
+    return result._sum.unreadCount || 0;
+  }
+
+  // ─── Messages ─────────────────────────────────────────────
+  async createMessage(data) {
+    return prisma.message.create({ data });
+  }
+}
