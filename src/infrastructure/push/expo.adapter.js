@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-// TODO: Add implementation
-=======
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 import { Expo } from 'expo-server-sdk';
 import { PushProvider } from './push.provider.js';
 import { logger } from '#config/logger.js';
@@ -71,15 +64,7 @@ export class ExpoAdapter extends PushProvider {
   }
 
   async sendToDevices(deviceTokens, notification) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-    const validTokens = deviceTokens.filter(t => {
-=======
     const validTokens = deviceTokens.filter((t) => {
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-    const validTokens = deviceTokens.filter((t) => {
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       const valid = Expo.isExpoPushToken(t);
       if (!valid) logger.warn({ token: t.slice(0, 10) + '…' }, '[Expo] Invalid token filtered');
       return valid;
@@ -94,15 +79,7 @@ export class ExpoAdapter extends PushProvider {
       };
     }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-    const messages = validTokens.map(token => ({
-=======
     const messages = validTokens.map((token) => ({
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-    const messages = validTokens.map((token) => ({
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       to: token,
       title: notification.title,
       body: notification.body,

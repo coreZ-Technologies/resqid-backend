@@ -12,7 +12,6 @@ import {
   humanizeEnum,
   calculateRiskScore,
   isUnusualScanTime,
-  isValidScanResult,
 } from './scan.helper.js';
 
 const repo = new ScanRepository();
@@ -52,7 +51,7 @@ export class ScanService {
     // Calculate risk score
     const riskScore = calculateRiskScore({
       isSuspiciousUA: userAgent.isBot,
-      isNewDevice: false, // Would need device history
+      isNewDevice: false,
       unusualLocation: location.country !== 'IN',
       unusualTime: isUnusualScanTime(),
       rapidScanCount: req.scanCount || 1,

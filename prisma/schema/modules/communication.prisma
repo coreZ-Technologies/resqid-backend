@@ -2,6 +2,7 @@
 // prisma/schema/modules/communication.prisma — RESQID
 // Announcements, parent messaging, and notifications
 // Uses: SchoolUser (staff), Student, ParentUser
+// NotificationChannel enum from shared/notification.prisma
 // =============================================================================
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -14,19 +15,19 @@ enum AnnouncementPriority {
 }
 
 enum AnnouncementTarget {
-  ALL               // Entire school
-  GRADE             // Specific grade(s)
-  SECTION           // Specific section(s)
-  STUDENT           // Specific student(s)
-  PARENT            // All parents
-  STAFF             // Staff only
-  CUSTOM            // Custom filter
+  ALL
+  GRADE
+  SECTION
+  STUDENT
+  PARENT
+  STAFF
+  CUSTOM
 }
 
 enum MessageDirection {
-  SCHOOL_TO_PARENT   // School → Parent
-  PARENT_TO_SCHOOL   // Parent → School
-  SYSTEM             // Auto-generated
+  SCHOOL_TO_PARENT
+  PARENT_TO_SCHOOL
+  SYSTEM
 }
 
 enum MessageType {
@@ -40,14 +41,29 @@ enum MessageType {
   HOMEWORK
   EXAM_SCHEDULE
   PAYMENT_RECEIPT
+  TIMETABLE_CHANGE         // Added for timetable notifications
+  SUBSTITUTION_ALERT       // Added for substitution alerts
+  CRISIS_ALERT             // Added for crisis communication
 }
 
 enum MessageStatus {
+  DRAFT
+  SCHEDULED
   SENT
   DELIVERED
   READ
   REPLIED
   FAILED
+  CANCELLED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  COMPLETED
+  FAILED
+  CANCELLED
 }
 
 // ─── Announcement Model ──────────────────────────────────────────────────────
@@ -59,7 +75,7 @@ model Announcement {
   
   // Author (SchoolUser - teacher/admin)
   authorId  String
-  author    SchoolUser @relation(fields: [authorId], references: [id])
+  author    SchoolUser @relation("AnnouncementAuthor", fields: [authorId], references: [id])
   
   // Content
   title     String
@@ -72,6 +88,7 @@ model Announcement {
   target    AnnouncementTarget @default(ALL)
   targetGrades   String[]   // ["10", "11", "12"]
   targetSections String[]   // ["A", "B"]
+  targetClassIds String[]   // ClassGroup IDs for precise targeting
   targetStudentIds String[] // Specific student IDs
   isPublic   Boolean  @default(false)  // Visible to parents without login
   
@@ -80,7 +97,7 @@ model Announcement {
   expiresAt     DateTime?
   isArchived    Boolean  @default(false)
   
-  // Stats
+  // Stats (updated by delivery tracking)
   totalRecipients Int    @default(0)
   deliveredCount  Int    @default(0)
   readCount       Int    @default(0)
@@ -96,6 +113,7 @@ model Announcement {
   @@index([schoolId, target])
   @@index([publishedAt])
   @@index([expiresAt])
+  @@index([authorId])
   @@map("announcements")
 }
 
@@ -113,7 +131,7 @@ model AnnouncementDelivery {
   staff      SchoolUser? @relation(fields: [staffId], references: [id])
   
   // Delivery Status
-  channel     NotificationChannel
+  channel     NotificationChannel  // From notification.prisma
   status      MessageStatus @default(SENT)
   deliveredAt DateTime?
   readAt      DateTime?
@@ -121,15 +139,17 @@ model AnnouncementDelivery {
   // For SMS/Email tracking
   externalId  String?     // External service message ID
   error       String?     // Delivery error message
+  retryCount  Int         @default(0)
   
   createdAt   DateTime    @default(now())
   
-  @@unique([announcementId, parentId])
-  @@unique([announcementId, staffId])
+  @@unique([announcementId, parentId, channel])
+  @@unique([announcementId, staffId, channel])
   @@index([announcementId])
   @@index([parentId])
   @@index([staffId])
   @@index([status])
+  @@index([channel])
   @@map("announcement_deliveries")
 }
 
@@ -149,7 +169,7 @@ model Message {
   
   // Participants
   senderId   String?    // SchoolUser ID (if school → parent)
-  sender     SchoolUser? @relation(fields: [senderId], references: [id])
+  sender     SchoolUser? @relation("MessageSender", fields: [senderId], references: [id])
   parentId   String?    // ParentUser ID
   parent     ParentUser? @relation(fields: [parentId], references: [id])
   studentId  String?    // Related student (optional)
@@ -167,7 +187,7 @@ model Message {
   repliedTo  String?   // Message ID this is replying to
   
   // Delivery Channels
-  channels   NotificationChannel[]  // ["APP_PUSH", "SMS"]
+  channels   NotificationChannel[]  // From notification.prisma
   
   // Metadata
   metadata   Json?
@@ -177,8 +197,12 @@ model Message {
   updatedAt  DateTime @updatedAt
   
   // Relations
-  replies    Message[] @relation("MessageReplies")
-  parentMessage Message? @relation("MessageReplies", fields: [repliedTo], references: [id])
+  replies        Message[] @relation("MessageReplies")
+  parentMessage  Message?  @relation("MessageReplies", fields: [repliedTo], references: [id])
+  
+  // Link to related entities
+  timetableId    String?    // If related to timetable change
+  crisisId       String?    // If related to crisis event
   
   @@index([schoolId])
   @@index([threadId])
@@ -186,6 +210,7 @@ model Message {
   @@index([studentId])
   @@index([senderId])
   @@index([createdAt])
+  @@index([type])
   @@map("messages")
 }
 
@@ -197,14 +222,15 @@ model MessageTemplate {
   school    School    @relation(fields: [schoolId], references: [id])
   
   // Template Details
-  name      String    // "Absent Notification", "Fee Reminder"
+  name      String    // "Absent Notification", "Fee Reminder", "Timetable Change"
   type      MessageType
   subject   String
-  body      String    // Can contain variables: {{studentName}}, {{date}}, {{amount}}
+  body      String    // Can contain variables: {{studentName}}, {{date}}, {{amount}}, {{newTime}}
+  variables  String[] // ["studentName", "date", "amount"] - for UI hint
   
   // Who created it
   createdById String
-  createdBy   SchoolUser @relation(fields: [createdById], references: [id])
+  createdBy   SchoolUser @relation("TemplateCreator", fields: [createdById], references: [id])
   
   // Status
   isActive  Boolean   @default(true)
@@ -212,12 +238,14 @@ model MessageTemplate {
   
   // Usage Stats
   usageCount Int      @default(0)
+  lastUsedAt DateTime?
   
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   
   @@index([schoolId, type])
   @@index([isDefault])
+  @@index([isActive])
   @@map("message_templates")
 }
 
@@ -226,20 +254,23 @@ model MessageTemplate {
 model NotificationQueue {
   id              String    @id @default(cuid())
   schoolId        String
+  school          School    @relation(fields: [schoolId], references: [id])
   
   // Recipient
   parentId        String?
   parent          ParentUser? @relation(fields: [parentId], references: [id])
+  staffId         String?
+  staff           SchoolUser? @relation(fields: [staffId], references: [id])
   
   // Content
   title           String
   body            String
   type            MessageType
   referenceId     String?    // Related entity ID (attendance, fee, etc.)
-  referenceType   String?    // "ATTENDANCE", "FEE", "EXAM", "EVENT"
+  referenceType   String?    // "ATTENDANCE", "FEE", "EXAM", "EVENT", "TIMETABLE"
   
   // Delivery
-  channel         NotificationChannel
+  channel         NotificationChannel  // From notification.prisma
   status          MessageStatus @default(SENT)
   priority        Int          @default(5)  // 1-10, lower = higher priority
   
@@ -256,6 +287,9 @@ model NotificationQueue {
   lastAttemptAt   DateTime?
   error           String?
   
+  // Deduplication
+  idempotencyKey  String?    // Prevent duplicate sends
+  
   // Metadata
   metadata        Json?
   
@@ -265,7 +299,10 @@ model NotificationQueue {
   @@index([status])
   @@index([scheduledFor])
   @@index([parentId])
+  @@index([staffId])
   @@index([priority])
+  @@index([idempotencyKey])
+  @@index([schoolId, createdAt])
   @@map("notification_queue")
 }
 
@@ -290,6 +327,7 @@ model CommunicationCampaign {
   target      AnnouncementTarget
   targetGrades   String[]
   targetSections String[]
+  targetClassIds String[]
   targetFilters  Json?    // { status: "ACTIVE", feeStatus: "PENDING" }
   
   // Schedule
@@ -305,11 +343,16 @@ model CommunicationCampaign {
   failedCount     Int  @default(0)
   
   // Status
-  status      String  @default("DRAFT")  // DRAFT, SCHEDULED, SENDING, COMPLETED, FAILED
+  status      CampaignStatus @default(DRAFT)
   
   // Created by
   createdById String
-  createdBy   SchoolUser @relation(fields: [createdById], references: [id])
+  createdBy   SchoolUser @relation("CampaignCreator", fields: [createdById], references: [id])
+  
+  // Approved by (for large campaigns)
+  approvedById String?
+  approvedBy   SchoolUser? @relation("CampaignApprover", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -317,5 +360,6 @@ model CommunicationCampaign {
   @@index([schoolId])
   @@index([status])
   @@index([scheduledFor])
+  @@index([createdById])
   @@map("communication_campaigns")
 }

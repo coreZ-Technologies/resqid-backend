@@ -1,4 +1,3 @@
-
 // =============================================================================
 // cache.provider.js — RESQID
 //
@@ -75,7 +74,3 @@ export class CacheProvider {
 }
 
 export default CacheProvider;
-<<<<<<< HEAD
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea

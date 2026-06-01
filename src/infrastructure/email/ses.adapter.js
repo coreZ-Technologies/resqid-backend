@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-// TODO: Add implementation
-=======
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 // =============================================================================
 // infrastructure/email/ses.adapter.js — RESQID
 // AWS SES only. React Email for rendering. No Resend, no Nodemailer.

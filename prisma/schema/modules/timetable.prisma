@@ -1,108 +1,332 @@
 // =============================================================================
-<<<<<<< HEAD
-// timetable.prisma — RESQID
-// Module m1: Timetable management, teachers, subjects, periods, substitutions
+// prisma/schema/modules/timetable.prisma — RESQID
+// Complete timetable system with wellness, crisis, validation & reporting
+// All notifications handled by shared/notification.prisma
 // =============================================================================
 
-model Teacher {
-  id        String   @id @default(cuid())
-  schoolId  String
-  userId    String?  @unique   // optional link to User (if teacher has login)
-  name      String
-  phone     String?
-  subjectIds String[] // subjects they teach (Subject.code or Subject.id)
+// ─── ENUMS ────────────────────────────────────────────────────────────────────
 
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  deletedAt DateTime?
+enum RoomType {
+  REGULAR
+  LAB
+  COMPUTER_LAB
+  AUDIO_VISUAL
+  LIBRARY
+  SPORTS
+  AUDITORIUM
+  STAFF_ROOM
+  OTHER
+}
 
-  periods        Period[]
-  substitutions  Substitution[] @relation("SubstituteTeacher")
+enum RoomStatus {
+  AVAILABLE
+  UNDER_MAINTENANCE
+  RESERVED
+  INACTIVE
+}
 
-  // Relations
-  school   School  @relation(fields: [schoolId], references: [id])
-  user     User?   @relation(fields: [userId], references: [id])
-=======
-// prisma/schema/modules/timetable.prisma — RESQID
-// School-specific timetable with substitution support
+enum TimetableStatus {
+  DRAFT
+  GENERATING
+  GENERATED
+  REVIEWED
+  PUBLISHED
+  ARCHIVED
+  FAILED
+}
+
+enum GenerationType {
+  FRESH
+  INCREMENTAL
+  FROM_EXISTING
+  MANUAL
+  CRISIS_UPDATE
+}
+
+enum CrisisType {
+  TEACHER_ABSENT
+  ROOM_UNAVAILABLE
+  PARTIAL_RESCHEDULE
+  MASS_LEAVE
+  WEATHER_EVENT
+  OTHER
+}
+
+enum CrisisSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CrisisStatus {
+  REPORTED
+  ANALYZING
+  RESOLVED
+  PARTIALLY_RESOLVED
+  UNRESOLVED
+  ESCALATED
+}
+
+enum JobType {
+  GENERATE_TIMETABLE
+  VALIDATE_TIMETABLE
+  CRISIS_HANDLING
+  BULK_UPLOAD
+  EXPORT
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SubstitutionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum PeriodType {
+  REGULAR
+  LAB
+  SPORTS
+  ASSEMBLY
+  DOUBLE_PERIOD
+  SUBSTITUTION
+}
+
+// =============================================================================
+// CONFIGURATION
 // =============================================================================
 
 model SchoolTimetableConfig {
   id              String   @id @default(cuid())
   schoolId        String   @unique
+  school          School   @relation(fields: [schoolId], references: [id])
 
+  // ─── Basic Schedule Structure ───
   periodsPerDay   Int      @default(8)
-  periodDuration  Int      @default(45)
+  periodDuration  Int      @default(45) // in minutes
   startTime       String   @default("08:00")
   endTime         String   @default("15:00")
-  workingDays     Int      @default(31)
+  workingDays     Int[]    @default([1,2,3,4,5,6]) // 1=Mon, 6=Sat
 
-  breakAfterPeriods    Int[]
-  breakDuration        Int    @default(15)
+  // ─── Breaks ───
+  breakAfterPeriods    Int[]    @default([2,4,6])
+  breakDurations       Int[]    @default([15,30,10])
+  lunchAfterPeriod     Int      @default(4)
+  lunchDuration        Int      @default(30)
 
+  // ─── Morning/Afternoon Split ───
+  morningPeriodsEnd    Int      @default(4)
+
+  // ─── Substitution Rules ───
   allowSubstitution      Boolean @default(true)
   maxSubstitutionsPerDay Int    @default(3)
   substitutionNoticeMins  Int   @default(30)
+  autoApproveSubstitution Boolean @default(false)
 
-  notifyOnSubstitution   Boolean @default(true)
-  notifyTeachers         Boolean @default(true)
+  // ─── Default Constraints ───
+  maxConsecutivePeriods  Int    @default(3)
+  minGapBetweenSubjects  Int    @default(1)
+  maxSameSubjectPerDay   Int    @default(2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  templates   TimetableTemplate[]
+  constraints ConstraintPreset[]
+
   @@map("school_timetable_configs")
 }
+
+// =============================================================================
+// RESOURCES
+// =============================================================================
+
+model Room {
+  id          String     @id @default(cuid())
+  schoolId    String
+  school      School     @relation(fields: [schoolId], references: [id])
+  
+  roomNumber  String
+  roomName    String?
+  building    String?
+  wing        String?
+  floor       Int        @default(0)
+  
+  type        RoomType   @default(REGULAR)
+  labType     String?    // "PHYSICS", "CHEMISTRY", "BIOLOGY", "COMPUTER"
+  capacity    Int        @default(40)
+  
+  isAccessible      Boolean @default(false)
+  hasElevatorAccess Boolean @default(false)
+  hasRamp           Boolean @default(false)
+  
+  equipment      String[]  @default([])
+  hasProjector   Boolean   @default(false)
+  hasSmartBoard  Boolean   @default(false)
+  hasAC          Boolean   @default(false)
+  
+  status         RoomStatus @default(AVAILABLE)
+  availableDays  Int[]      @default([1,2,3,4,5,6])
+  blockedSlots   Json?
+  
+  isActive       Boolean   @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  timetableAssignments TimetableAssignment[]
+
+  @@unique([schoolId, roomNumber])
+  @@index([schoolId, type])
+  @@index([schoolId, floor])
+  @@index([schoolId, status])
+  @@map("rooms")
+}
+
+// =============================================================================
+// TEACHERS
+// =============================================================================
 
 model Teacher {
   id          String     @id @default(cuid())
   schoolId    String
+  school      School     @relation(fields: [schoolId], references: [id])
   userId      String?    @unique
+  schoolUser  SchoolUser? @relation(fields: [userId], references: [id])
 
   name        String
   email       String?
   phone       String?
-
+  employeeId  String?
+  joiningDate DateTime?
+  
   subjects    String[]
-
+  qualifications String[]
+  experience  Int        @default(0)
+  
   maxPeriodsPerDay   Int    @default(6)
   maxPeriodsPerWeek  Int    @default(30)
-  unavailableDays    Int[]
+  maxConsecutivePeriods Int @default(3)
+  
+  isPartTime        Boolean   @default(false)
+  availableDays     Int[]     @default([1,2,3,4,5,6])
+  unavailableDays   Int[]     @default([])
   unavailablePeriods Json?
-
+  leaveDays         DateTime[] @default([])
+  
+  preferredDays     Int[]     @default([])
+  preferredPeriods  Int[]     @default([])
+  preferredRooms    String[]  @default([])
+  
   isActive    Boolean    @default(true)
+  isOnLeave   Boolean    @default(false)
+  leaveStart  DateTime?
+  leaveEnd    DateTime?
 
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   deletedAt   DateTime?
 
-  periods         Period[]
-  substitutions   Substitution[]   @relation("SubstituteTeacher")
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+  classGroups               ClassGroup[]
+  timetableAssignments      TimetableAssignment[]
+  substitutionsAsSub        Substitution[]   @relation("SubstituteTeacher")
+  substitutionsAsOrig       Substitution[]   @relation("OriginalTeacher")
+  wellness                  TeacherWellness?
+  crisisAffected            CrisisEvent[]    @relation("AffectedTeachers")
 
   @@index([schoolId])
   @@index([userId])
+  @@index([schoolId, isActive])
   @@map("teachers")
 }
+
+// =============================================================================
+// TEACHER WELLNESS
+// =============================================================================
+
+model TeacherWellness {
+  id            String   @id @default(cuid())
+  teacherId     String   @unique
+  teacher       Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  schoolId      String
+
+  isPregnant          Boolean @default(false)
+  dueDate             DateTime?
+  needsGroundFloor    Boolean @default(false)
+  needsAccessibleRoom Boolean @default(false)
+  mobilityAid         String?
+  medicalConditions   String[] @default([])
+  
+  isSenior            Boolean @default(false)
+  preferredMaxPerDay  Int?
+  preferredMaxPerWeek Int?
+  
+  avoidEarlyMorning   Boolean @default(false)
+  avoidLateEvening    Boolean @default(false)
+  needsCommuteBuffer  Boolean @default(false)
+  commuteDistance     Int?
+  commuteTime         Int?
+  
+  preferredSlots      Json?
+  personalBlocks      Json?
+  
+  burnoutRisk         Boolean @default(false)
+  burnoutScore        Int     @default(0)
+  wellnessNotes       String?
+  
+  emergencyContact    String?
+  emergencyPhone      String?
+  
+  consecutiveDaysWorked    Int @default(0)
+  weeklyLoadCurrent        Int @default(0)
+  substitutionCount        Int @default(0)
+  
+  isConfidential     Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([burnoutRisk])
+  @@map("teacher_wellness")
+}
+
+// =============================================================================
+// SUBJECTS & CLASSES
+// =============================================================================
 
 model Subject {
   id        String  @id @default(cuid())
   schoolId  String
+  school    School  @relation(fields: [schoolId], references: [id])
 
   name      String
   code      String?
   category  String?
-
+  
   periodsPerWeek     Int     @default(5)
   requiresLab        Boolean @default(false)
   labPeriodsPerWeek  Int     @default(0)
-
+  
+  isHeavy       Boolean @default(false)
+  isPractical   Boolean @default(false)
+  requiredRoomType String?
+  
   isActive  Boolean @default(true)
 
-  periods   Period[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Relations
-  school   School  @relation(fields: [schoolId], references: [id])
+  timetableAssignments TimetableAssignment[]
 
   @@unique([schoolId, code])
   @@index([schoolId])
@@ -112,103 +336,388 @@ model Subject {
 model ClassGroup {
   id          String  @id @default(cuid())
   schoolId    String
+  school      School  @relation(fields: [schoolId], references: [id])
 
   grade       String
   section     String
   label       String?
-
+  
   teacherId   String?
-  teacher     Teacher?  @relation(fields: [teacherId], references: [id])
+  teacher     Teacher? @relation(fields: [teacherId], references: [id])
+  
+  roomId      String?
+  room        Room?    @relation(fields: [roomId], references: [id])
   roomNumber  String?
-
+  
   studentCount Int    @default(0)
+  
   isActive    Boolean @default(true)
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  periods     Period[]
+  timetableAssignments TimetableAssignment[]
 
   @@unique([schoolId, grade, section])
   @@index([schoolId])
+  @@index([teacherId])
   @@map("class_groups")
 }
 
-model Period {
-  id           String     @id @default(cuid())
-  schoolId     String
+// =============================================================================
+// CONSTRAINT PRESETS
+// =============================================================================
 
-  classId      String
-  classGroup   ClassGroup @relation(fields: [classId], references: [id])
-  teacherId    String
-  teacher      Teacher    @relation(fields: [teacherId], references: [id])
-  subjectId    String
-  subject      Subject    @relation(fields: [subjectId], references: [id])
+model ConstraintPreset {
+  id            String   @id @default(cuid())
+  schoolId      String
+  configId      String?
+  config        SchoolTimetableConfig? @relation(fields: [configId], references: [id])
+  
+  name          String
+  description   String?
+  
+  hardConstraints   Json   @default("{}")
+  mediumConstraints Json   @default("{}")
+  softConstraints   Json   @default("{}")
+  
+  isDefault     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdBy     String?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  dayOfWeek    Int
-  periodNumber Int
-  startTime    String
-  endTime      String
-
-  periodType   String     @default("REGULAR")
-  roomNumber   String?
-
-  isActive     Boolean    @default(true)
-  isSubstituted Boolean   @default(false)
-
-  validFrom    DateTime?
-  validUntil   DateTime?
-
-  substitutions Substitution[]
-
-<<<<<<< HEAD
-  // Relations
-  school   School  @relation(fields: [schoolId], references: [id])
-
-=======
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  @@unique([schoolId, classId, dayOfWeek, periodNumber])
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
-  @@index([schoolId])
-  @@index([teacherId, dayOfWeek])
-  @@map("periods")
+  @@unique([schoolId, name])
+  @@map("constraint_presets")
 }
+
+// =============================================================================
+// TIMETABLE TEMPLATES
+// =============================================================================
+
+model TimetableTemplate {
+  id            String   @id @default(cuid())
+  schoolId      String
+  configId      String?
+  config        SchoolTimetableConfig? @relation(fields: [configId], references: [id])
+  
+  name          String
+  description   String?
+  
+  version       Int      @default(1)
+  isActive      Boolean  @default(false)
+  isArchived    Boolean  @default(false)
+  
+  academicYear  String?
+  term          String?
+  
+  configSnapshot    Json
+  constraintsSnapshot Json
+  
+  createdBy     String?
+  basedOnTemplateId String?
+  
+  totalClasses    Int    @default(0)
+  totalTeachers   Int    @default(0)
+  totalSubjects   Int    @default(0)
+  totalRooms      Int    @default(0)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  timetables    Timetable[]
+
+  @@index([schoolId, isActive])
+  @@index([schoolId, academicYear])
+  @@map("timetable_templates")
+}
+
+// =============================================================================
+// MAIN TIMETABLE
+// =============================================================================
+
+model Timetable {
+  id            String   @id @default(cuid())
+  schoolId      String
+  templateId    String
+  template      TimetableTemplate @relation(fields: [templateId], references: [id])
+  
+  generationType GenerationType @default(FRESH)
+  generatedBy   String?
+  sourceTimetableId String?
+  
+  status        TimetableStatus @default(DRAFT)
+  statusMessage String?
+  progressPercent Int    @default(0)
+  
+  totalSlots    Int      @default(0)
+  assignedSlots Int      @default(0)
+  conflictsFound Int     @default(0)
+  healthScore   Int      @default(0)
+  wellnessScore Int      @default(0)
+  
+  generatedAt   DateTime?
+  publishedAt   DateTime?
+  validUntil    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignments   TimetableAssignment[]
+  validations   TimetableValidation[]
+  crisisEvents  CrisisEvent[]
+  jobs          TimetableJob[]
+
+  @@index([schoolId, status])
+  @@index([templateId])
+  @@map("timetables")
+}
+
+// =============================================================================
+// TIMETABLE ASSIGNMENTS
+// =============================================================================
+
+model TimetableAssignment {
+  id            String   @id @default(cuid())
+  timetableId   String
+  timetable     Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  
+  dayOfWeek     Int
+  periodNumber  Int
+  classGroupId  String
+  classGroup    ClassGroup @relation(fields: [classGroupId], references: [id])
+  subjectId     String
+  subject       Subject  @relation(fields: [subjectId], references: [id])
+  teacherId     String
+  teacher       Teacher  @relation(fields: [teacherId], references: [id])
+  roomId        String?
+  room          Room?    @relation(fields: [roomId], references: [id])
+  
+  periodType    PeriodType @default(REGULAR)
+  
+  isSubstituted   Boolean @default(false)
+  isTemporary     Boolean @default(false)
+  isManuallyPlaced Boolean @default(false)
+  isLocked        Boolean @default(false)
+  
+  originalTeacherId String?
+  substitutionId    String?
+  substitution      Substitution? @relation(fields: [substitutionId], references: [id])
+  
+  constraintViolations  Int  @default(0)
+  penaltyScore          Int  @default(0)
+  
+  notes         String?
+  tags          String[] @default([])
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([timetableId, dayOfWeek, periodNumber, classGroupId])
+  @@index([timetableId, teacherId])
+  @@index([timetableId, classGroupId])
+  @@index([timetableId, roomId])
+  @@index([timetableId, dayOfWeek])
+  @@map("timetable_assignments")
+}
+
+// =============================================================================
+// SUBSTITUTIONS
+// =============================================================================
 
 model Substitution {
   id                String   @id @default(cuid())
   schoolId          String
-
-  periodId          String
-  period            Period   @relation(fields: [periodId], references: [id])
+  
+  assignmentId      String?
+  assignment        TimetableAssignment? @relation(fields: [assignmentId], references: [id])
+  
   substituteId      String
   substitute        Teacher  @relation("SubstituteTeacher", fields: [substituteId], references: [id])
   originalTeacherId String
-  originalTeacher   Teacher  @relation(fields: [originalTeacherId], references: [id])
-
+  originalTeacher   Teacher  @relation("OriginalTeacher", fields: [originalTeacherId], references: [id])
+  
   date              DateTime
+  dayOfWeek         Int
+  periodNumber      Int
+  
+  subjectId         String?
+  classGroupId      String?
+  roomId            String?
   reason            String?
-  status            String   @default("PENDING")
-
-<<<<<<< HEAD
-  // Relations
-  school   School  @relation(fields: [schoolId], references: [id])
-
-  @@index([schoolId])
-  @@index([date])
-=======
+  
+  status            SubstitutionStatus @default(PENDING)
+  
   approvedBy        String?
   approvedAt        DateTime?
-  notifiedAt        DateTime?
-  notifyParents     Boolean  @default(false)
-
+  rejectionReason   String?
+  
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   @@index([schoolId, date])
-  @@index([periodId])
   @@index([substituteId])
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+  @@index([originalTeacherId])
+  @@index([status])
   @@map("substitutions")
+}
+
+// =============================================================================
+// CRISIS MANAGEMENT
+// =============================================================================
+
+model CrisisEvent {
+  id            String   @id @default(cuid())
+  schoolId      String
+  timetableId   String
+  timetable     Timetable @relation(fields: [timetableId], references: [id])
+  
+  type          CrisisType
+  severity      CrisisSeverity @default(MEDIUM)
+  status        CrisisStatus @default(REPORTED)
+  title         String?
+  description   String?
+  
+  affectedSlots     Json   @default("[]")
+  affectedTeacherIds String[] @default([])
+  affectedClassIds   String[] @default([])
+  affectedRoomIds    String[] @default([])
+  totalAffectedSlots Int    @default(0)
+  
+  triggeredBy   String?
+  triggeredAt   DateTime @default(now())
+  triggerReason String?
+  
+  resolvedBy    String?
+  resolvedAt    DateTime?
+  resolutionTimeMinutes Int?
+  resolution    Json?
+  unresolvedSlots Int   @default(0)
+  
+  substitutionsCreated Int      @default(0)
+  substitutionIds      String[] @default([])
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  affectedTeachers  Teacher[] @relation("AffectedTeachers")
+
+  @@index([schoolId, status])
+  @@index([timetableId, createdAt])
+  @@index([type, severity])
+  @@map("crisis_events")
+}
+
+// =============================================================================
+// ASYNC JOB TRACKING
+// =============================================================================
+
+model TimetableJob {
+  id            String   @id @default(cuid())
+  schoolId      String
+  timetableId   String?
+  timetable     Timetable? @relation(fields: [timetableId], references: [id])
+  
+  type          JobType
+  status        JobStatus @default(QUEUED)
+  priority      Int       @default(0)
+  
+  progressPercent Int     @default(0)
+  statusMessage   String?
+  stepsCompleted  Int     @default(0)
+  totalSteps      Int     @default(0)
+  
+  input         Json?
+  output        Json?
+  error         String?
+  errorDetails  Json?
+  
+  queuedAt      DateTime @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+  processingTimeMs Int?
+  
+  attempts      Int      @default(0)
+  maxAttempts   Int      @default(3)
+  lastAttemptAt DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([schoolId, status])
+  @@index([type, status])
+  @@index([timetableId])
+  @@map("timetable_jobs")
+}
+
+// =============================================================================
+// VALIDATION REPORTS
+// =============================================================================
+
+model TimetableValidation {
+  id            String   @id @default(cuid())
+  timetableId   String   @unique
+  timetable     Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  
+  overallScore     Int    @default(0)
+  healthScore      Int    @default(0)
+  wellnessScore    Int    @default(0)
+  utilizationScore Int    @default(0)
+  
+  criticalIssues   Int    @default(0)
+  warnings         Int    @default(0)
+  suggestions      Int    @default(0)
+  
+  criticalList     Json   @default("[]")
+  warningList      Json   @default("[]")
+  suggestionList   Json   @default("[]")
+  
+  teacherUtilization  Json?
+  roomUtilization     Json?
+  classBalance        Json?
+  
+  wellnessViolations  Int    @default(0)
+  wellnessDetails     Json?
+  
+  validatedBy    String?
+  validatedAt    DateTime @default(now())
+  processingTimeMs Int?
+  
+  createdAt      DateTime @default(now())
+
+  @@map("timetable_validations")
+}
+
+// =============================================================================
+// BULK UPLOAD TRACKING
+// =============================================================================
+
+model BulkUpload {
+  id            String   @id @default(cuid())
+  schoolId      String
+  
+  uploadType    String
+  fileName      String
+  fileSize      Int?
+  
+  status        String   @default("PENDING")
+  totalRows     Int      @default(0)
+  processedRows Int      @default(0)
+  errorRows     Int      @default(0)
+  
+  errors        Json?
+  warnings      Json?
+  created       Int      @default(0)
+  updated       Int      @default(0)
+  
+  uploadedBy    String?
+  uploadedAt    DateTime @default(now())
+  completedAt   DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([schoolId, uploadType])
+  @@index([schoolId, status])
+  @@map("bulk_uploads")
 }

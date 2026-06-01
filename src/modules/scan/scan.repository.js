@@ -1,6 +1,5 @@
 // src/modules/scan/scan.repository.js
 import { prisma } from '#config/prisma.js';
-import { logger } from '#config/logger.js';
 
 export class ScanRepository {
   // ===========================================================================
