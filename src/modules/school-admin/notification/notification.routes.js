@@ -1,108 +1,36 @@
-// TODO: Add implementation
-// =============================================================================
-// notification.routes.js — RESQID School Admin
-//
-// All notification routes for school admins.
-// Mounted at: /api/school/notifications
-//
-// Middleware stack per request:
-//   authenticate  → tenantScope  → requireSchoolStaff  → validate  → controller
-//
-// Route map:
-//   GET    /                      → list (paginated, filterable)
-//   GET    /unread-count          → unread badge count
-//   GET    /preferences           → get per-event preferences
-//   PUT    /preferences           → upsert per-event preferences
-//   PATCH  /bulk-read             → bulk mark read
-//   DELETE /bulk                  → bulk delete
-//   GET    /:notificationId       → get single
-//   PATCH  /:notificationId/read  → mark single read/unread
-//   DELETE /:notificationId       → delete single
-// =============================================================================
-
+// school-admin/notification/notification.routes.js
 import { Router } from 'express';
-import { authenticate }     from '#middlewares/authenticate.middleware.js';
-import { tenantScope }      from '#middlewares/tenantScope.middleware.js';
-import { requireSchoolStaff } from '#middlewares/rbac.middleware.js';
-import { validate }         from '#middlewares/validate.middleware.js';
-import { asyncHandler }     from '#shared/response/asyncHandler.js';
-
-import * as controller from './notification.controller.js';
+import { authenticate } from '#middleware/auth/authenticate.middleware.js';
+import { authorize, ROLES } from '#middleware/auth/authorize.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { rateLimit } from 'express-rate-limit';
+import { z } from 'zod';
 import {
-  listNotificationsSchema,
-  getNotificationSchema,
-  markReadSchema,
-  bulkMarkReadSchema,
-  deleteNotificationSchema,
-  bulkDeleteSchema,
-  upsertPreferencesSchema,
+  createNotificationSchema,
+  listNotificationsQuerySchema,
 } from './notification.validation.js';
+import * as controller from './notification.controller.js';
 
 const router = Router();
 
-// ─── Apply auth + tenant scope to all routes ──────────────────────────────────
-router.use(authenticate, tenantScope, requireSchoolStaff);
+router.use(authenticate);
+router.use(authorize(ROLES.SCHOOL_ADMIN));
 
-// ─── Static / collection routes (must be before /:notificationId) ────────────
+const createLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
 
-// Unread badge count
-router.get(
-  '/unread-count',
-  asyncHandler(controller.unreadCount)
-);
+// Optional: param validation for :id
+const idParamSchema = z.object({
+  id: z.string().min(1),
+});
 
-// Preferences
-router.get(
-  '/preferences',
-  asyncHandler(controller.getPreferences)
-);
+// ─── Routes ────────────────────────────────────────────────
+router.get('/recipients/options', controller.getRecipientOptions); // ✅ NEW
 
-router.put(
-  '/preferences',
-  validate(upsertPreferencesSchema),
-  asyncHandler(controller.upsertPreferences)
-);
-
-// Bulk mark read
-router.patch(
-  '/bulk-read',
-  validate(bulkMarkReadSchema),
-  asyncHandler(controller.bulkMarkRead)
-);
-
-// Bulk delete
-router.delete(
-  '/bulk',
-  validate(bulkDeleteSchema),
-  asyncHandler(controller.bulkDelete)
-);
-
-// ─── List ─────────────────────────────────────────────────────────────────────
-
-router.get(
-  '/',
-  validate(listNotificationsSchema),
-  asyncHandler(controller.list)
-);
-
-// ─── Single-resource routes ───────────────────────────────────────────────────
-
-router.get(
-  '/:notificationId',
-  validate(getNotificationSchema),
-  asyncHandler(controller.getOne)
-);
-
-router.patch(
-  '/:notificationId/read',
-  validate(markReadSchema),
-  asyncHandler(controller.markRead)
-);
-
-router.delete(
-  '/:notificationId',
-  validate(deleteNotificationSchema),
-  asyncHandler(controller.remove)
-);
+router.post('/', createLimiter, validate(createNotificationSchema), controller.createNotification);
+router.get('/', validate(listNotificationsQuerySchema, 'query'), controller.listNotifications);
+router.get('/stats', controller.getNotificationStats);
+router.get('/:id', validate(idParamSchema, 'params'), controller.getNotificationDetails);
+router.post('/:id/resend', validate(idParamSchema, 'params'), controller.resendNotification);
+router.delete('/:id', validate(idParamSchema, 'params'), controller.deleteNotification);
 
 export default router;

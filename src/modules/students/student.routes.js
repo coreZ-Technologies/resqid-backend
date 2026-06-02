@@ -1,296 +1,61 @@
-// =============================================================================
-// modules/students/student.routes.js — RESQID
-// Student Routes — CRUD operations for student management
-// Access: Super Admin, School Admin, Teacher, Parent (limited)
-// =============================================================================
-
+// src/modules/m6-students/student.routes.js
 import { Router } from 'express';
-import studentController from './students.controller.js';
-
-// Middleware imports
+import multer from 'multer';
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
-import { authorize } from '#middleware/auth/authorize.middleware.js';
-import { rbac } from '#middleware/auth/rbac.middleware.js';
-import { tenantScope } from '#middleware/auth/tenantScope.middleware.js';
+import { authorize, ROLES } from '#middleware/auth/authorize.middleware.js';
 import { validate } from '#middleware/validate.middleware.js';
-import { auditLog } from '#middleware/logging/auditLog.middleware.js';
-import { requireModule } from '#middleware/requireModule.middleware.js';
-import { restrictionOwnSchool } from '#middleware/restrictionOwnSchool.middleware.js';
-
-// Validation schemas
-import { studentValidation } from './student.validation.js';
-
-// Upload middleware (for documents)
-import { upload } from '#config/multer.js';
-
-// ─── Router Setup ─────────────────────────────────────────────────────────────
+import { rateLimit } from 'express-rate-limit';
+import {
+  createStudentSchema,
+  updateStudentSchema,
+  listStudentsQuerySchema,
+  linkParentsSchema,
+  unlinkParentSchema,
+  updateEmergencyVisibilitySchema,
+  sendMessageSchema,
+  exportStudentsQuerySchema,
+  bulkUploadSchema,           // ✅ Added import
+} from './student.validation.js';
+import * as controller from './student.controller.js';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
-// All routes require authentication
+// All routes require authentication and school admin role
 router.use(authenticate);
+router.use(authorize(ROLES.SCHOOL_ADMIN));
 
-// All routes require tenant (school) context
-router.use(tenantScope);
+// Rate limiting
+const createLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
+const exportLimiter = rateLimit({ windowMs: 60 * 1000, max: 5 });
+const uploadLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 
-// All routes require 'students' module to be enabled in plan
-router.use(requireModule('students'));
+// ─── Student CRUD ────────────────────────────────────────────────
+router.get('/', validate(listStudentsQuerySchema, 'query'), controller.listStudents);
+router.get('/stats', controller.getStats);
+router.post('/', createLimiter, upload.single('photo'), validate(createStudentSchema), controller.createStudent);
+router.get('/:id', controller.getStudent);
+router.put('/:id', upload.single('photo'), validate(updateStudentSchema), controller.updateStudent);
+router.delete('/:id', controller.deleteStudent);
 
-// ─── PUBLIC ROUTES (No role restriction - handled in controller) ──────────────
+// ─── Parent Linking ──────────────────────────────────────────────
+router.post('/:id/parents', validate(linkParentsSchema), controller.linkParents);
+router.delete('/:studentId/parents/:parentId', validate(unlinkParentSchema, 'params'), controller.unlinkParent);
 
-/**
- * GET /api/students/qr/:qrCodeId
- * Get student by QR code (public access for emergency scanning)
- * This route doesn't require authentication
- */
-const publicRouter = Router();
-publicRouter.get('/qr/:qrCodeId', studentController.getByQrCode);
+// ─── Emergency Visibility ────────────────────────────────────────
+router.patch('/:id/emergency-visibility', validate(updateEmergencyVisibilitySchema), controller.updateEmergencyVisibility);
 
-// ─── PARENT ROUTES ───────────────────────────────────────────────────────────
+// ─── Messaging ───────────────────────────────────────────────────
+router.post('/:id/message', validate(sendMessageSchema), controller.sendMessageToParents);
 
-/**
- * GET /api/parents/:parentId/students
- * Get students by parent ID
- * Access: Parent (own children), Admin
- */
-router.get(
-  '/parents/:parentId',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'PARENT']),
-  restrictionOwnSchool,
-  studentController.getByParent
-);
+// ─── Export ──────────────────────────────────────────────────────
+router.get('/export', exportLimiter, validate(exportStudentsQuerySchema, 'query'), controller.exportStudents);
 
-// ─── ADMIN ROUTES ────────────────────────────────────────────────────────────
+// ─── Documents ───────────────────────────────────────────────────
+router.post('/:id/documents', uploadLimiter, upload.single('file'), controller.uploadDocument);
+router.delete('/:studentId/documents/:documentId', controller.deleteDocument);
 
-/**
- * GET /api/students
- * List all students with filtering, search, and pagination
- * Access: Super Admin, School Admin, Teacher
- */
-router.get(
-  '/',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
-  validate(studentValidation.queryStudents, 'query'),
-  studentController.list
-);
+// ─── Bulk Upload (CSV/Excel) ─────────────────────────────────────
+router.post('/bulk-upload', upload.single('file'), validate(bulkUploadSchema), controller.bulkUploadStudents);
 
-/**
- * GET /api/students/search
- * Quick search students (autocomplete)
- * Access: Super Admin, School Admin, Teacher
- */
-router.get(
-  '/search',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
-  studentController.search
-);
-
-/**
- * GET /api/students/stats
- * Get student statistics for dashboard
- * Access: Super Admin, School Admin
- */
-router.get('/stats', authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']), studentController.stats);
-
-/**
- * GET /api/students/export
- * Export students data as CSV
- * Access: Super Admin, School Admin
- */
-router.get('/export', authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']), studentController.exportStudents);
-
-/**
- * GET /api/students/:studentId
- * Get single student by ID
- * Access: Super Admin, School Admin, Teacher, Parent (own children)
- */
-router.get(
-  '/:studentId',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'PARENT']),
-  restrictionOwnSchool,
-  auditLog('student.view'),
-  studentController.getById
-);
-
-/**
- * POST /api/students
- * Create a single student
- * Access: Super Admin, School Admin
- */
-router.post(
-  '/',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  validate(studentValidation.createStudent),
-  auditLog('student.create'),
-  studentController.create
-);
-
-/**
- * POST /api/students/bulk
- * Bulk import students
- * Access: Super Admin, School Admin
- */
-router.post(
-  '/bulk',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  validate(studentValidation.bulkImport),
-  auditLog('student.bulkCreate'),
-  studentController.bulkCreate
-);
-
-/**
- * POST /api/students/bulk/class
- * Bulk assign class/section
- * Access: Super Admin, School Admin
- */
-router.post(
-  '/bulk/class',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  auditLog('student.bulkClassAssign'),
-  studentController.bulkAssignClass
-);
-
-/**
- * PATCH /api/students/bulk/status
- * Bulk update student status
- * Access: Super Admin, School Admin
- */
-router.patch(
-  '/bulk/status',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  auditLog('student.bulkStatusUpdate'),
-  studentController.bulkUpdateStatus
-);
-
-/**
- * POST /api/students/bulk/delete
- * Bulk delete students
- * Access: Super Admin, School Admin
- */
-router.post(
-  '/bulk/delete',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  auditLog('student.bulkDelete'),
-  studentController.bulkDelete
-);
-
-/**
- * PUT /api/students/:studentId
- * Update student (full update)
- * Access: Super Admin, School Admin
- */
-router.put(
-  '/:studentId',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  validate(studentValidation.updateStudent),
-  auditLog('student.update'),
-  studentController.update
-);
-
-/**
- * PATCH /api/students/:studentId/status
- * Update student status
- * Access: Super Admin, School Admin
- */
-router.patch(
-  '/:studentId/status',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  auditLog('student.statusUpdate'),
-  studentController.updateStatus
-);
-
-/**
- * PATCH /api/students/:studentId/class
- * Update student class/section (promote/demote)
- * Access: Super Admin, School Admin
- */
-router.patch(
-  '/:studentId/class',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  auditLog('student.classUpdate'),
-  studentController.updateClass
-);
-
-/**
- * PATCH /api/students/:studentId/medical
- * Update student medical information
- * Access: Super Admin, School Admin
- */
-router.patch(
-  '/:studentId/medical',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  validate(studentValidation.medicalInfo),
-  auditLog('student.medicalUpdate'),
-  studentController.updateMedicalInfo
-);
-
-/**
- * POST /api/students/:studentId/parents
- * Add parent to student
- * Access: Super Admin, School Admin
- */
-router.post(
-  '/:studentId/parents',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  validate(studentValidation.addParent),
-  auditLog('student.addParent'),
-  studentController.addParent
-);
-
-/**
- * DELETE /api/students/:studentId/parents/:parentId
- * Remove parent from student
- * Access: Super Admin, School Admin
- */
-router.delete(
-  '/:studentId/parents/:parentId',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  auditLog('student.removeParent'),
-  studentController.removeParent
-);
-
-/**
- * POST /api/students/:studentId/documents
- * Upload student document
- * Access: Super Admin, School Admin
- */
-router.post(
-  '/:studentId/documents',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  upload.single('document'),
-  auditLog('student.documentUpload'),
-  studentController.uploadDocument
-);
-
-/**
- * DELETE /api/students/:studentId/documents/:documentId
- * Delete student document
- * Access: Super Admin, School Admin
- */
-router.delete(
-  '/:studentId/documents/:documentId',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  auditLog('student.documentDelete'),
-  studentController.deleteDocument
-);
-
-/**
- * DELETE /api/students/:studentId
- * Delete student (soft delete by default)
- * Access: Super Admin, School Admin
- */
-router.delete(
-  '/:studentId',
-  authorize(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  auditLog('student.delete'),
-  studentController.deleteStudent
-);
-
-// ─── Export Routes ────────────────────────────────────────────────────────────
-
-// Mount public routes (no auth required)
-const studentRoutes = Router();
-studentRoutes.use('/students', publicRouter);
-studentRoutes.use('/students', router);
-
-export default studentRoutes;
+export default router;

@@ -1,152 +1,230 @@
-// TODO: Add implementation
-// =============================================================================
-// notification.controller.js — RESQID School Admin
-//
-// Thin HTTP layer — extracts request data, calls service, sends response.
-// No business logic lives here.
-// =============================================================================
+// school-admin/notification/notification.service.js
+import { prisma } from '#config/prisma.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { getPagination, paginateMeta } from '#shared/response/paginate.js';
+import { getEmail } from '#infrastructure/email/email.index.js';
+import { getSms } from '#infrastructure/sms/sms.index.js';
+import { getPush } from '#infrastructure/push/push.index.js';
+import { notificationsQueue } from '#orchestrator/queues/queue.config.js';
+import { NotificationRepository } from './notification.repository.js';
+import { NOTIFICATION_TYPES, CHANNELS, PRIORITY } from '#modules/notification/notification.constants.js';
+import { generateId } from '#services/IdGenerator.service.js';
 
-import { ApiResponse } from '#shared/response/ApiResponse.js';
-import * as service    from './notification.service.js';
+const repo = new NotificationRepository();
 
-// ─── List ─────────────────────────────────────────────────────────────────────
+export class NotificationService {
+  async createNotification(data, schoolId, createdByUserId) {
+    const recipientIds = await repo.getRecipientParentIds(
+      schoolId,
+      data.recipientType,
+      data.selectedClass,
+      data.selectedSection,
+      data.selectedParents,
+    );
+    if (!recipientIds.length) {
+      throw ApiError.badRequest('No recipients found for the given selection');
+    }
 
-/**
- * GET /api/school/notifications
- * Paginated list of safety/emergency notifications for this school.
- */
-export async function list(req, res) {
-  const schoolId = req.schoolId;
-  const { page, limit, isRead, type, severity, from, to } = req.query;
+    const scheduledFor = data.scheduleLater && data.scheduledTime ? new Date(data.scheduledTime) : null;
+    const status = scheduledFor ? 'PENDING' : 'SENT';
 
-  const result = await service.listNotifications({
-    schoolId,
-    filters: { isRead, type, severity, from, to },
-    page:  Number(page)  || 1,
-    limit: Number(limit) || 20,
-  });
+    const notification = await repo.create({
+      id: generateId('NOT'),
+      schoolId,
+      title: data.title,
+      body: data.message,
+      category: data.type,
+      priority: data.priority.toUpperCase(),
+      channel: data.channel[0], // primary channel
+      status,
+      createdBy: createdByUserId,
+      scheduledFor,
+      metadata: {
+        channels: data.channel,
+        recipientType: data.recipientType,
+        selectedClass: data.selectedClass,
+        selectedSection: data.selectedSection,
+        selectedParents: data.selectedParents,
+        totalRecipients: recipientIds.length,
+        delivered: 0,
+        read: 0,
+        failed: 0,
+      },
+    });
 
-  return ApiResponse.paginated(
-    res,
-    result.notifications,
-    result.pagination,
-    'Notifications fetched'
-  );
-}
+    // Queue delivery for each recipient (if not scheduled)
+    if (!scheduledFor) {
+      for (const parentId of recipientIds) {
+        await notificationsQueue.add('send-notification', {
+          notificationId: notification.id,
+          recipientId: parentId,
+          title: data.title,
+          body: data.message,
+          category: data.type,
+          priority: data.priority,
+          channels: data.channel,
+          schoolId,
+        }, {
+          priority: data.priority === 'high' ? 1 : data.priority === 'urgent' ? 0 : 3,
+        });
+      }
+    }
 
-// ─── Get single ───────────────────────────────────────────────────────────────
+    return notification;
+  }
 
-/**
- * GET /api/school/notifications/:notificationId
- */
-export async function getOne(req, res) {
-  const notification = await service.getNotification({
-    notificationId: req.params.notificationId,
-    schoolId:       req.schoolId,
-  });
+  async listNotifications(query, schoolId) {
+    const { page, limit, skip } = getPagination(query);
+    const where = { schoolId };
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { body: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+    if (query.type) where.category = query.type;
+    // ✅ FIX: Map frontend lowercase status to DB uppercase enum
+    if (query.status) {
+      const statusMap = {
+        sent: 'SENT',
+        delivered: 'DELIVERED',
+        read: 'READ',
+        failed: 'FAILED'
+      };
+      where.status = statusMap[query.status];
+    }
+    if (query.fromDate) where.createdAt = { gte: new Date(query.fromDate) };
+    if (query.toDate) where.createdAt = { lte: new Date(query.toDate) };
 
-  return ApiResponse.ok(res, notification, 'Notification fetched');
-}
+    const { items, total } = await repo.list(where, skip, limit);
+    const meta = paginateMeta(total, page, limit);
 
-// ─── Unread count ─────────────────────────────────────────────────────────────
+    // ✅ FIX: Include createdBy user to get name, and ensure recipients from metadata
+    const enriched = items.map(n => ({
+      id: n.id,
+      title: n.title,
+      message: n.body,
+      type: n.category,
+      channel: n.channel,
+      recipients: {
+        total: n.metadata?.totalRecipients || 0,
+        delivered: n.metadata?.delivered || 0,
+        read: n.metadata?.read || 0,
+        failed: n.metadata?.failed || 0,
+      },
+      status: n.status.toLowerCase(),
+      sentBy: n.createdByUser?.name || 'System',   // ✅ now uses real name
+      sentAt: n.sentAt || n.createdAt,
+      scheduledFor: n.scheduledFor,
+      priority: n.priority?.toLowerCase() || 'normal',
+      attachments: n.metadata?.attachments || [],
+    }));
+    return { items: enriched, meta };
+  }
 
-/**
- * GET /api/school/notifications/unread-count
- * Returns a single { unreadCount: N } — used by dashboard badge.
- */
-export async function unreadCount(req, res) {
-  const data = await service.getUnreadCount({ schoolId: req.schoolId });
-  return ApiResponse.ok(res, data, 'Unread count fetched');
-}
+  async getNotificationStats(schoolId) {
+    return repo.getStats(schoolId);
+  }
 
-// ─── Mark single read / unread ────────────────────────────────────────────────
+  async getNotificationDetails(id, schoolId) {
+    const notification = await repo.findById(id, schoolId);
+    if (!notification) throw ApiError.notFound('Notification not found');
+    return {
+      id: notification.id,
+      title: notification.title,
+      message: notification.body,
+      type: notification.category,
+      channel: notification.channel,
+      recipients: {
+        total: notification.metadata?.totalRecipients || 0,
+        delivered: notification.metadata?.delivered || 0,
+        read: notification.metadata?.read || 0,
+        failed: notification.metadata?.failed || 0,
+      },
+      status: notification.status.toLowerCase(),
+      sentBy: notification.createdByUser?.name || 'System',
+      sentAt: notification.sentAt || notification.createdAt,
+      scheduledFor: notification.scheduledFor,
+      priority: notification.priority?.toLowerCase() || 'normal',
+      attachments: notification.metadata?.attachments || [],
+    };
+  }
 
-/**
- * PATCH /api/school/notifications/:notificationId/read
- * Body: { isRead: boolean }
- */
-export async function markRead(req, res) {
-  const notification = await service.markRead({
-    notificationId: req.params.notificationId,
-    schoolId:       req.schoolId,
-    isRead:         req.body.isRead,
-  });
+  // ✅ FIX: Complete resend logic – re‑fetch recipients from metadata and queue individual jobs
+  async resendNotification(id, schoolId) {
+    const notification = await repo.findById(id, schoolId);
+    if (!notification) throw ApiError.notFound('Notification not found');
 
-  const label = req.body.isRead ? 'Notification marked as read' : 'Notification marked as unread';
-  return ApiResponse.ok(res, notification, label);
-}
+    const metadata = notification.metadata || {};
+    const { recipientType, selectedClass, selectedSection, selectedParents, channels } = metadata;
 
-// ─── Bulk mark read ───────────────────────────────────────────────────────────
+    // Re‑fetch recipient IDs using the stored targeting parameters
+    const recipientIds = await repo.getRecipientParentIds(
+      schoolId,
+      recipientType,
+      selectedClass,
+      selectedSection,
+      selectedParents,
+    );
+    if (!recipientIds.length) {
+      throw ApiError.badRequest('No recipients found for resend – targeting parameters missing');
+    }
 
-/**
- * PATCH /api/school/notifications/bulk-read
- * Body: { ids: string[] } | { markAll: true }
- */
-export async function bulkMarkRead(req, res) {
-  const { ids, markAll } = req.body;
+    // Queue each recipient individually (same as original send)
+    for (const parentId of recipientIds) {
+      await notificationsQueue.add('send-notification', {
+        notificationId: notification.id,
+        recipientId: parentId,
+        title: notification.title,
+        body: notification.body,
+        category: notification.category,
+        priority: notification.priority?.toLowerCase() || 'normal',
+        channels: channels || [notification.channel],
+        schoolId,
+      }, {
+        priority: notification.priority === 'HIGH' ? 1 : 3,
+      });
+    }
 
-  const result = await service.bulkMarkRead({
-    schoolId: req.schoolId,
-    ids,
-    markAll,
-  });
+    // Optionally reset status to SENT if it was failed
+    await repo.update(notification.id, { status: 'SENT' });
 
-  return ApiResponse.ok(res, result, `${result.updatedCount} notification(s) marked as read`);
-}
+    return { success: true };
+  }
 
-// ─── Delete single ────────────────────────────────────────────────────────────
+  async deleteNotification(id, schoolId) {
+    await repo.delete(id);
+    return { success: true };
+  }
 
-/**
- * DELETE /api/school/notifications/:notificationId
- */
-export async function remove(req, res) {
-  await service.deleteNotification({
-    notificationId: req.params.notificationId,
-    schoolId:       req.schoolId,
-  });
+  // ✅ NEW: Get recipient options for frontend dropdown (counts)
+  async getRecipientOptions(schoolId) {
+    // All parents count
+    const allParentsCount = await prisma.parentUser.count({
+      where: { students: { some: { student: { schoolId } } }, isActive: true }
+    });
 
-  return ApiResponse.noContent(res);
-}
+    // Classes and their parent counts
+    const classes = await prisma.student.groupBy({
+      by: ['grade'],
+      where: { schoolId, isActive: true },
+      _count: { id: true },
+    });
+    const classOptions = await Promise.all(classes.map(async (cls) => {
+      // For each class, get distinct parents of students in that class
+      const parentCount = await prisma.parentStudent.count({
+        where: { student: { schoolId, grade: cls.grade }, isActive: true },
+      });
+      return { class: cls.grade, parentCount };
+    }));
 
-// ─── Bulk delete ──────────────────────────────────────────────────────────────
+    // Sections (static or dynamic)
+    const sections = ['A', 'B', 'C', 'D']; // or fetch from DB
 
-/**
- * DELETE /api/school/notifications/bulk
- * Body: { ids: string[] } | { deleteAll: true } | { deleteAll: true, onlyRead: true }
- */
-export async function bulkDelete(req, res) {
-  const { ids, deleteAll, onlyRead } = req.body;
-
-  const result = await service.bulkDelete({
-    schoolId: req.schoolId,
-    ids,
-    deleteAll,
-    onlyRead,
-  });
-
-  return ApiResponse.ok(res, result, `${result.deletedCount} notification(s) deleted`);
-}
-
-// ─── Preferences ─────────────────────────────────────────────────────────────
-
-/**
- * GET /api/school/notifications/preferences
- * Returns full preference set — defaults filled for any unsaved type.
- */
-export async function getPreferences(req, res) {
-  const data = await service.getPreferences({ schoolId: req.schoolId });
-  return ApiResponse.ok(res, data, 'Notification preferences fetched');
-}
-
-/**
- * PUT /api/school/notifications/preferences
- * Body: { preferences: [{ type, inApp, email, sms, pushEnabled }] }
- */
-export async function upsertPreferences(req, res) {
-  const data = await service.upsertPreferences({
-    schoolId:    req.schoolId,
-    preferences: req.body.preferences,
-  });
-
-  return ApiResponse.ok(res, data, 'Notification preferences updated');
+    return {
+      allParents: allParentsCount,
+      classes: classOptions.map(c => ({ name: c.class, parentCount: c.parentCount })),
+      sections,
+    };
+  }
 }
