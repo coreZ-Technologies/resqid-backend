@@ -9,11 +9,17 @@ import { EVENTS, ACTOR_TYPES } from './event.types.js';
 import {
   emergencyAlertsQueue,
   notificationsQueue,
-  pipelineJobsQueue,
+  crisisQueue,
+  generateQueue,
+  validateQueue,
+  swapQueue,
+  bulkUploadQueue,
 } from '../queues/queue.config.js';
 import { logger } from '#config/logger.js';
 
-// ── Event → Queue routing ─────────────────────────────────────────────────────
+// =============================================================================
+// EVENT → QUEUE ROUTING
+// =============================================================================
 
 const EMERGENCY_EVENTS = new Set([
   EVENTS.EMERGENCY_ALERT_TRIGGERED,
@@ -22,33 +28,61 @@ const EMERGENCY_EVENTS = new Set([
   EVENTS.EMERGENCY_ALERT_DELIVERED,
 ]);
 
-// Order events — only route if pipeline queue is enabled
-const ORDER_EVENTS = new Set([
-  EVENTS.ORDER_TOKEN_GENERATION_STARTED,
-  EVENTS.ORDER_CARD_DESIGN_STARTED,
+const CRISIS_EVENTS = new Set([
+  EVENTS.CRISIS_TRIGGERED,
+  EVENTS.CRISIS_RESOLVED,
+  EVENTS.CRISIS_FAILED,
+  EVENTS.TEACHER_ABSENT_DETECTED,
+  EVENTS.ROOM_UNAVAILABLE_DETECTED,
 ]);
 
+const TIMETABLE_GENERATE_EVENTS = new Set([
+  EVENTS.TIMETABLE_GENERATE_STARTED,
+  EVENTS.TIMETABLE_GENERATE_PROGRESS,
+  EVENTS.TIMETABLE_GENERATE_COMPLETED,
+  EVENTS.TIMETABLE_GENERATE_FAILED,
+]);
+
+const TIMETABLE_VALIDATE_EVENTS = new Set([
+  EVENTS.TIMETABLE_VALIDATE_STARTED,
+  EVENTS.TIMETABLE_VALIDATE_COMPLETED,
+  EVENTS.TIMETABLE_VALIDATE_FAILED,
+]);
+
+const TIMETABLE_SWAP_EVENTS = new Set([
+  EVENTS.TIMETABLE_SWAP_REQUESTED,
+  EVENTS.TIMETABLE_SWAP_COMPLETED,
+  EVENTS.TIMETABLE_SWAP_FAILED,
+]);
+
+const BULK_UPLOAD_EVENTS = new Set([
+  EVENTS.BULK_UPLOAD_STARTED,
+  EVENTS.BULK_UPLOAD_PROGRESS,
+  EVENTS.BULK_UPLOAD_COMPLETED,
+  EVENTS.BULK_UPLOAD_FAILED,
+]);
+
+/**
+ * Route event to the correct queue.
+ */
 const routeEvent = (type) => {
   if (EMERGENCY_EVENTS.has(type)) return emergencyAlertsQueue;
+  if (CRISIS_EVENTS.has(type)) return crisisQueue;
+  if (TIMETABLE_GENERATE_EVENTS.has(type)) return generateQueue;
+  if (TIMETABLE_VALIDATE_EVENTS.has(type)) return validateQueue;
+  if (TIMETABLE_SWAP_EVENTS.has(type)) return swapQueue;
+  if (BULK_UPLOAD_EVENTS.has(type)) return bulkUploadQueue;
 
-  if (ORDER_EVENTS.has(type)) {
-    if (!pipelineJobsQueue) {
-      throw new Error(
-        `Cannot publish ${type} — pipeline queue not enabled. Set ENABLE_PIPELINE_QUEUE=true`
-      );
-    }
-    return pipelineJobsQueue;
-  }
-
-  // Default: everything else goes to notifications queue
+  // Default: notifications queue
   return notificationsQueue;
 };
 
-// ── Per-queue BullMQ job options ──────────────────────────────────────────────
+// =============================================================================
+// JOB OPTIONS PER QUEUE TYPE
+// =============================================================================
 
 const getJobOptions = (type, id, meta = {}) => {
   const jobId = `${type}-${id}`;
-  const delay = meta?.delay ?? 0;
 
   if (EMERGENCY_EVENTS.has(type)) {
     return {
@@ -59,25 +93,63 @@ const getJobOptions = (type, id, meta = {}) => {
     };
   }
 
-  if (ORDER_EVENTS.has(type)) {
+  if (CRISIS_EVENTS.has(type)) {
     return {
       jobId,
-      priority: 10,
-      attempts: 3,
+      priority: 1,
+      attempts: 2,
+      backoff: { type: 'fixed', delay: 5000 },
+    };
+  }
+
+  if (TIMETABLE_GENERATE_EVENTS.has(type)) {
+    return {
+      jobId,
+      priority: 5,
+      attempts: 1,
       backoff: { type: 'exponential', delay: 5000 },
     };
   }
 
+  if (TIMETABLE_VALIDATE_EVENTS.has(type)) {
+    return {
+      jobId,
+      priority: 4,
+      attempts: 1,
+      backoff: { type: 'fixed', delay: 3000 },
+    };
+  }
+
+  if (TIMETABLE_SWAP_EVENTS.has(type)) {
+    return {
+      jobId,
+      priority: 3,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+    };
+  }
+
+  if (BULK_UPLOAD_EVENTS.has(type)) {
+    return {
+      jobId,
+      priority: 8,
+      attempts: 2,
+      backoff: { type: 'exponential', delay: 10000 },
+    };
+  }
+
+  // Default notification settings
   return {
     jobId,
-    delay,
     priority: 5,
     attempts: 3,
     backoff: { type: 'exponential', delay: 3000 },
   };
 };
 
-// ── Shape validation ──────────────────────────────────────────────────────────
+// =============================================================================
+// SHAPE VALIDATION
+// =============================================================================
 
 const validateEvent = (event) => {
   if (!event || typeof event !== 'object') {
@@ -97,8 +169,16 @@ const validateEvent = (event) => {
   }
 };
 
-// ── Publisher ─────────────────────────────────────────────────────────────────
+// =============================================================================
+// PUBLISHER
+// =============================================================================
 
+/**
+ * Publish an event to the appropriate queue.
+ *
+ * @param {Object} event - { type, schoolId, actorId, actorType, payload, meta }
+ * @returns {Promise<Job>}
+ */
 export const publish = async (event) => {
   validateEvent(event);
 
@@ -111,11 +191,9 @@ export const publish = async (event) => {
     payload: event.payload ?? {},
     createdAt: new Date().toISOString(),
     meta: {
-      orderId: event.meta?.orderId ?? null,
-      studentId: event.meta?.studentId ?? null,
-      alertId: event.meta?.alertId ?? null,
+      ...event.meta,
       requestId: event.meta?.requestId ?? null,
-      delay: event.meta?.delay ?? 0,
+      source: event.meta?.source ?? 'api',
     },
   };
 
@@ -125,23 +203,35 @@ export const publish = async (event) => {
   try {
     const job = await queue.add(stamped.type, stamped, jobOptions);
     logger.info(
-      { eventId: stamped.id, type: stamped.type, queue: queue.name, jobId: job.id },
+      {
+        eventId: stamped.id,
+        type: stamped.type,
+        queue: queue.name,
+        jobId: job.id,
+        schoolId: stamped.schoolId,
+      },
       '[event.publisher] Event published'
     );
     return job;
   } catch (err) {
     logger.error(
-      { err: err.message, type: stamped.type, eventId: stamped.id },
+      {
+        err: err.message,
+        type: stamped.type,
+        eventId: stamped.id,
+      },
       '[event.publisher] Failed to publish event'
     );
     throw err;
   }
 };
 
-// ── Convenience Wrappers ──────────────────────────────────────────────────────
+// =============================================================================
+// CONVENIENCE WRAPPERS
+// =============================================================================
 
 /**
- * Publish an emergency event — used by scan.service.js
+ * Publish an emergency event.
  */
 export const publishEmergency = async ({ studentId, schoolId, scannerIp }) => {
   return publish({
@@ -150,26 +240,89 @@ export const publishEmergency = async ({ studentId, schoolId, scannerIp }) => {
     actorType: 'EMERGENCY_RESPONDER',
     schoolId,
     payload: { studentId, scannerIp },
-    meta: { studentId },
+    meta: { studentId, source: 'scan' },
   });
 };
 
 /**
- * Publish a notification event — used by any service sending notifications
+ * Publish a crisis event (teacher absent, room unavailable).
+ */
+export const publishCrisis = async ({ type, schoolId, teacherId, roomId, timetableId }) => {
+  return publish({
+    type: type || EVENTS.CRISIS_TRIGGERED,
+    actorId: 'system',
+    actorType: 'SYSTEM',
+    schoolId,
+    payload: { teacherId, roomId, timetableId },
+    meta: { source: 'crisis_service' },
+  });
+};
+
+/**
+ * Publish a timetable generation event.
+ */
+export const publishTimetableGenerate = async ({
+  status,
+  schoolId,
+  templateId,
+  timetableId,
+  progress,
+}) => {
+  const eventType =
+    {
+      started: EVENTS.TIMETABLE_GENERATE_STARTED,
+      progress: EVENTS.TIMETABLE_GENERATE_PROGRESS,
+      completed: EVENTS.TIMETABLE_GENERATE_COMPLETED,
+      failed: EVENTS.TIMETABLE_GENERATE_FAILED,
+    }[status] || EVENTS.TIMETABLE_GENERATE_PROGRESS;
+
+  return publish({
+    type: eventType,
+    actorId: 'system',
+    actorType: 'WORKER',
+    schoolId,
+    payload: { templateId, timetableId, progress },
+    meta: { source: 'generate_worker' },
+  });
+};
+
+/**
+ * Publish a timetable validation event.
+ */
+export const publishTimetableValidate = async ({ status, schoolId, timetableId, score }) => {
+  const eventType =
+    {
+      started: EVENTS.TIMETABLE_VALIDATE_STARTED,
+      completed: EVENTS.TIMETABLE_VALIDATE_COMPLETED,
+      failed: EVENTS.TIMETABLE_VALIDATE_FAILED,
+    }[status] || EVENTS.TIMETABLE_VALIDATE_COMPLETED;
+
+  return publish({
+    type: eventType,
+    actorId: 'system',
+    actorType: 'WORKER',
+    schoolId,
+    payload: { timetableId, score },
+    meta: { source: 'validate_worker' },
+  });
+};
+
+/**
+ * Publish a notification event.
  */
 export const publishNotification = async ({ parentId, schoolId, title, body, data = {} }) => {
   return publish({
-    type: EVENTS.STUDENT_QR_SCANNED,
+    type: EVENTS.NOTIFICATION_SENT,
     actorId: 'system',
     actorType: 'SYSTEM',
     schoolId,
     payload: { parentId, title, body, data },
-    meta: { studentId: data?.studentId },
+    meta: { studentId: data?.studentId, source: 'notification_service' },
   });
 };
 
 /**
- * Publish an anomaly detected event — used by anomaly.evaluator.js
+ * Publish an anomaly detected event.
  */
 export const publishAnomaly = async ({ studentId, schoolId, anomalyType }) => {
   return publish({
@@ -178,12 +331,12 @@ export const publishAnomaly = async ({ studentId, schoolId, anomalyType }) => {
     actorType: 'SYSTEM',
     schoolId,
     payload: { studentId, anomalyType },
-    meta: { studentId },
+    meta: { studentId, source: 'anomaly_evaluator' },
   });
 };
 
 /**
- * Publish a worker failure — used internally by workers
+ * Publish a worker failure event.
  */
 export const publishWorkerFailure = async (jobType, queueName, error) => {
   return publish({
@@ -195,5 +348,6 @@ export const publishWorkerFailure = async (jobType, queueName, error) => {
       queueName,
       error: error?.message ?? String(error),
     },
+    meta: { source: 'worker' },
   });
 };

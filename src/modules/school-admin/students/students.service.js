@@ -1,376 +1,482 @@
-// TODO: Add implementation
-// =============================================================================
-// students.service.js — RESQID
-// Business logic for student management.
-// Calls repository for DB access; never touches prisma directly.
-// =============================================================================
-
-import { ApiError } from '#shared/response/ApiError.js';
-import { logger } from '#config/logger.js';
-import { getPagination } from '#shared/utils/paginate.js';
-import { auditLog } from '#config/logger.js';
-import { AUDIT_ACTION } from '#shared/constants/audit.js';
-import {
-  findStudentById,
-  findStudentByRollNumber,
-  findStudents,
-  createStudent,
-  bulkCreateStudents,
-  updateStudent,
-  linkParentToStudent,
-  unlinkParentFromStudent,
-  transferStudent,
-  setStudentActive,
-  softDeleteStudent,
-  countStudents,
-  getStudentsByClass,
-  decryptStudentSensitiveFields,
-} from './students.repository.js';
+// school-admin/students/students.service.js
 import { prisma } from '#config/prisma.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { getPagination, paginateMeta } from '#shared/response/paginate.js';
+import { getStorage, StoragePath } from '#infrastructure/storage/storage.index.js';
+import { getEmail } from '#infrastructure/email/email.index.js';
+import { notificationsQueue } from '#orchestrator/queues/queue.config.js';
+import { StudentRepository } from './students.repository.js';
+import { generateStudentId, generateId } from '#services/IdGenerator.service.js';
+import { validateImage, validateDocument } from '#shared/helpers/fileUtil.js';
+import { normalizePhoneNumber } from '#shared/utils/phoneNormalize.js';
+import { formatDateIST, addDays } from '#shared/helpers/dateTime.js';
+import { format, differenceInYears } from 'date-fns';  // ✅ added differenceInYears
+import { parse } from 'csv-parse/sync';
+import { ParentRepository } from '../parents/parent.repository.js'; // Ensure this path is correct
 
-import { listStudentsSchema } from './students.validation.js';
+const repo = new StudentRepository();
+const parentRepo = new ParentRepository();
 
-// =============================================================================
-// READ
-// =============================================================================
-
-/**
- * Get paginated student list with filters.
- */
-export const listStudents = async (schoolId, rawQuery) => {
-  // Validate + coerce query params (safe parse — returns defaults on invalid)
-  const parsed = listStudentsSchema.parse(rawQuery);
-  const pagination = getPagination(parsed);
-
-  const result = await findStudents(schoolId, {
-    ...pagination,
-    search: parsed.search,
-    class: parsed.class,
-    section: parsed.section,
-    gender: parsed.gender,
-    bloodGroup: parsed.bloodGroup,
-    isActive: parsed.isActive,
-    hasParent: parsed.hasParent,
-    hasCard: parsed.hasCard,
-    sortBy: parsed.sortBy,
-    sortOrder: parsed.sortOrder,
-  });
-
-  return result;
-};
-
-/**
- * Get a single student by ID.
- * Decrypts sensitive fields before returning.
- */
-export const getStudent = async (studentId, schoolId) => {
-  const student = await findStudentById(studentId, schoolId);
-
-  if (!student) {
-    throw ApiError.studentNotFound();
-  }
-
-  return decryptStudentSensitiveFields(student);
-};
-
-/**
- * Get student count and class breakdown (for dashboard stats).
- */
-export const getStudentStats = async (schoolId) => {
-  const [total, active, byClass] = await Promise.all([
-    countStudents(schoolId),
-    countStudents(schoolId, { isActive: true }),
-    getStudentsByClass(schoolId),
-  ]);
-
-  return {
-    total,
-    active,
-    inactive: total - active,
-    byClass,
-  };
-};
-
-// =============================================================================
-// CREATE
-// =============================================================================
-
-/**
- * Create a single student.
- * Enforces: roll number uniqueness, subscription student limit.
- */
-export const addStudent = async (schoolId, data, actorId) => {
-  // 1. Check roll number uniqueness
-  const existing = await findStudentByRollNumber(data.rollNumber, schoolId);
-  if (existing) {
-    throw ApiError.conflict(
-      `Roll number '${data.rollNumber}' is already in use`,
-      'ROLL_NUMBER_TAKEN'
-    );
-  }
-
-  // 2. Check subscription student limit
-  await enforceStudentLimit(schoolId);
-
-  // 3. Validate parent exists (if provided)
-  if (data.parentId) {
-    await assertParentExists(data.parentId);
-  }
-
-  // 4. Create
-  const student = await createStudent(schoolId, data);
-
-  logger.info({ studentId: student.id, schoolId, actorId }, 'Student created');
-  auditLog(AUDIT_ACTION.STUDENT_CREATED, {
-    actorId,
-    schoolId,
-    studentId: student.id,
-    rollNumber: data.rollNumber,
-  });
-
-  return student;
-};
-
-/**
- * Bulk import students from CSV/JSON.
- * Returns created count and any skipped roll numbers.
- */
-export const importStudents = async (schoolId, students, skipDuplicates, actorId) => {
-  // Check subscription limit
-  const currentCount = await countStudents(schoolId);
-  const subscription = await getSchoolSubscription(schoolId);
-
-  if (subscription && currentCount + students.length > subscription.studentLimit) {
-    throw ApiError.subscriptionLimitReached(subscription.studentLimit);
-  }
-
-  // Detect duplicates in the import batch itself
-  const rollNumbers = students.map((s) => s.rollNumber);
-  const uniqueRollNumbers = new Set(rollNumbers);
-  const batchDuplicates = rollNumbers.length - uniqueRollNumbers.size;
-
-  if (batchDuplicates > 0 && !skipDuplicates) {
-    throw ApiError.conflict(
-      `Import batch contains ${batchDuplicates} duplicate roll number(s)`,
-      'BATCH_DUPLICATES'
-    );
-  }
-
-  const result = await bulkCreateStudents(schoolId, students, skipDuplicates);
-
-  logger.info({ schoolId, actorId, count: result.count }, 'Bulk student import');
-  auditLog(AUDIT_ACTION.STUDENT_BULK_IMPORTED, {
-    actorId,
-    schoolId,
-    count: result.count,
-    batchDuplicates,
-  });
-
-  return {
-    created: result.count,
-    skipped: students.length - result.count,
-  };
-};
-
-// =============================================================================
-// UPDATE
-// =============================================================================
-
-/**
- * Update a student's profile.
- */
-export const editStudent = async (studentId, schoolId, data, actorId) => {
-  // Verify student exists
-  const existing = await findStudentById(studentId, schoolId);
-  if (!existing) throw ApiError.studentNotFound();
-
-  // If roll number changing, check uniqueness
-  if (data.rollNumber && data.rollNumber !== existing.rollNumber) {
-    const conflict = await findStudentByRollNumber(data.rollNumber, schoolId, studentId);
-    if (conflict) {
-      throw ApiError.conflict(
-        `Roll number '${data.rollNumber}' is already in use`,
-        'ROLL_NUMBER_TAKEN'
-      );
+export class StudentService {
+  async createStudent(data, schoolId, photoFile = null) {
+    if (data.rfidTagNumber) {
+      const existing = await repo.findStudentByRFID(data.rfidTagNumber);
+      if (existing) throw ApiError.conflict('RFID tag number already in use');
     }
-  }
 
-  // Validate parent if changing
-  if (data.parentId && data.parentId !== existing.parentId) {
-    await assertParentExists(data.parentId);
-  }
-
-  const updated = await updateStudent(studentId, schoolId, data);
-
-  auditLog(AUDIT_ACTION.STUDENT_UPDATED, { actorId, schoolId, studentId });
-
-  return decryptStudentSensitiveFields(updated);
-};
-
-/**
- * Link a parent to a student.
- */
-export const attachParent = async (studentId, schoolId, parentId, actorId) => {
-  const student = await findStudentById(studentId, schoolId);
-  if (!student) throw ApiError.studentNotFound();
-
-  if (student.parentId === parentId) {
-    throw ApiError.conflict('This parent is already linked to the student', 'PARENT_ALREADY_LINKED');
-  }
-
-  await assertParentExists(parentId);
-
-  const updated = await linkParentToStudent(studentId, schoolId, parentId);
-
-  auditLog(AUDIT_ACTION.PARENT_CHILD_LINKED, { actorId, schoolId, studentId, parentId });
-
-  return updated;
-};
-
-/**
- * Unlink the current parent from a student.
- */
-export const detachParent = async (studentId, schoolId, actorId) => {
-  const student = await findStudentById(studentId, schoolId);
-  if (!student) throw ApiError.studentNotFound();
-
-  if (!student.parentId) {
-    throw ApiError.badRequest('Student has no linked parent', 'NO_PARENT_LINKED');
-  }
-
-  const updated = await unlinkParentFromStudent(studentId, schoolId);
-
-  auditLog(AUDIT_ACTION.PARENT_CHILD_UNLINKED, { actorId, schoolId, studentId });
-
-  return updated;
-};
-
-/**
- * Transfer a student to a new class/section.
- */
-export const transferStudentClass = async (studentId, schoolId, transferData, actorId) => {
-  const student = await findStudentById(studentId, schoolId);
-  if (!student) throw ApiError.studentNotFound();
-
-  // If roll number changing, validate uniqueness
-  if (transferData.rollNumber && transferData.rollNumber !== student.rollNumber) {
-    const conflict = await findStudentByRollNumber(transferData.rollNumber, schoolId, studentId);
-    if (conflict) {
-      throw ApiError.conflict(`Roll number '${transferData.rollNumber}' is already taken`, 'ROLL_NUMBER_TAKEN');
+    let photoUrl = null;
+    if (photoFile) {
+      validateImage(photoFile);
+      const storage = getStorage();
+      const key = StoragePath.studentPhoto(schoolId, 'temp', photoFile.mimetype);
+      const upload = await storage.upload(photoFile.buffer, key, { contentType: photoFile.mimetype });
+      photoUrl = upload.location;
     }
+
+    let cardVisibilityId = null;
+    if (data.cardVisibility) {
+      const visibility = await repo.createCardVisibility(data.cardVisibility);
+      cardVisibilityId = visibility.id;
+    }
+
+    const qrCodeId = generateId('QR');
+    const student = await repo.createStudent({
+      id: generateStudentId(),
+      schoolId,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      gender: data.gender,
+      bloodGroup: data.bloodGroup,
+      grade: data.grade,
+      section: data.section,
+      rollNumber: data.rollNumber,
+      studentId: qrCodeId,
+      allergies: data.allergies || [],
+      conditions: data.conditions || [],
+      medications: data.medications || [],
+      medicalNotes: data.medicalNotes,
+      transportRoute: data.transportRoute,
+      transportStop: data.transportStop,
+      rfidTagNumber: data.rfidTagNumber,
+      photoUrl,
+      cardVisibilityId,
+      metadata: data.metadata || {},
+      status: 'ACTIVE',
+      isActive: true,
+    });
+
+    if (data.parentIds?.length) {
+      for (const parentId of data.parentIds) {
+        await repo.linkParent(student.id, parentId, 'GUARDIAN', false, 1);
+      }
+    }
+
+    return student;
   }
 
-  const updated = await transferStudent(studentId, schoolId, transferData);
+  async updateStudent(id, data, schoolId, photoFile = null) {
+    const student = await repo.findStudentById(id, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
 
-  auditLog(AUDIT_ACTION.STUDENT_TRANSFERRED, {
-    actorId,
-    schoolId,
-    studentId,
-    from: { class: student.class, section: student.section },
-    to: { class: transferData.class, section: transferData.section },
-  });
+    if (data.rfidTagNumber && data.rfidTagNumber !== student.rfidTagNumber) {
+      const existing = await repo.findStudentByRFID(data.rfidTagNumber);
+      if (existing) throw ApiError.conflict('RFID tag number already in use');
+    }
 
-  return updated;
-};
+    let photoUrl = student.photoUrl;
+    if (photoFile) {
+      validateImage(photoFile);
+      const storage = getStorage();
+      const key = StoragePath.studentPhoto(schoolId, id, photoFile.mimetype);
+      const upload = await storage.upload(photoFile.buffer, key, { contentType: photoFile.mimetype });
+      photoUrl = upload.location;
+      data.photoUrl = photoUrl;
+    }
 
-/**
- * Activate a student.
- */
-export const activateStudent = async (studentId, schoolId, actorId) => {
-  const student = await findStudentById(studentId, schoolId);
-  if (!student) throw ApiError.studentNotFound();
+    if (data.cardVisibility && student.cardVisibilityId) {
+      await repo.updateCardVisibility(student.cardVisibilityId, data.cardVisibility);
+      delete data.cardVisibility;
+    }
 
-  if (student.isActive) {
-    throw ApiError.conflict('Student is already active', 'ALREADY_ACTIVE');
+    const updated = await repo.updateStudent(id, data);
+    return updated;
   }
 
-  return setStudentActive(studentId, schoolId, true);
-};
-
-/**
- * Deactivate a student.
- */
-export const deactivateStudent = async (studentId, schoolId, actorId) => {
-  const student = await findStudentById(studentId, schoolId);
-  if (!student) throw ApiError.studentNotFound();
-
-  if (!student.isActive) {
-    throw ApiError.conflict('Student is already inactive', 'ALREADY_INACTIVE');
+  async deleteStudent(id, schoolId) {
+    const student = await repo.findStudentById(id, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    await repo.deleteStudent(id);
+    return { success: true };
   }
 
-  return setStudentActive(studentId, schoolId, false);
-};
+  async getStudent(id, schoolId) {
+    const student = await repo.findStudentById(id, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
 
-// =============================================================================
-// DELETE
-// =============================================================================
+    const parents = (student.parentLinks || []).map(link => ({
+      id: link.parent.id,
+      name: `${link.parent.firstName || ''} ${link.parent.lastName || ''}`.trim(),
+      relationship: link.relation,
+      phone: link.parent.phone,
+      email: link.parent.email,
+      isPrimary: link.isPrimary,
+      canCall: link.parent.canCall,
+      canWhatsapp: link.parent.canWhatsapp,
+    }));
 
-/**
- * Soft delete a student.
- * Cannot delete if student has an active card.
- */
-export const removeStudent = async (studentId, schoolId, actorId) => {
-  const student = await findStudentById(studentId, schoolId);
-  if (!student) throw ApiError.studentNotFound();
+    const emergencyContacts = student.emergencyProfile?.contacts || [];
 
-  // Block deletion if student has an active card
-  if (student.card?.status === 'ACTIVE') {
-    throw ApiError.conflict(
-      'Cannot delete a student with an active ID card. Revoke the card first.',
-      'CARD_ACTIVE'
-    );
+    const recentNotifications = await prisma.notification.findMany({
+      where: { studentId: id, status: 'DELIVERED' },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { title: true, body: true, createdAt: true, category: true },
+    });
+
+    const today = new Date();
+    const startOfTerm = addDays(today, -180);
+    const attendanceRecords = await repo.getAttendanceSummary(id, startOfTerm, today);
+    const totalDays = attendanceRecords.length;
+    const presentDays = attendanceRecords.filter(r => r.status === 'PRESENT').length;
+    const attendancePercentage = totalDays ? Math.round((presentDays / totalDays) * 100) : 0;
+
+    const monthly = {};
+    attendanceRecords.forEach(rec => {
+      const month = format(rec.markedAt, 'MMM');
+      if (!monthly[month]) monthly[month] = { present: 0, total: 0 };
+      monthly[month].total++;
+      if (rec.status === 'PRESENT') monthly[month].present++;
+    });
+    const monthlyBreakdown = Object.entries(monthly).map(([month, data]) => ({
+      month,
+      present: data.present,
+      total: data.total,
+      percentage: Math.round((data.present / data.total) * 100),
+    }));
+
+    // ✅ Note: If your StudentAttendanceRecord model does not have a `reason` field,
+    // remove `reason` from the select below. The frontend expects `reason`,
+    // so you may need to add it to the model or leave it as optional.
+    const recentAbsenceRecords = await prisma.studentAttendanceRecord.findMany({
+      where: { studentId: id, status: 'ABSENT' },
+      orderBy: { markedAt: 'desc' },
+      take: 5,
+      select: { markedAt: true, reason: true }, // Keep reason if your model has it; otherwise remove
+    });
+    const recentAbsences = recentAbsenceRecords.map(rec => ({
+      date: rec.markedAt,
+      reason: rec.reason || 'Absent',
+      approved: true,
+    }));
+
+    const documents = student.documents || [];
+
+    return {
+      id: student.id,
+      name: `${student.firstName} ${student.lastName}`,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      gender: student.gender,
+      dateOfBirth: student.dateOfBirth,
+      age: student.dateOfBirth ? differenceInYears(new Date(), new Date(student.dateOfBirth)) : null, // ✅ fixed age
+      bloodGroup: student.bloodGroup,
+      rollNumber: student.rollNumber,
+      class: student.grade,
+      section: student.section,
+      admissionYear: student.enrolledAt ? new Date(student.enrolledAt).getFullYear() : null,
+      enrollmentDate: student.enrolledAt,
+      status: student.status,
+      qrCodeId: student.studentId,
+      emergencyVisibility: student.cardVisibility?.visibility || 'PUBLIC',
+      email: null,
+      phone: null,
+      address: null,
+      parents,
+      emergencyContacts: emergencyContacts.map(c => ({
+        id: c.id,
+        name: c.name,
+        relationship: c.relation,
+        phone: c.phone,
+        priority: c.priority,
+      })),
+      medicalInfo: {
+        bloodGroup: student.bloodGroup,
+        allergies: student.allergies,
+        conditions: student.conditions,
+        medications: student.medications,
+        notes: student.medicalNotes,
+        doctor: student.emergencyProfile?.doctorName ? {
+          name: student.emergencyProfile.doctorName,
+          phone: student.emergencyProfile.doctorPhone,
+          specialization: student.emergencyProfile.doctorSpecialization,
+          clinic: student.emergencyProfile.doctorClinic,
+          address: student.emergencyProfile.doctorAddress,
+        } : null,
+        insurance: {
+          provider: student.emergencyProfile?.insuranceProvider,
+          policyNumber: student.emergencyProfile?.insurancePolicyNumber,
+          validUntil: student.emergencyProfile?.insuranceValidUntil,
+        },
+        emergencyInstructions: student.emergencyProfile?.emergencyInstructions,
+        lastCheckup: student.emergencyProfile?.updatedAt,
+      },
+      academicInfo: {
+        subjects: [],
+        previousSchool: null,
+        transferCertificate: null,
+        achievements: [],
+        remarks: null,
+      },
+      attendance: {
+        present: presentDays,
+        total: totalDays,
+        percentage: attendancePercentage,
+        monthly: monthlyBreakdown,
+        recentAbsences,
+      },
+      documents: documents.map(d => ({
+        id: d.id,
+        name: d.name,
+        type: d.fileType.toUpperCase(),
+        size: `${Math.round(d.fileSize / 1024)} KB`,
+        uploadedAt: d.uploadedAt,
+      })),
+      recentActivity: recentNotifications.map(n => ({
+        action: n.title,
+        date: formatDateIST(n.createdAt),
+        status: 'Completed',
+      })),
+      feeDetails: null,
+    };
   }
 
-  const deleted = await softDeleteStudent(studentId, schoolId);
+  async listStudents(query, schoolId) {
+    const { page, limit, skip } = getPagination(query);
+    const where = { schoolId, isActive: true };
+    if (query.search) {
+      where.OR = [
+        { firstName: { contains: query.search, mode: 'insensitive' } },
+        { lastName: { contains: query.search, mode: 'insensitive' } },
+        { studentId: { contains: query.search } },
+        { rollNumber: { contains: query.search } },
+        { parentLinks: { some: { parent: { firstName: { contains: query.search, mode: 'insensitive' } } } } },
+      ];
+    }
+    if (query.class) where.grade = query.class;
+    if (query.section) where.section = query.section;
+    if (query.status) where.status = query.status;
+    if (query.fromDate) where.enrolledAt = { gte: new Date(query.fromDate) };
+    if (query.toDate) where.enrolledAt = { lte: new Date(query.toDate) };
 
-  logger.info({ studentId, schoolId, actorId }, 'Student soft deleted');
-  auditLog(AUDIT_ACTION.STUDENT_DELETED, { actorId, schoolId, studentId });
-
-  return deleted;
-};
-
-// =============================================================================
-// PRIVATE HELPERS
-// =============================================================================
-
-/**
- * Assert that a parent with this ID exists and is active.
- */
-async function assertParentExists(parentId) {
-  const parent = await prisma.parent.findUnique({
-    where: { id: parentId },
-    select: { id: true, isActive: true },
-  });
-
-  if (!parent) {
-    throw ApiError.notFound('Parent not found', 'PARENT_NOT_FOUND');
+    const { items, total } = await repo.listStudents(where, skip, limit);
+    const enriched = items.map(s => ({
+      id: s.id,
+      name: `${s.firstName} ${s.lastName}`,
+      rollNumber: s.rollNumber,
+      class: s.grade,
+      section: s.section,
+      parentName: s.parentLinks[0]?.parent?.firstName 
+        ? `${s.parentLinks[0].parent.firstName} ${s.parentLinks[0].parent.lastName || ''}`.trim()
+        : 'Not linked',
+      parentPhone: s.parentLinks[0]?.parent?.phone || '',
+      email: null,
+      status: s.status,
+      photo: s.photoUrl,
+      avatarInitials: `${s.firstName[0]}${s.lastName[0]}`,
+    }));
+    const meta = paginateMeta(total, page, limit);
+    return { items: enriched, meta };
   }
 
-  if (!parent.isActive) {
-    throw ApiError.badRequest('Parent account is inactive', 'PARENT_INACTIVE');
+  async linkParents(studentId, parentIds, schoolId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    for (const parentId of parentIds) {
+      const parent = await prisma.parentUser.findFirst({ where: { id: parentId, students: { some: { student: { schoolId } } } } });
+      if (!parent) throw ApiError.notFound(`Parent ${parentId} not found in this school`);
+      await repo.linkParent(studentId, parentId, 'GUARDIAN', false, 1);
+    }
+    return { success: true };
   }
-}
 
-/**
- * Enforce the subscription student limit.
- */
-async function enforceStudentLimit(schoolId) {
-  const subscription = await getSchoolSubscription(schoolId);
-  if (!subscription) return; // No sub record = no cap enforced (handle in billing later)
-
-  const current = await countStudents(schoolId);
-  if (current >= subscription.studentLimit) {
-    throw ApiError.studentLimitReached(subscription.studentLimit);
+  async unlinkParent(studentId, parentId, schoolId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    await repo.unlinkParent(studentId, parentId);
+    return { success: true };
   }
-}
 
-/**
- * Get school subscription for limit checks.
- */
-async function getSchoolSubscription(schoolId) {
-  return prisma.subscription.findFirst({
-    where: { schoolId, status: 'ACTIVE' },
-    select: { studentLimit: true, plan: true },
-    orderBy: { createdAt: 'desc' },
-  });
+  async updateEmergencyVisibility(studentId, visibility, schoolId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    let visibilityId = student.cardVisibilityId;
+    if (!visibilityId) {
+      const newVis = await repo.createCardVisibility({ visibility });
+      visibilityId = newVis.id;
+      await repo.updateStudent(studentId, { cardVisibilityId: visibilityId });
+    } else {
+      await repo.updateCardVisibility(visibilityId, { visibility });
+    }
+    return { success: true };
+  }
+
+  async sendMessageToParents(studentId, subject, body, type, schoolId, senderId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    const parentLinks = await repo.getLinkedParents(studentId);
+    if (!parentLinks.length) throw ApiError.badRequest('No parents linked to this student');
+
+    const messages = [];
+    for (const link of parentLinks) {
+      const msg = await prisma.message.create({
+        data: {
+          id: generateId('MSG'),
+          schoolId,
+          senderId,
+          parentId: link.parent.id,
+          studentId,
+          subject: subject || `Message about ${student.firstName}`,
+          body,
+          type,
+          direction: 'SCHOOL_TO_PARENT',
+          status: 'SENT',
+          channels: ['PUSH', 'EMAIL'],
+        },
+      });
+      await notificationsQueue.add('send-message', {
+        type: 'MESSAGE',
+        messageId: msg.id,
+        recipientId: link.parent.id,
+        title: subject || `Message about ${student.firstName}`,
+        body,
+        priority: type === 'EMERGENCY' ? 1 : 5,
+        schoolId,
+      }, { priority: type === 'EMERGENCY' ? 1 : 5 });
+      messages.push(msg);
+    }
+    return { sentTo: messages.length };
+  }
+
+  async getStats(schoolId) {
+    return repo.getStats(schoolId);
+  }
+
+  async exportStudents(query, schoolId) {
+    const { format, class: className, section, status, fields, emailDelivery } = query;
+    const filters = { class: className, section, status };
+    const students = await repo.getAllStudentsForExport(schoolId, filters);
+    const exportFields = fields || ['name', 'class', 'section', 'rollNumber', 'parentName', 'parentPhone'];
+    const data = students.map(s => {
+      const row = {};
+      if (exportFields.includes('name')) row.name = `${s.firstName} ${s.lastName}`;
+      if (exportFields.includes('class')) row.class = s.grade;
+      if (exportFields.includes('section')) row.section = s.section;
+      if (exportFields.includes('rollNumber')) row.rollNumber = s.rollNumber;
+      if (exportFields.includes('parentName')) row.parentName = s.parentLinks[0]?.parent?.firstName || '';
+      if (exportFields.includes('parentPhone')) row.parentPhone = s.parentLinks[0]?.parent?.phone || '';
+      return row;
+    });
+    let buffer, mimeType;
+    if (format === 'csv') {
+      const { Parser } = await import('json2csv');
+      const parser = new Parser({ fields: exportFields });
+      buffer = Buffer.from(parser.parse(data));
+      mimeType = 'text/csv';
+    } else {
+      buffer = Buffer.from(JSON.stringify(data, null, 2));
+      mimeType = 'application/json';
+    }
+    if (emailDelivery) {
+      const adminEmail = await prisma.schoolUser.findFirst({ where: { schoolId, role: 'SCHOOL_ADMIN' }, select: { email: true } });
+      if (adminEmail?.email) {
+        const email = getEmail();
+        await email.send({
+          to: adminEmail.email,
+          subject: `Student Export (${format.toUpperCase()})`,
+          html: `<p>Your export file is attached.</p>`,
+          attachments: [{ filename: `students_export.${format}`, content: buffer }],
+        });
+      }
+      return { success: true, emailedTo: adminEmail?.email };
+    }
+    return { buffer, mimeType, filename: `students_export.${format}` };
+  }
+
+  async uploadDocument(studentId, file, name, type, schoolId) {
+    validateDocument(file);
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    const storage = getStorage();
+    const key = `schools/${schoolId}/students/${studentId}/documents/${Date.now()}-${file.originalname}`;
+    const upload = await storage.upload(file.buffer, key, { contentType: file.mimetype });
+    const doc = await repo.createDocument({
+      studentId,
+      name: name || file.originalname,
+      type: type || 'OTHER',
+      fileType: file.mimetype,
+      fileSize: file.size,
+      fileUrl: upload.location,
+    });
+    return doc;
+  }
+
+  async deleteDocument(studentId, documentId, schoolId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    await repo.deleteDocument(documentId, studentId);
+    return { success: true };
+  }
+
+  async bulkUploadStudents(file, schoolId) {
+    const results = { success: 0, failed: 0, errors: [] };
+    let records;
+    try {
+      const content = file.buffer.toString('utf-8');
+      records = parse(content, { columns: true, skip_empty_lines: true });
+    } catch {
+      throw ApiError.badRequest('Invalid CSV file format');
+    }
+    for (let i = 0; i < records.length; i++) {
+      const row = records[i];
+      try {
+        if (!row.firstName || !row.lastName || !row.grade || !row.section) {
+          throw new Error('Missing required fields: firstName, lastName, grade, section');
+        }
+        let parentIds = [];
+        if (row.parentPhone) {
+          const phone = normalizePhoneNumber(row.parentPhone);
+          let parent = await parentRepo.findParentByPhone(phone);
+          if (!parent && row.parentName) {
+            const [firstName, ...lastNameParts] = row.parentName.split(' ');
+            parent = await parentRepo.createParent({
+              id: generateId('PAR'),
+              firstName,
+              lastName: lastNameParts.join(' '),
+              phone,
+              email: row.parentEmail,
+              isActive: true,
+            });
+          }
+          if (parent) parentIds = [parent.id];
+        }
+        await this.createStudent({
+          firstName: row.firstName,
+          lastName: row.lastName,
+          grade: row.grade,
+          section: row.section,
+          rollNumber: row.rollNumber,
+          gender: row.gender,
+          dateOfBirth: row.dateOfBirth,
+          bloodGroup: row.bloodGroup,
+          parentIds,
+        }, schoolId);
+        results.success++;
+      } catch (err) {
+        results.failed++;
+        results.errors.push({ row: i + 2, message: err.message });
+      }
+    }
+    return results;
+  }
 }

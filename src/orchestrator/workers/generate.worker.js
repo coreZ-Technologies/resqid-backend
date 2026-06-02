@@ -1,118 +1,157 @@
 // =============================================================================
 // orchestrator/workers/generate.worker.js — RESQID
-// BullMQ worker: generates timetable in background.
-// Large schools (60 classes, 120 teachers) can take 30+ seconds.
+// Handles timetable generation jobs from timetable_generate_queue.
 // =============================================================================
 
 import { Worker } from 'bullmq';
 import { getQueueConnection } from '../queues/queue.connection.js';
+import { QUEUE_NAMES } from '../queues/queue.names.js';
+import { generate } from '#modules/m1-timetable-main/solver/scheduler.js';
+import { timetableRepository } from '#modules/m1-timetable-main/timetable.repository.js';
+import { publishTimetableGenerate } from '../events/event.publisher.js';
 import { logger } from '#config/logger.js';
-import { generateTimetable } from '#modules/m1-timetable/timetable.service.js';
-import { prisma } from '#config/prisma.js';
-
-const QUEUE_NAME = 'timetable_generate_queue';
-
-let _worker = null;
 
 /**
- * Process a timetable generation job.
- *
- * Job data: { schoolId, classIds, options, requestedBy }
+ * Start the timetable generation worker.
  */
-const processGenerateJob = async (job) => {
-  const { schoolId, classIds, options = {}, requestedBy } = job.data;
+export const startGenerateWorker = () => {
+  const worker = new Worker(
+    QUEUE_NAMES.TIMETABLE_GENERATE,
+    async (job) => {
+      const { templateId, schoolId, opts = {} } = job.data;
+      const jobId = job.id;
 
-  logger.info(
-    { jobId: job.id, schoolId, classCount: classIds.length },
-    '[generate.worker] Starting'
+      logger.info(
+        { jobId, schoolId, templateId },
+        '[generate.worker] Starting timetable generation'
+      );
+
+      // Update job status
+      await timetableRepository.updateJobStatus(jobId, 'PROCESSING', {
+        statusMessage: 'Loading template context...',
+        progressPercent: 0,
+      });
+
+      await publishTimetableGenerate({
+        status: 'started',
+        schoolId,
+        templateId,
+      });
+
+      try {
+        // Load template context
+        const context = await timetableRepository.loadTemplateContext(templateId, schoolId);
+
+        if (!context) {
+          throw new Error('Template context not found');
+        }
+
+        await timetableRepository.updateJobStatus(jobId, 'PROCESSING', {
+          statusMessage: 'Running feasibility checks...',
+          progressPercent: 5,
+        });
+
+        // Generate timetable
+        const result = await generate(context.template, context.schoolConfig, context.resolvers, {
+          ...opts,
+          mode: opts.mode || 'class-by-class',
+          timeoutMs: opts.timeoutMs || 300000,
+          onProgress: async (progress) => {
+            // Update progress
+            const percent = Math.round(progress.progress * 100);
+            await timetableRepository.updateJobStatus(jobId, 'PROCESSING', {
+              statusMessage: progress.phase || `Generating... ${percent}%`,
+              progressPercent: percent,
+            });
+
+            await publishTimetableGenerate({
+              status: 'progress',
+              schoolId,
+              templateId,
+              progress: progress.progress,
+            });
+          },
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Generation failed');
+        }
+
+        // Save timetable to database
+        const timetable = await timetableRepository.saveTimetable({
+          schoolId,
+          templateId,
+          assignments: result.timetable,
+          validation: result.validation,
+          meta: result.meta,
+          generationType: opts.mode === 'incremental' ? 'INCREMENTAL' : 'FRESH',
+        });
+
+        // Update job as completed
+        await timetableRepository.updateJobStatus(jobId, 'COMPLETED', {
+          statusMessage: 'Timetable generated successfully',
+          progressPercent: 100,
+          output: {
+            timetableId: timetable.id,
+            totalSlots: result.timetable.length,
+            qualityScore: result.meta?.qualityScore,
+            wellnessScore: result.meta?.wellnessScore,
+            durationMs: result.meta?.durationMs,
+          },
+        });
+
+        await publishTimetableGenerate({
+          status: 'completed',
+          schoolId,
+          templateId,
+          timetableId: timetable.id,
+          progress: 1,
+        });
+
+        logger.info(
+          { jobId, timetableId: timetable.id, slots: result.timetable.length },
+          '[generate.worker] Timetable generated successfully'
+        );
+
+        return { success: true, timetableId: timetable.id };
+      } catch (error) {
+        logger.error(
+          { jobId, error: error.message, stack: error.stack },
+          '[generate.worker] Generation failed'
+        );
+
+        await timetableRepository.updateJobStatus(jobId, 'FAILED', {
+          statusMessage: `Generation failed: ${error.message}`,
+          error: error.message,
+          errorDetails: error.stack,
+        });
+
+        await publishTimetableGenerate({
+          status: 'failed',
+          schoolId,
+          templateId,
+          progress: 0,
+        });
+
+        throw error;
+      }
+    },
+    {
+      connection: getQueueConnection(),
+      concurrency: 2, // Max 2 concurrent generations
+      lockDuration: 300000, // 5 minutes
+      stalledInterval: 30000,
+    }
   );
 
-  // Update progress
-  await job.updateProgress(0);
-
-  const result = await generateTimetable(schoolId, {
-    ...options,
-    classIds,
-    autoSave: true,
-    onProgress: async ({ percent, message }) => {
-      await job.updateProgress(percent);
-      await job.log(`[${percent}%] ${message}`);
-    },
-  });
-
-  if (result.success) {
-    // Save to database
-    await job.updateProgress(100);
-    await job.log(`Complete! Score: ${result.score?.total}/100`);
-
-    // Notify requesting admin
-    if (requestedBy) {
-      await prisma.notification.create({
-        data: {
-          schoolUserId: requestedBy,
-          type: 'TIMETABLE_GENERATED',
-          title: 'Timetable Generated',
-          body: `Timetable for ${classIds.length} classes generated. Score: ${result.score?.total}/100`,
-          channel: 'IN_APP',
-          status: 'PENDING',
-          data: { schoolId, classCount: classIds.length, score: result.score },
-        },
-      });
-    }
-
-    logger.info({ jobId: job.id, score: result.score?.total }, '[generate.worker] Complete');
-    return result;
-  } else {
-    await job.log(`Failed: ${result.error}`);
-
-    if (requestedBy) {
-      await prisma.notification.create({
-        data: {
-          schoolUserId: requestedBy,
-          type: 'TIMETABLE_FAILED',
-          title: 'Timetable Generation Failed',
-          body: result.error,
-          channel: 'IN_APP',
-          status: 'PENDING',
-        },
-      });
-    }
-
-    throw new Error(result.error);
-  }
-};
-
-export const startGenerateWorker = () => {
-  if (_worker) return _worker;
-
-  _worker = new Worker(QUEUE_NAME, processGenerateJob, {
-    connection: getQueueConnection(),
-    concurrency: 2, // Only 2 simultaneous generations
-    stalledInterval: 120_000, // 2 min stalled check
-    maxStalledCount: 1,
-    lockDuration: 120_000, // 2 min lock
-  });
-
-  _worker.on('completed', (job) => {
+  worker.on('completed', (job) => {
     logger.info({ jobId: job.id }, '[generate.worker] Job completed');
   });
 
-  _worker.on('failed', (job, error) => {
-    logger.error({ jobId: job?.id, err: error.message }, '[generate.worker] Job failed');
+  worker.on('failed', (job, err) => {
+    logger.error({ jobId: job?.id, error: err.message }, '[generate.worker] Job failed');
   });
 
-  _worker.on('progress', (job, progress) => {
-    logger.debug({ jobId: job.id, progress }, '[generate.worker] Progress');
-  });
-
-  logger.info({ queue: QUEUE_NAME, concurrency: 2 }, '[generate.worker] Started');
-  return _worker;
-};
-
-export const stopGenerateWorker = async () => {
-  if (_worker) {
-    await _worker.close();
-    _worker = null;
-    logger.info('[generate.worker] Stopped');
-  }
+  logger.info('[generate.worker] Worker started');
+  return worker;
 };
