@@ -1,215 +1,80 @@
-// TODO: Add implementation
-// =============================================================================
-// notification.repository.js — RESQID School Admin
-//
-// All Prisma queries for the school-admin notification module.
-// No business logic here — pure data access.
-//
-// Assumed Prisma schema (add to schema.prisma):
-//
-//   model Notification {
-//     id         String               @id @default(cuid())
-//     schoolId   String
-//     school     School               @relation(fields: [schoolId], references: [id])
-//     type       NotificationType
-//     severity   NotificationSeverity @default(INFO)
-//     title      String
-//     body       String
-//     meta       Json?                // arbitrary context (studentId, cardId, etc.)
-//     isRead     Boolean              @default(false)
-//     readAt     DateTime?
-//     createdAt  DateTime             @default(now())
-//     updatedAt  DateTime             @updatedAt
-//
-//     @@index([schoolId, isRead])
-//     @@index([schoolId, type])
-//     @@index([schoolId, createdAt])
-//   }
-//
-//   model NotificationPreference {
-//     id          String               @id @default(cuid())
-//     schoolId    String
-//     school      School               @relation(fields: [schoolId], references: [id])
-//     type        NotificationType
-//     inApp       Boolean              @default(true)
-//     email       Boolean              @default(true)
-//     sms         Boolean              @default(false)
-//     pushEnabled Boolean              @default(true)
-//     updatedAt   DateTime             @updatedAt
-//
-//     @@unique([schoolId, type])
-//     @@index([schoolId])
-//   }
-//
-//   enum NotificationType {
-//     EMERGENCY_ALERT_TRIGGERED
-//     EMERGENCY_ALERT_ESCALATED
-//     ANOMALY_DETECTED
-//     STUDENT_QR_SCANNED
-//     STUDENT_CARD_EXPIRING
-//     PARENT_CARD_LOCKED
-//     PARENT_CARD_REPLACE_REQUESTED
-//     PARENT_CARD_RENEWAL_REQUESTED
-//   }
-//
-//   enum NotificationSeverity { INFO  WARNING  CRITICAL }
-// =============================================================================
-
+// school-admin/notification/notification.repository.js
 import { prisma } from '#config/prisma.js';
 
-// ─── Notification select shape (consistent across all queries) ────────────────
-
-const NOTIFICATION_SELECT = {
-  id:        true,
-  schoolId:  true,
-  type:      true,
-  severity:  true,
-  title:     true,
-  body:      true,
-  meta:      true,
-  isRead:    true,
-  readAt:    true,
-  createdAt: true,
-  updatedAt: true,
-};
-
-// ─── List ─────────────────────────────────────────────────────────────────────
-
-/**
- * Paginated list of notifications for a school.
- * Returns { notifications, total }.
- */
-export async function findNotifications({ schoolId, filters, page, limit }) {
-  const { isRead, type, severity, from, to } = filters;
-
-  const where = {
-    schoolId,
-    ...(isRead !== undefined && { isRead }),
-    ...(type      && { type }),
-    ...(severity  && { severity }),
-    ...(from || to
-      ? {
-          createdAt: {
-            ...(from && { gte: new Date(from) }),
-            ...(to   && { lte: new Date(to) }),
-          },
-        }
-      : {}),
-  };
-
-  const [notifications, total] = await Promise.all([
-    prisma.notification.findMany({
-      where,
-      select:  NOTIFICATION_SELECT,
-      orderBy: { createdAt: 'desc' },
-      skip:    (page - 1) * limit,
-      take:    limit,
-    }),
-    prisma.notification.count({ where }),
-  ]);
-
-  return { notifications, total };
-}
-
-// ─── Get single ───────────────────────────────────────────────────────────────
-
-export async function findNotificationById({ notificationId, schoolId }) {
-  return prisma.notification.findFirst({
-    where:  { id: notificationId, schoolId },
-    select: NOTIFICATION_SELECT,
-  });
-}
-
-// ─── Unread count ─────────────────────────────────────────────────────────────
-
-export async function countUnread({ schoolId }) {
-  return prisma.notification.count({
-    where: { schoolId, isRead: false },
-  });
-}
-
-// ─── Mark single read / unread ────────────────────────────────────────────────
-
-export async function markNotificationRead({ notificationId, schoolId, isRead }) {
-  return prisma.notification.updateMany({
-    where: { id: notificationId, schoolId },
-    data: {
-      isRead,
-      readAt: isRead ? new Date() : null,
-    },
-  });
-}
-
-// ─── Bulk mark read ───────────────────────────────────────────────────────────
-
-export async function bulkMarkRead({ schoolId, ids, markAll }) {
-  const where = markAll
-    ? { schoolId, isRead: false }
-    : { schoolId, id: { in: ids }, isRead: false };
-
-  return prisma.notification.updateMany({
-    where,
-    data: { isRead: true, readAt: new Date() },
-  });
-}
-
-// ─── Delete single ────────────────────────────────────────────────────────────
-
-export async function deleteNotification({ notificationId, schoolId }) {
-  // deleteMany instead of delete — avoids P2025 throw when not found
-  return prisma.notification.deleteMany({
-    where: { id: notificationId, schoolId },
-  });
-}
-
-// ─── Bulk delete ──────────────────────────────────────────────────────────────
-
-export async function bulkDeleteNotifications({ schoolId, ids, deleteAll, onlyRead }) {
-  let where;
-
-  if (deleteAll) {
-    where = { schoolId, ...(onlyRead ? { isRead: true } : {}) };
-  } else {
-    where = { schoolId, id: { in: ids } };
+export class NotificationRepository {
+  async create(data) {
+    return prisma.notification.create({ data });
   }
 
-  return prisma.notification.deleteMany({ where });
-}
+  async update(id, data) {
+    return prisma.notification.update({ where: { id }, data });
+  }
 
-// ─── Preferences ─────────────────────────────────────────────────────────────
+  async delete(id) {
+    return prisma.notification.delete({ where: { id } });
+  }
 
-export async function findPreferences({ schoolId }) {
-  return prisma.notificationPreference.findMany({
-    where:   { schoolId },
-    orderBy: { type: 'asc' },
-  });
-}
+  async findById(id, schoolId) {
+    return prisma.notification.findFirst({
+      where: { id, schoolId },
+      include: {
+        parent: true,
+        schoolUser: true,
+        student: true,
+        createdByUser: { select: { name: true } }, // ✅ added for sentBy name
+      },
+    });
+  }
 
-/**
- * Upsert multiple preference entries in a single transaction.
- * Returns upserted count.
- */
-export async function upsertPreferences({ schoolId, preferences }) {
-  const ops = preferences.map(({ type, inApp, email, sms, pushEnabled }) =>
-    prisma.notificationPreference.upsert({
-      where:  { schoolId_type: { schoolId, type } },
-      create: { schoolId, type, inApp, email, sms, pushEnabled },
-      update: { inApp, email, sms, pushEnabled },
-    })
-  );
+  async list(where, skip, take, orderBy = { createdAt: 'desc' }) {
+    const [items, total] = await Promise.all([
+      prisma.notification.findMany({
+        where,
+        skip,
+        take,
+        orderBy,
+        include: {
+          createdByUser: { select: { name: true } }, // ✅ added for sentBy name
+        },
+      }),
+      prisma.notification.count({ where }),
+    ]);
+    return { items, total };
+  }
 
-  return prisma.$transaction(ops);
-}
+  async getStats(schoolId) {
+    const [totalSent, totalDelivered, totalRead] = await Promise.all([
+      prisma.notification.count({ where: { schoolId } }),
+      prisma.notification.count({ where: { schoolId, status: 'DELIVERED' } }),
+      prisma.notification.count({ where: { schoolId, isRead: true } }),
+    ]);
+    const avgOpenRate = totalDelivered ? ((totalRead / totalDelivered) * 100).toFixed(1) : '0';
+    return { totalSent, totalDelivered, totalRead, avgOpenRate };
+  }
 
-// ─── Internal: create (called by event handlers / workers) ───────────────────
-
-/**
- * Persist a new notification for a school.
- * Not exposed via HTTP routes — called internally.
- */
-export async function createNotification({ schoolId, type, severity = 'INFO', title, body, meta = null }) {
-  return prisma.notification.create({
-    data: { schoolId, type, severity, title, body, meta },
-    select: NOTIFICATION_SELECT,
-  });
+  // Resolve parent IDs based on recipient type
+  async getRecipientParentIds(schoolId, recipientType, selectedClass, selectedSection, selectedParents) {
+    if (recipientType === 'all') {
+      const parents = await prisma.parentUser.findMany({
+        where: { students: { some: { student: { schoolId } } }, isActive: true },
+        select: { id: true },
+      });
+      return parents.map(p => p.id);
+    }
+    if (recipientType === 'class' && selectedClass) {
+      const where = { grade: selectedClass, schoolId };
+      if (selectedSection) where.section = selectedSection;
+      const students = await prisma.student.findMany({
+        where,
+        select: { parentLinks: { select: { parentId: true } } },
+      });
+      const parentIds = new Set();
+      students.forEach(s => s.parentLinks.forEach(pl => parentIds.add(pl.parentId)));
+      return Array.from(parentIds);
+    }
+    if (recipientType === 'individual' && selectedParents?.length) {
+      return selectedParents;
+    }
+    return [];
+  }
 }

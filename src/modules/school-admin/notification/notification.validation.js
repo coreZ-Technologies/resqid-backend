@@ -1,120 +1,38 @@
-// TODO: Add implementation
-// =============================================================================
-// notification.validation.js — RESQID School Admin
-//
-// Zod schemas for all notification endpoints.
-// Covers: list/filter, mark-read, bulk-read, delete, preferences CRUD.
-// =============================================================================
-
+// school-admin/notification/notification.validation.js
 import { z } from 'zod';
 
-// ─── Shared primitives ────────────────────────────────────────────────────────
+const NotificationTypeEnum = z.enum(['ANNOUNCEMENT', 'EMERGENCY', 'REMINDER', 'EVENT', 'ATTENDANCE', 'GENERAL']);
+const ChannelEnum = z.enum(['email', 'sms', 'push', 'whatsapp']);
+const PriorityEnum = z.enum(['low', 'normal', 'high', 'urgent']);
+const RecipientTypeEnum = z.enum(['all', 'class', 'section', 'individual']);
 
-const notificationId = z.string().cuid({ message: 'Invalid notification ID' });
-
-// Allowed event types scoped to school-admin safety/emergency surface
-export const NOTIFICATION_TYPES = [
-  'EMERGENCY_ALERT_TRIGGERED',
-  'EMERGENCY_ALERT_ESCALATED',
-  'ANOMALY_DETECTED',
-  'STUDENT_QR_SCANNED',
-  'STUDENT_CARD_EXPIRING',
-  'PARENT_CARD_LOCKED',
-  'PARENT_CARD_REPLACE_REQUESTED',
-  'PARENT_CARD_RENEWAL_REQUESTED',
-] ;
-
-export const NOTIFICATION_SEVERITY = ['INFO', 'WARNING', 'CRITICAL'];
-
-// ─── List / Filter ────────────────────────────────────────────────────────────
-
-export const listNotificationsSchema = z.object({
-  query: z.object({
-    page:     z.coerce.number().int().min(1).default(1),
-    limit:    z.coerce.number().int().min(1).max(100).default(20),
-    isRead:   z.enum(['true', 'false']).optional().transform((v) => (v === undefined ? undefined : v === 'true')),
-    type:     z.enum(NOTIFICATION_TYPES).optional(),
-    severity: z.enum(NOTIFICATION_SEVERITY).optional(),
-    // ISO date range
-    from:     z.string().datetime({ offset: true }).optional(),
-    to:       z.string().datetime({ offset: true }).optional(),
-  }),
+export const createNotificationSchema = z.object({
+  title: z.string().min(1).max(200),
+  message: z.string().min(1).max(5000),
+  type: NotificationTypeEnum.default('GENERAL'),
+  channel: z.array(ChannelEnum).min(1),
+  recipientType: RecipientTypeEnum.default('all'),
+  selectedClass: z.string().optional(),
+  selectedSection: z.string().optional(),
+  selectedParents: z.array(z.string()).optional(),
+  scheduleLater: z.boolean().default(false),
+  scheduledTime: z.string().datetime().optional(),
+  priority: PriorityEnum.default('normal'),
+  attachments: z.array(z.string().url()).optional(),
 });
 
-// ─── Get single ───────────────────────────────────────────────────────────────
+export const updateNotificationSchema = createNotificationSchema.partial();
 
-export const getNotificationSchema = z.object({
-  params: z.object({
-    notificationId,
-  }),
+export const listNotificationsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(10),
+  search: z.string().optional(),
+  type: NotificationTypeEnum.optional(),
+  status: z.enum(['sent', 'delivered', 'read', 'failed']).optional(),
+  fromDate: z.string().datetime().optional(),
+  toDate: z.string().datetime().optional(),
 });
 
-// ─── Mark single read / unread ────────────────────────────────────────────────
-
-export const markReadSchema = z.object({
-  params: z.object({
-    notificationId,
-  }),
-  body: z.object({
-    isRead: z.boolean({ required_error: 'isRead is required' }),
-  }),
-});
-
-// ─── Bulk mark read ───────────────────────────────────────────────────────────
-
-export const bulkMarkReadSchema = z.object({
-  body: z.object({
-    // Either explicit IDs, or markAll flag (marks entire school's notifications)
-    ids:     z.array(notificationId).min(1).max(200).optional(),
-    markAll: z.boolean().optional(),
-  }).refine(
-    (data) => data.ids?.length || data.markAll === true,
-    { message: 'Provide either ids[] or markAll: true' }
-  ),
-});
-
-// ─── Delete single ────────────────────────────────────────────────────────────
-
-export const deleteNotificationSchema = z.object({
-  params: z.object({
-    notificationId,
-  }),
-});
-
-// ─── Bulk delete ──────────────────────────────────────────────────────────────
-
-export const bulkDeleteSchema = z.object({
-  body: z.object({
-    ids:       z.array(notificationId).min(1).max(200).optional(),
-    deleteAll: z.boolean().optional(),
-    // Optional filter: delete all read ones
-    onlyRead:  z.boolean().optional(),
-  }).refine(
-    (data) => data.ids?.length || data.deleteAll === true,
-    { message: 'Provide either ids[] or deleteAll: true' }
-  ),
-});
-
-// ─── Unread count ─────────────────────────────────────────────────────────────
-// No body/params — schoolId comes from tenantScope
-
-// ─── Preferences ─────────────────────────────────────────────────────────────
-
-// Per-event preference entry
-const preferenceEntrySchema = z.object({
-  type:        z.enum(NOTIFICATION_TYPES),
-  inApp:       z.boolean(),
-  email:       z.boolean(),
-  // Future channels
-  sms:         z.boolean().default(false),
-  pushEnabled: z.boolean().default(true),
-});
-
-export const upsertPreferencesSchema = z.object({
-  body: z.object({
-    preferences: z
-      .array(preferenceEntrySchema)
-      .min(1, 'At least one preference entry required')
-      .max(NOTIFICATION_TYPES.length, `Max ${NOTIFICATION_TYPES.length} entries`),
-  }),
+export const resendNotificationSchema = z.object({
+  notificationId: z.string().min(1),
 });

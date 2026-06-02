@@ -1,495 +1,533 @@
-// =============================================================================
-// modules/students/student.service.js — RESQID
-// Student Service — Business logic layer for student operations
-// =============================================================================
-
-import studentRepository from './student.repository.js';
-import { studentValidation } from './student.validation.js';
+// src/modules/m6-students/student.service.js
+import { prisma } from '#config/prisma.js';
 import { ApiError } from '#shared/response/ApiError.js';
-import { logger } from '#config/logger.js';
+import { getPagination, paginateMeta } from '#shared/response/paginate.js';
+import { getCache, CacheKey, TTL } from '#infrastructure/cache/cache.index.js';
+import { getStorage, StoragePath } from '#infrastructure/storage/storage.index.js';
+import { getEmail } from '#infrastructure/email/email.index.js';
+import { notificationsQueue } from '#orchestrator/queues/queue.config.js';
+import { StudentRepository } from './student.repository.js';
+import { generateStudentId, generateId } from '#services/IdGenerator.service.js';
+import { validateImage, validateDocument } from '#shared/helpers/fileUtil.js';
+import { normalizePhoneNumber } from '#shared/utils/phoneNormalize.js';
+import { formatDateIST, addDays } from '#shared/helpers/dateTime.js';
+import { format } from 'date-fns';
+import { parse } from 'csv-parse/sync';
+import { ParentRepository } from '../m5-parents/parent.repository.js';
 
-// ─── Service Class ────────────────────────────────────────────────────────────
+const repo = new StudentRepository();
+const parentRepo = new ParentRepository();
 
-class StudentService {
-  // ===========================================================================
-  // CREATE
-  // ===========================================================================
+export class StudentService {
+  // ─── Create Student (with QR code generation) ─────────────────
+  async createStudent(data, schoolId, photoFile = null) {
+    if (data.rfidTagNumber) {
+      const existing = await repo.findStudentByRFID(data.rfidTagNumber);
+      if (existing) throw ApiError.conflict('RFID tag number already in use');
+    }
 
-  /**
-   * Create a single student
-   */
-  async createStudent(schoolId, data) {
-    // Validate data
-    const validatedData = studentValidation.createStudent.parse(data);
+    let photoUrl = null;
+    if (photoFile) {
+      validateImage(photoFile);
+      const storage = getStorage();
+      const key = StoragePath.studentPhoto(schoolId, 'temp', photoFile.mimetype);
+      const upload = await storage.upload(photoFile.buffer, key, { contentType: photoFile.mimetype });
+      photoUrl = upload.location;
+    }
 
-    // Check for duplicate phone numbers in parents
-    await this.checkDuplicateParents(validatedData.parents);
+    let cardVisibilityId = null;
+    if (data.cardVisibility) {
+      const visibility = await repo.createCardVisibility(data.cardVisibility);
+      cardVisibilityId = visibility.id;
+    }
 
-    // Create student
-    const student = await studentRepository.createStudent(schoolId, validatedData);
+    // Generate a unique QR code ID (stored in studentId field)
+    const qrCodeId = generateId('QR');
 
-    // Log activity
-    logger.info(`Student created: ${student.id} - ${student.firstName} ${student.lastName}`);
+    const student = await repo.createStudent({
+      id: generateStudentId(),
+      schoolId,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      gender: data.gender,
+      bloodGroup: data.bloodGroup,
+      grade: data.grade,
+      section: data.section,
+      rollNumber: data.rollNumber,
+      studentId: qrCodeId,
+      allergies: data.allergies || [],
+      conditions: data.conditions || [],
+      medications: data.medications || [],
+      medicalNotes: data.medicalNotes,
+      transportRoute: data.transportRoute,
+      transportStop: data.transportStop,
+      rfidTagNumber: data.rfidTagNumber,
+      photoUrl,
+      cardVisibilityId,
+      metadata: data.metadata || {},
+      status: 'ACTIVE',
+      isActive: true,
+    });
 
+    if (data.parentIds?.length) {
+      for (const parentId of data.parentIds) {
+        await repo.linkParent(student.id, parentId, 'GUARDIAN', false, 1);
+      }
+    }
+
+    await getCache().del(CacheKey.school(schoolId));
     return student;
   }
 
-  /**
-   * Bulk import students
-   */
-  async bulkImportStudents(schoolId, studentsData) {
-    // Validate bulk data
-    const validated = studentValidation.bulkImport.parse({ students: studentsData });
+  // ─── Update Student ────────────────────────────────────────────
+  async updateStudent(id, data, schoolId, photoFile = null) {
+    const student = await repo.findStudentById(id, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
 
-    logger.info(`Bulk import started: ${validated.students.length} students`);
-
-    // Process import
-    const results = await studentRepository.bulkCreateStudents(schoolId, validated.students);
-
-    logger.info(`Bulk import completed: ${results.imported} imported, ${results.failed} failed`);
-
-    return results;
-  }
-
-  // ===========================================================================
-  // READ
-  // ===========================================================================
-
-  /**
-   * Get students list with filters
-   */
-  async getStudents(schoolId, query = {}) {
-    // Validate query
-    const validatedQuery = studentValidation.queryStudents.parse(query);
-
-    return studentRepository.findStudents(schoolId, validatedQuery);
-  }
-
-  /**
-   * Search students (quick search for autocomplete)
-   */
-  async searchStudents(schoolId, searchTerm) {
-    if (!searchTerm || searchTerm.length < 2) {
-      throw ApiError.badRequest('Search term must be at least 2 characters');
+    if (data.rfidTagNumber && data.rfidTagNumber !== student.rfidTagNumber) {
+      const existing = await repo.findStudentByRFID(data.rfidTagNumber);
+      if (existing) throw ApiError.conflict('RFID tag number already in use');
     }
 
-    return studentRepository.searchStudents(schoolId, searchTerm);
-  }
-
-  /**
-   * Get student by ID with authorization check
-   */
-  async getStudentById(studentId, user = null) {
-    const student = await studentRepository.findStudentById(studentId);
-
-    if (!student) {
-      throw ApiError.studentNotFound();
+    let photoUrl = student.photoUrl;
+    if (photoFile) {
+      validateImage(photoFile);
+      const storage = getStorage();
+      const key = StoragePath.studentPhoto(schoolId, id, photoFile.mimetype);
+      const upload = await storage.upload(photoFile.buffer, key, { contentType: photoFile.mimetype });
+      photoUrl = upload.location;
+      data.photoUrl = photoUrl;
     }
 
-    // Authorization checks
-    if (user) {
-      this.authorizeStudentAccess(student, user);
+    if (data.cardVisibility && student.cardVisibilityId) {
+      await repo.updateCardVisibility(student.cardVisibilityId, data.cardVisibility);
+      delete data.cardVisibility;
     }
 
-    return student;
-  }
-
-  /**
-   * Get student by QR code (public access for emergency)
-   */
-  async getStudentByQrCode(qrCodeId) {
-    const student = await studentRepository.findStudentByQrCode(qrCodeId);
-
-    if (!student) {
-      throw ApiError.qrInvalid();
-    }
-
-    // Return only public/emergency data based on visibility
-    return this.filterEmergencyData(student);
-  }
-
-  /**
-   * Get students by parent ID
-   */
-  async getStudentsByParent(parentId) {
-    return studentRepository.findStudentsByParent(parentId);
-  }
-
-  /**
-   * Get student statistics
-   */
-  async getStudentStats(schoolId) {
-    return studentRepository.getStudentStats(schoolId);
-  }
-
-  // ===========================================================================
-  // UPDATE
-  // ===========================================================================
-
-  /**
-   * Update student
-   */
-  async updateStudent(studentId, data, user = null) {
-    // Check if student exists
-    const existingStudent = await studentRepository.findStudentById(studentId);
-    if (!existingStudent) {
-      throw ApiError.studentNotFound();
-    }
-
-    // Authorization
-    if (user) {
-      this.authorizeStudentAccess(existingStudent, user, 'edit');
-    }
-
-    // Validate update data
-    const validatedData = studentValidation.updateStudent.parse(data);
-
-    // Update student
-    const updated = await studentRepository.updateStudent(studentId, validatedData);
-
-    logger.info(`Student updated: ${studentId}`);
-
+    const updated = await repo.updateStudent(id, data);
+    await getCache().del(CacheKey.school(schoolId));
+    await getCache().del(`student:${id}`);
     return updated;
   }
 
-  /**
-   * Update student status
-   */
-  async updateStudentStatus(studentId, status) {
-    const validStatuses = [
-      'ACTIVE',
-      'INACTIVE',
-      'GRADUATED',
-      'TRANSFERRED',
-      'SUSPENDED',
-      'WITHDRAWN',
-    ];
-
-    if (!validStatuses.includes(status)) {
-      throw ApiError.validation([
-        { field: 'status', message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` },
-      ]);
-    }
-
-    const student = await studentRepository.findStudentById(studentId);
-    if (!student) {
-      throw ApiError.studentNotFound();
-    }
-
-    return studentRepository.updateStudentStatus(studentId, status);
-  }
-
-  /**
-   * Bulk assign class/section
-   */
-  async bulkAssignClass(studentIds, grade, section) {
-    if (!studentIds || studentIds.length === 0) {
-      throw ApiError.badRequest('Student IDs are required');
-    }
-
-    return studentRepository.bulkAssignClass(studentIds, grade, section);
-  }
-
-  /**
-   * Add parent to student
-   */
-  async addParentToStudent(studentId, parentData) {
-    const validated = studentValidation.addParent.parse(parentData);
-
-    const student = await studentRepository.findStudentById(studentId);
-    if (!student) {
-      throw ApiError.studentNotFound();
-    }
-
-    return studentRepository.addParentToStudent(studentId, validated);
-  }
-
-  /**
-   * Remove parent from student
-   */
-  async removeParentFromStudent(studentId, parentId) {
-    const student = await studentRepository.findStudentById(studentId);
-    if (!student) {
-      throw ApiError.studentNotFound();
-    }
-
-    // Check if it's the last parent
-    const parentCount = student.parentLinks?.length || 0;
-    if (parentCount <= 1) {
-      throw ApiError.badRequest(
-        'Cannot remove last parent. Student must have at least one parent.'
-      );
-    }
-
-    return studentRepository.removeParentFromStudent(studentId, parentId);
-  }
-
-  // ===========================================================================
-  // MEDICAL
-  // ===========================================================================
-
-  /**
-   * Update medical information
-   */
-  async updateMedicalInfo(studentId, medicalData) {
-    const student = await studentRepository.findStudentById(studentId);
-    if (!student) {
-      throw ApiError.studentNotFound();
-    }
-
-    const validated = studentValidation.medicalInfo.parse(medicalData);
-
-    return studentRepository.updateMedicalInfo(studentId, validated);
-  }
-
-  // ===========================================================================
-  // DOCUMENTS
-  // ===========================================================================
-
-  /**
-   * Upload document
-   */
-  async uploadDocument(studentId, file, documentData) {
-    const student = await studentRepository.findStudentById(studentId);
-    if (!student) {
-      throw ApiError.studentNotFound();
-    }
-
-    const validated = studentValidation.document.parse({
-      ...documentData,
-      file,
-    });
-
-    return studentRepository.uploadDocument(studentId, file, validated);
-  }
-
-  /**
-   * Delete document
-   */
-  async deleteDocument(studentId, documentId) {
-    const student = await studentRepository.findStudentById(studentId);
-    if (!student) {
-      throw ApiError.studentNotFound();
-    }
-
-    return studentRepository.deleteDocument(studentId, documentId);
-  }
-
-  // ===========================================================================
-  // DELETE
-  // ===========================================================================
-
-  /**
-   * Delete student (soft delete by default)
-   */
-  async deleteStudent(studentId, hardDelete = false) {
-    const student = await studentRepository.findStudentById(studentId);
-    if (!student) {
-      throw ApiError.studentNotFound();
-    }
-
-    if (hardDelete) {
-      await studentRepository.deleteStudent(studentId);
-      logger.info(`Student hard deleted: ${studentId}`);
-    } else {
-      await studentRepository.softDeleteStudent(studentId);
-      logger.info(`Student soft deleted: ${studentId}`);
-    }
-
+  // ─── Delete Student ────────────────────────────────────────────
+  async deleteStudent(id, schoolId) {
+    const student = await repo.findStudentById(id, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    await repo.deleteStudent(id);
+    await getCache().del(`student:${id}`);
     return { success: true };
   }
 
-  // ===========================================================================
-  // EXPORT
-  // ===========================================================================
+  // ─── Get Student Details (full profile) ───────────────────────
+  async getStudent(id, schoolId) {
+    const cache = getCache();
+    const cacheKey = `student:detail:${id}`;
+    let student = await cache.get(cacheKey);
+    if (!student) {
+      student = await repo.findStudentById(id, schoolId);
+      if (!student) throw ApiError.notFound('Student not found');
+      await cache.set(cacheKey, student, TTL.MEDIUM);
+    }
 
-  /**
-   * Export students data
-   */
-  async exportStudents(schoolId, filters = {}) {
-    const students = await studentRepository.exportStudents(schoolId, filters);
+    // Load emergency contacts
+    let emergencyContacts = [];
+    if (student.emergencyProfileId) {
+      const profile = await prisma.emergencyProfile.findUnique({
+        where: { id: student.emergencyProfileId },
+        include: { contacts: true }
+      });
+      emergencyContacts = profile?.contacts || [];
+    }
 
-    // Format for CSV export
-    return students.map((student) => ({
-      'Student ID': student.studentId || '',
-      'Admission Number': student.admissionNumber || '',
-      'First Name': student.firstName,
-      'Last Name': student.lastName,
-      Gender: student.gender,
-      'Date of Birth': student.dateOfBirth
-        ? new Date(student.dateOfBirth).toLocaleDateString()
-        : '',
-      Class: student.grade,
-      Section: student.section,
-      'Roll Number': student.rollNumber || '',
-      'Blood Group': student.emergencyProfile?.bloodGroup || '',
-      'Parent Name': student.parentLinks?.[0]?.parent
-        ? `${student.parentLinks[0].parent.firstName || ''} ${student.parentLinks[0].parent.lastName || ''}`.trim()
-        : '',
-      'Parent Phone': student.parentLinks?.[0]?.parent?.phone || '',
-      'Parent Email': student.parentLinks?.[0]?.parent?.email || '',
-      'Emergency Contact': student.emergencyProfile?.contacts?.[0]?.phone || '',
-      Status: student.status,
-      'Admission Year': student.admissionYear || '',
-      Email: student.email || '',
-      Phone: student.phone || '',
-      Address: student.address || '',
-      City: student.city || '',
-      State: student.state || '',
+    const parents = (student.parentLinks || []).map(link => ({
+      id: link.parent.id,
+      name: `${link.parent.firstName || ''} ${link.parent.lastName || ''}`.trim(),
+      relationship: link.relation,
+      phone: link.parent.phone,
+      email: link.parent.email,
+      isPrimary: link.isPrimary,
+      canCall: link.parent.canCall,
+      canWhatsapp: link.parent.canWhatsapp,
     }));
-  }
 
-  // ===========================================================================
-  // HELPER METHODS
-  // ===========================================================================
+    const recentNotifications = await prisma.notification.findMany({
+      where: { studentId: id, status: 'DELIVERED' },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { title: true, body: true, createdAt: true, category: true },
+    });
 
-  /**
-   * Check for duplicate parent phones
-   */
-  async checkDuplicateParents(parents) {
-    if (!parents || parents.length === 0) return;
+    // Attendance summary (last 180 days)
+    const today = new Date();
+    const startOfTerm = addDays(today, -180);
+    const attendanceRecords = await repo.getAttendanceSummary(id, startOfTerm, today);
+    const totalDays = attendanceRecords.length;
+    const presentDays = attendanceRecords.filter(r => r.status === 'PRESENT').length;
+    const attendancePercentage = totalDays ? Math.round((presentDays / totalDays) * 100) : 0;
 
-    const phones = parents.map((p) => p.phone).filter(Boolean);
+    // Monthly breakdown
+    const monthly = {};
+    attendanceRecords.forEach(rec => {
+      const month = format(rec.markedAt, 'MMM');
+      if (!monthly[month]) monthly[month] = { present: 0, total: 0 };
+      monthly[month].total++;
+      if (rec.status === 'PRESENT') monthly[month].present++;
+    });
+    const monthlyBreakdown = Object.entries(monthly).map(([month, data]) => ({
+      month,
+      present: data.present,
+      total: data.total,
+      percentage: Math.round((data.present / data.total) * 100),
+    }));
 
-    const uniquePhones = [...new Set(phones)];
+    // Recent absences
+    const recentAbsenceRecords = await prisma.studentAttendanceRecord.findMany({
+      where: { studentId: id, status: 'ABSENT' },
+      orderBy: { markedAt: 'desc' },
+      take: 5,
+      select: { markedAt: true, reason: true },
+    });
+    const recentAbsences = recentAbsenceRecords.map(rec => ({
+      date: rec.markedAt,
+      reason: rec.reason || 'Absent',
+      approved: true,
+    }));
 
-    if (phones.length !== uniquePhones.length) {
-      throw ApiError.conflict('Duplicate parent phone numbers found');
-    }
-  }
-
-  /**
-   * Authorize student access based on user role
-   */
-  authorizeStudentAccess(student, user, action = 'view') {
-    // Super admin can access all
-    if (user.role === 'SUPER_ADMIN') return true;
-
-    // School admin/teacher can access their school's students
-    if (
-      (user.role === 'SCHOOL_ADMIN' || user.role === 'TEACHER') &&
-      student.schoolId === user.schoolId
-    ) {
-      return true;
-    }
-
-    // Parent can only access their own children
-    if (user.role === 'PARENT') {
-      const isParent = student.parentLinks?.some(
-        (link) => link.parentId === user.parentId || link.parentId === user.id
-      );
-      if (isParent) return true;
-    }
-
-    // If editing, require higher privileges
-    if (action === 'edit') {
-      throw ApiError.permissionDenied('You do not have permission to edit this student');
-    }
-
-    throw ApiError.permissionDenied('You are not authorized to access this student');
-  }
-
-  /**
-   * Filter emergency data based on visibility settings
-   */
-  filterEmergencyData(student) {
-    const visibility = student.emergencyVisibility || 'PUBLIC';
-    const profile = student.emergencyProfile;
-
-    // Base data always visible
-    const baseData = {
-      id: student.id,
-      studentId: student.studentId,
-      name: `${student.firstName} ${student.lastName}`,
-      grade: student.grade,
-      section: student.section,
-      photoUrl: student.photoUrl,
-    };
-
-    if (visibility === 'HIDDEN' || !profile) {
-      return baseData;
-    }
-
-    if (visibility === 'MINIMAL') {
-      return {
-        ...baseData,
-        bloodGroup: profile.bloodGroup || null,
-        allergies: profile.allergies || [],
-        conditions: profile.conditions || [],
-        emergencyContacts: (profile.contacts || [])
-          .filter((c) => c.isActive)
-          .slice(0, 1)
-          .map((c) => ({
-            name: c.name,
-            phone: c.phone,
-            relation: c.relation,
-            isPrimary: c.isPrimary,
-          })),
-      };
-    }
-
-    // PUBLIC - Return all emergency data
-    return {
-      ...baseData,
-      bloodGroup: profile.bloodGroup,
-      allergies: profile.allergies,
-      medications: profile.medications,
-      conditions: profile.conditions,
-      doctorName: profile.doctorName,
-      doctorPhone: profile.doctorPhone,
-      emergencyInstructions: profile.emergencyInstructions,
-      emergencyContacts: (profile.contacts || [])
-        .filter((c) => c.isActive)
-        .sort((a, b) => a.priority - b.priority)
-        .map((c) => ({
-          name: c.name,
-          phone: c.phone,
-          relation: c.relation,
-          isPrimary: c.isPrimary,
-          priority: c.priority,
-        })),
-    };
-  }
-
-  /**
-   * Format student for list display
-   */
-  formatStudentForList(student) {
-    const primaryParent =
-      student.parentLinks?.find((link) => link.isPrimary) || student.parentLinks?.[0];
+    const documents = student.documents || [];
 
     return {
       id: student.id,
-      studentId: student.studentId,
-      admissionNumber: student.admissionNumber,
       name: `${student.firstName} ${student.lastName}`,
-      grade: student.grade,
-      section: student.section,
-      rollNumber: student.rollNumber,
-      status: student.status,
-      photoUrl: student.photoUrl,
+      firstName: student.firstName,
+      lastName: student.lastName,
       gender: student.gender,
-      parentName: primaryParent?.parent
-        ? `${primaryParent.parent.firstName || ''} ${primaryParent.parent.lastName || ''}`.trim()
-        : 'N/A',
-      parentPhone: primaryParent?.parent?.phone || 'N/A',
-      parentEmail: primaryParent?.parent?.email || null,
-      relationship: primaryParent?.relationship || null,
-      enrollmentDate: student.enrollmentDate,
-      createdAt: student.createdAt,
+      dateOfBirth: student.dateOfBirth,
+      age: student.dateOfBirth ? Math.floor((Date.now() - new Date(student.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null,
+      bloodGroup: student.bloodGroup,
+      rollNumber: student.rollNumber,
+      class: student.grade,
+      section: student.section,
+      admissionYear: student.enrolledAt ? new Date(student.enrolledAt).getFullYear() : null,
+      enrollmentDate: student.enrolledAt,
+      status: student.status,
+      qrCodeId: student.studentId,
+      emergencyVisibility: student.cardVisibility?.visibility || 'PUBLIC',
+      email: null,
+      phone: null,
+      address: null,
+      parents,
+      emergencyContacts: emergencyContacts.map(c => ({
+        id: c.id,
+        name: c.name,
+        relationship: c.relation,
+        phone: c.phone,
+        priority: c.priority,
+      })),
+      medicalInfo: {
+        bloodGroup: student.bloodGroup,
+        allergies: student.allergies,
+        conditions: student.conditions,
+        medications: student.medications,
+        notes: student.medicalNotes,
+        doctor: student.emergencyProfile?.doctorName ? {
+          name: student.emergencyProfile.doctorName,
+          phone: student.emergencyProfile.doctorPhone,
+          specialization: student.emergencyProfile.doctorSpecialization,
+          clinic: student.emergencyProfile.doctorClinic,
+          address: student.emergencyProfile.doctorAddress,
+        } : null,
+        insurance: {
+          provider: student.emergencyProfile?.insuranceProvider,
+          policyNumber: student.emergencyProfile?.insurancePolicyNumber,
+          validUntil: student.emergencyProfile?.insuranceValidUntil,
+        },
+        emergencyInstructions: student.emergencyProfile?.emergencyInstructions,
+        lastCheckup: student.emergencyProfile?.updatedAt,
+      },
+      academicInfo: {
+        subjects: [],
+        previousSchool: null,
+        transferCertificate: null,
+        achievements: [],
+        remarks: null,
+      },
+      attendance: {
+        present: presentDays,
+        total: totalDays,
+        percentage: attendancePercentage,
+        monthly: monthlyBreakdown,
+        recentAbsences,
+      },
+      documents: documents.map(d => ({
+        id: d.id,
+        name: d.name,
+        type: d.fileType.toUpperCase(),
+        size: `${Math.round(d.fileSize / 1024)} KB`,
+        uploadedAt: d.uploadedAt,
+      })),
+      recentActivity: recentNotifications.map(n => ({
+        action: n.title,
+        date: formatDateIST(n.createdAt),
+        status: 'Completed',
+      })),
+      feeDetails: null,
     };
   }
 
-  /**
-   * Get student count for a school (for limit checking)
-   */
-  async getStudentCount(schoolId) {
-    const stats = await studentRepository.getStudentStats(schoolId);
-    return stats.active;
+  // ─── List Students (with pagination and filters) ──────────────
+  async listStudents(query, schoolId) {
+    const { page, limit, skip } = getPagination(query);
+    const where = { schoolId, isActive: true };
+    if (query.search) {
+      where.OR = [
+        { firstName: { contains: query.search, mode: 'insensitive' } },
+        { lastName: { contains: query.search, mode: 'insensitive' } },
+        { studentId: { contains: query.search } },
+        { rollNumber: { contains: query.search } },
+        { parentLinks: { some: { parent: { firstName: { contains: query.search, mode: 'insensitive' } } } } },
+      ];
+    }
+    if (query.class) where.grade = query.class;
+    if (query.section) where.section = query.section;
+    if (query.status) where.status = query.status;
+    if (query.fromDate) where.enrolledAt = { gte: new Date(query.fromDate) };
+    if (query.toDate) where.enrolledAt = { lte: new Date(query.toDate) };
+
+    const { items, total } = await repo.listStudents(where, skip, limit);
+    const enriched = items.map(s => ({
+      id: s.id,
+      name: `${s.firstName} ${s.lastName}`,
+      rollNumber: s.rollNumber,
+      class: s.grade,
+      section: s.section,
+      parentName: s.parentLinks[0]?.parent?.firstName 
+        ? `${s.parentLinks[0].parent.firstName} ${s.parentLinks[0].parent.lastName || ''}`.trim()
+        : 'Not linked',
+      parentPhone: s.parentLinks[0]?.parent?.phone || '',
+      email: null,
+      status: s.status,
+      photo: s.photoUrl,
+      avatarInitials: `${s.firstName[0]}${s.lastName[0]}`,
+    }));
+    const meta = paginateMeta(total, page, limit);
+    return { items: enriched, meta };
+  }
+
+  // ─── Link Parents to Student ───────────────────────────────────
+  async linkParents(studentId, parentIds, schoolId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    for (const parentId of parentIds) {
+      const parent = await prisma.parentUser.findFirst({
+        where: { id: parentId, students: { some: { student: { schoolId } } } }
+      });
+      if (!parent) throw ApiError.notFound(`Parent ${parentId} not found in this school`);
+      await repo.linkParent(studentId, parentId, 'GUARDIAN', false, 1);
+    }
+    await getCache().del(`student:detail:${studentId}`);
+    return { success: true };
+  }
+
+  // ─── Unlink Parent from Student ────────────────────────────────
+  async unlinkParent(studentId, parentId, schoolId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    await repo.unlinkParent(studentId, parentId);
+    await getCache().del(`student:detail:${studentId}`);
+    return { success: true };
+  }
+
+  // ─── Update Emergency Visibility ───────────────────────────────
+  async updateEmergencyVisibility(studentId, visibility, schoolId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    let visibilityId = student.cardVisibilityId;
+    if (!visibilityId) {
+      const newVis = await repo.createCardVisibility({ visibility });
+      visibilityId = newVis.id;
+      await repo.updateStudent(studentId, { cardVisibilityId: visibilityId });
+    } else {
+      await repo.updateCardVisibility(visibilityId, { visibility });
+    }
+    await getCache().del(`student:detail:${studentId}`);
+    return { success: true };
+  }
+
+  // ─── Send Message to Parents ───────────────────────────────────
+  async sendMessageToParents(studentId, subject, body, type, schoolId, senderId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    const parentLinks = await repo.getLinkedParents(studentId);
+    if (!parentLinks.length) throw ApiError.badRequest('No parents linked to this student');
+
+    const messages = [];
+    for (const link of parentLinks) {
+      const msg = await prisma.message.create({
+        data: {
+          id: generateId('MSG'),
+          schoolId,
+          senderId,
+          parentId: link.parent.id,
+          studentId,
+          subject: subject || `Message about ${student.firstName}`,
+          body,
+          type,
+          direction: 'SCHOOL_TO_PARENT',
+          status: 'SENT',
+          channels: ['PUSH', 'EMAIL'],
+        },
+      });
+      await notificationsQueue.add('send-message', {
+        type: 'MESSAGE',
+        messageId: msg.id,
+        recipientId: link.parent.id,
+        title: subject || `Message about ${student.firstName}`,
+        body,
+        priority: type === 'EMERGENCY' ? 1 : 5,
+        schoolId,
+      }, { priority: type === 'EMERGENCY' ? 1 : 5 });
+      messages.push(msg);
+    }
+    return { sentTo: messages.length };
+  }
+
+  // ─── Stats Dashboard ───────────────────────────────────────────
+  async getStats(schoolId) {
+    return repo.getStats(schoolId);
+  }
+
+  // ─── Export Students (CSV/JSON) ────────────────────────────────
+  async exportStudents(query, schoolId) {
+    const { format, class: className, section, status, fields, emailDelivery } = query;
+    const where = { schoolId, isActive: true };
+    if (className) where.grade = className;
+    if (section) where.section = section;
+    if (status) where.status = status;
+    const students = await prisma.student.findMany({
+      where,
+      include: { parentLinks: { include: { parent: true } } },
+    });
+    const exportFields = fields || ['name', 'class', 'section', 'rollNumber', 'parentName', 'parentPhone'];
+    const data = students.map(s => {
+      const row = {};
+      if (exportFields.includes('name')) row.name = `${s.firstName} ${s.lastName}`;
+      if (exportFields.includes('class')) row.class = s.grade;
+      if (exportFields.includes('section')) row.section = s.section;
+      if (exportFields.includes('rollNumber')) row.rollNumber = s.rollNumber;
+      if (exportFields.includes('parentName')) row.parentName = s.parentLinks[0]?.parent?.firstName || '';
+      if (exportFields.includes('parentPhone')) row.parentPhone = s.parentLinks[0]?.parent?.phone || '';
+      return row;
+    });
+    let buffer, mimeType;
+    if (format === 'csv') {
+      const { Parser } = await import('json2csv');
+      const parser = new Parser({ fields: exportFields });
+      buffer = Buffer.from(parser.parse(data));
+      mimeType = 'text/csv';
+    } else {
+      buffer = Buffer.from(JSON.stringify(data, null, 2));
+      mimeType = 'application/json';
+    }
+    if (emailDelivery) {
+      const adminEmail = await prisma.schoolUser.findFirst({ where: { schoolId, role: 'SCHOOL_ADMIN' }, select: { email: true } });
+      if (adminEmail?.email) {
+        const email = getEmail();
+        await email.send({
+          to: adminEmail.email,
+          subject: `Student Export (${format.toUpperCase()})`,
+          html: `<p>Your export file is attached.</p>`,
+          attachments: [{ filename: `students_export.${format}`, content: buffer }],
+        });
+      }
+      return { success: true, emailedTo: adminEmail?.email };
+    }
+    return { buffer, mimeType, filename: `students_export.${format}` };
+  }
+
+  // ─── Upload Document ───────────────────────────────────────────
+  async uploadDocument(studentId, file, name, type, schoolId) {
+    validateDocument(file);
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    const storage = getStorage();
+    const key = `schools/${schoolId}/students/${studentId}/documents/${Date.now()}-${file.originalname}`;
+    const upload = await storage.upload(file.buffer, key, { contentType: file.mimetype });
+    const doc = await repo.createDocument({
+      studentId,
+      name: name || file.originalname,
+      type: type || 'OTHER',
+      fileType: file.mimetype,
+      fileSize: file.size,
+      fileUrl: upload.location,
+    });
+    return doc;
+  }
+
+  // ─── Delete Document ───────────────────────────────────────────
+  async deleteDocument(studentId, documentId, schoolId) {
+    const student = await repo.findStudentById(studentId, schoolId);
+    if (!student) throw ApiError.notFound('Student not found');
+    await repo.deleteDocument(documentId, studentId);
+    return { success: true };
+  }
+
+  // ─── Bulk Upload Students (CSV) ────────────────────────────────
+  async bulkUploadStudents(file, schoolId) {
+    const results = { success: 0, failed: 0, errors: [] };
+    let records;
+
+    try {
+      const content = file.buffer.toString('utf-8');
+      records = parse(content, { columns: true, skip_empty_lines: true });
+    } catch (err) {
+      throw ApiError.badRequest('Invalid CSV file format');
+    }
+
+    for (let i = 0; i < records.length; i++) {
+      const row = records[i];
+      try {
+        if (!row.firstName || !row.lastName || !row.grade || !row.section) {
+          throw new Error('Missing required fields: firstName, lastName, grade, section');
+        }
+
+        let parentIds = [];
+        if (row.parentPhone) {
+          const phone = normalizePhoneNumber(row.parentPhone);
+          let parent = await parentRepo.findParentByPhone(phone);
+          if (!parent && row.parentName) {
+            const [firstName, ...lastNameParts] = row.parentName.split(' ');
+            parent = await parentRepo.createParent({
+              id: generateId('PAR'),
+              firstName,
+              lastName: lastNameParts.join(' '),
+              phone,
+              email: row.parentEmail,
+              isActive: true,
+            });
+          }
+          if (parent) parentIds = [parent.id];
+        }
+
+        await this.createStudent({
+          firstName: row.firstName,
+          lastName: row.lastName,
+          grade: row.grade,
+          section: row.section,
+          rollNumber: row.rollNumber,
+          gender: row.gender,
+          dateOfBirth: row.dateOfBirth,
+          bloodGroup: row.bloodGroup,
+          parentIds,
+        }, schoolId);
+
+        results.success++;
+      } catch (err) {
+        results.failed++;
+        results.errors.push({ row: i + 2, message: err.message });
+      }
+    }
+    return results;
   }
 }
-
-// ─── Export Singleton ─────────────────────────────────────────────────────────
-
-export const studentService = new StudentService();
-export default studentService;
