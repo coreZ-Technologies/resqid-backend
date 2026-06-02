@@ -1,283 +1,246 @@
-// src/modules/communication/communication.service.js
-import { CommunicationRepository } from './communication.repository.js';
-import { notificationsQueue } from '#orchestrator/queues/queue.config.js';
-import { getEmail } from '#infrastructure/email/email.index.js';
-import { getSms } from '#infrastructure/sms/sms.index.js';
-import { getPush } from '#infrastructure/push/push.index.js';
-import { logger } from '#config/logger.js';
-import { auditLog, AUDIT_ACTION } from '#shared/helpers/auditLogger.js';
+// src/modules/m4-communication/communication.service.js
+import { prisma } from '#config/prisma.js';
 import { ApiError } from '#shared/response/ApiError.js';
+import { notificationsQueue } from '#orchestrator/queues/queue.config.js';
+import { generateId } from '#services/IdGenerator.service.js';
+import { CommunicationRepository } from './communication.repository.js';
+import { getPagination, paginateMeta } from '#shared/response/paginate.js';
 
 const repo = new CommunicationRepository();
 
 export class CommunicationService {
-  // ─── Announcements ─────────────────────────────────────────
-  async createAnnouncement(data, actorId, schoolId, req) {
+  // ─── Announcements ──────────────────────────────────────────────
+  async createAnnouncement(data, schoolId, authorId) {
+    // 1. Create announcement record
     const announcement = await repo.createAnnouncement({
-      ...data,
-      createdBy: actorId,
+      id: generateId('ANM'),
       schoolId,
-      publishedAt: data.status === 'Published' ? new Date() : null,
+      authorId,
+      title: data.title,
+      body: data.body,
+      imageUrl: data.imageUrl,
+      attachments: data.attachments || [],
+      priority: data.priority,
+      target: data.target,
+      targetGrades: data.targetGrades || [],
+      targetSections: data.targetSections || [],
+      targetClassIds: data.targetClassIds || [],
+      targetStudentIds: data.targetStudentIds || [],
+      isPublic: data.isPublic || false,
+      publishedAt: data.scheduledFor ? null : new Date(),
+      scheduledFor: data.scheduledFor ? new Date(data.scheduledFor) : null,
+      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      status: data.scheduledFor ? 'SCHEDULED' : 'SENT',
     });
 
-    await auditLog(req, AUDIT_ACTION.ANNOUNCEMENT_CREATED, {
-      actorId,
-      targetId: announcement.id,
-      metadata: { title: announcement.title },
-    });
-
-    // If published immediately, queue deliveries
-    if (data.status === 'Published' && !data.scheduledFor) {
-      await this._queueAnnouncementDeliveries(announcement, schoolId);
+    // 2. Resolve recipients
+    let parentIds = [];
+    if (data.target === 'ALL') {
+      const parents = await prisma.parentUser.findMany({
+        where: { students: { some: { student: { schoolId } } }, isActive: true },
+        select: { id: true },
+      });
+      parentIds = parents.map(p => p.id);
+    } else if (data.target === 'GRADE' && data.targetGrades.length) {
+      const students = await prisma.student.findMany({
+        where: { schoolId, grade: { in: data.targetGrades }, section: { in: data.targetSections || [] } },
+        select: { parentLinks: { select: { parentId: true } } },
+      });
+      parentIds = [...new Set(students.flatMap(s => s.parentLinks.map(pl => pl.parentId)))];
+    } else if (data.target === 'STUDENT' && data.targetStudentIds.length) {
+      const links = await prisma.parentStudent.findMany({
+        where: { studentId: { in: data.targetStudentIds } },
+        select: { parentId: true },
+      });
+      parentIds = [...new Set(links.map(l => l.parentId))];
+    } else if (data.target === 'PARENT' && data.targetParentIds?.length) {
+      parentIds = data.targetParentIds;
     }
-    // If scheduled, will be handled by a cron job
+
+    if (!parentIds.length) {
+      throw ApiError.badRequest('No recipients found for the given target');
+    }
+
+    // 3. Update announcement with recipient count
+    await repo.updateAnnouncement(announcement.id, { totalRecipients: parentIds.length });
+
+    // 4. Queue delivery for each parent
+    const jobs = parentIds.map(parentId => ({
+      name: 'send-announcement',
+      data: {
+        type: 'ANNOUNCEMENT',
+        announcementId: announcement.id,
+        recipientId: parentId,
+        channels: data.channels || ['EMAIL', 'SMS', 'PUSH'],
+        title: announcement.title,
+        body: announcement.body,
+        priority: data.priority === 'URGENT' ? 1 : data.priority === 'HIGH' ? 2 : 5,
+        schoolId,
+      },
+      opts: {
+        priority: data.priority === 'URGENT' ? 1 : data.priority === 'HIGH' ? 2 : 5,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      },
+    }));
+
+    await Promise.all(jobs.map(job => notificationsQueue.add(job.name, job.data, job.opts)));
+
+    // 5. Create initial delivery records
+    for (const parentId of parentIds) {
+      for (const channel of data.channels || ['EMAIL']) {
+        await repo.createDelivery({
+          announcementId: announcement.id,
+          parentId,
+          channel,
+          status: 'PENDING',
+        });
+      }
+    }
+
     return announcement;
   }
 
-  async updateAnnouncement(id, data, actorId, schoolId, req) {
+  async updateAnnouncement(id, data, schoolId) {
     const existing = await repo.findAnnouncementById(id, schoolId);
     if (!existing) throw ApiError.notFound('Announcement not found');
-
-    const updated = await repo.updateAnnouncement(id, schoolId, data);
-
-    await auditLog(req, AUDIT_ACTION.ANNOUNCEMENT_UPDATED, {
-      actorId,
-      targetId: id,
-      metadata: { changes: Object.keys(data) },
-    });
-
-    // If status changed to Published and no scheduled date, queue now
-    if (data.status === 'Published' && !existing.publishedAt && !existing.scheduledFor) {
-      await this._queueAnnouncementDeliveries({ ...existing, ...data }, schoolId);
-    }
-    return updated;
+    return repo.updateAnnouncement(id, data);
   }
 
-  async deleteAnnouncement(id, actorId, schoolId, req) {
+  async deleteAnnouncement(id, schoolId) {
     const existing = await repo.findAnnouncementById(id, schoolId);
     if (!existing) throw ApiError.notFound('Announcement not found');
-
-    await repo.deleteAnnouncement(id, schoolId);
-    await auditLog(req, AUDIT_ACTION.ANNOUNCEMENT_DELETED, {
-      actorId,
-      targetId: id,
-    });
-    return { success: true };
+    return repo.updateAnnouncement(id, { isArchived: true });
   }
 
   async listAnnouncements(query, schoolId) {
-    const { announcements, total } = await repo.listAnnouncements({ ...query, schoolId });
-    // Enrich with delivery stats
-    const enriched = announcements.map(a => ({
-      ...a,
-      recipients: {
-        total: a.deliveries?.length || 0,
-        delivered: a.deliveries?.filter(d => d.status === 'Delivered').length || 0,
-        read: a.deliveries?.filter(d => d.status === 'Read').length || 0,
-        failed: a.deliveries?.filter(d => d.status === 'Failed').length || 0,
-      },
-    }));
-    return { announcements: enriched, total };
+    const { page, limit, skip } = getPagination(query);
+    const where = { schoolId, isArchived: false };
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { body: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+    if (query.category) where.category = query.category;
+    if (query.status) where.status = query.status;
+    if (query.fromDate) where.createdAt = { gte: new Date(query.fromDate) };
+    if (query.toDate) where.createdAt = { lte: new Date(query.toDate) };
+
+    const { items, total } = await repo.listAnnouncements(where, skip, limit);
+    const meta = paginateMeta(total, page, limit);
+    return { items, meta };
   }
 
   async getAnnouncementStats(schoolId) {
     return repo.getAnnouncementStats(schoolId);
   }
 
-  async incrementAnnouncementViews(id, schoolId) {
-    const announcement = await repo.findAnnouncementById(id, schoolId);
-    if (!announcement) throw ApiError.notFound('Announcement not found');
-    await repo.incrementAnnouncementViews(id);
-  }
+  // ─── Delivery Logs ──────────────────────────────────────────────
+  async getDeliveryLogs(query, schoolId) {
+    const { page, limit, skip } = getPagination(query);
+    const where = { announcement: { schoolId, isArchived: false } };
+    if (query.channel) where.channel = query.channel;
+    if (query.status) where.status = query.status;
+    if (query.search) {
+      where.OR = [
+        { announcement: { title: { contains: query.search, mode: 'insensitive' } } },
+        { parent: { phone: { contains: query.search } } },
+        { parent: { firstName: { contains: query.search, mode: 'insensitive' } } },
+      ];
+    }
+    if (query.fromDate) where.createdAt = { gte: new Date(query.fromDate) };
+    if (query.toDate) where.createdAt = { lte: new Date(query.toDate) };
 
-  async scheduleAnnouncement(id, scheduledFor, schoolId) {
-    const announcement = await repo.findAnnouncementById(id, schoolId);
-    if (!announcement) throw ApiError.notFound('Announcement not found');
-    await repo.updateAnnouncement(id, schoolId, {
-      status: 'Scheduled',
-      scheduledFor: new Date(scheduledFor),
-    });
-    // Future cron will pick up scheduled announcements
-  }
-
-  // ─── Delivery Logs ─────────────────────────────────────────
-  async listDeliveryLogs(query, schoolId) {
-    return repo.listDeliveryLogs({ ...query, schoolId });
+    const { items, total } = await repo.listDeliveries(where, skip, limit);
+    const meta = paginateMeta(total, page, limit);
+    return { items, meta };
   }
 
   async getDeliveryStats(schoolId) {
     return repo.getDeliveryStats(schoolId);
   }
 
-  async retryDelivery(logId, schoolId) {
-    const log = await repo.findDeliveryLogById(logId, schoolId);
-    if (!log) throw ApiError.notFound('Delivery log not found');
-    if (log.status !== 'Failed') throw ApiError.badRequest('Only failed deliveries can be retried');
+  async retryDelivery(deliveryId, schoolId) {
+    const delivery = await repo.findDeliveryById(deliveryId);
+    if (!delivery) throw ApiError.notFound('Delivery record not found');
+    if (delivery.announcement.schoolId !== schoolId) throw ApiError.schoolAccessDenied();
+    if (delivery.status !== 'FAILED') {
+      throw ApiError.badRequest('Only failed deliveries can be retried');
+    }
 
-    // Re-queue the notification
-    await notificationsQueue.add('retry-delivery', {
-      logId: log.id,
-      recipientId: log.recipientId,
-      channel: log.channel,
-      message: log.message,
-      type: log.type,
+    await notificationsQueue.add('retry-announcement', {
+      type: 'ANNOUNCEMENT',
+      announcementId: delivery.announcementId,
+      recipientId: delivery.parentId,
+      channels: [delivery.channel],
+      title: delivery.announcement.title,
+      body: delivery.announcement.body,
+      priority: delivery.announcement.priority === 'URGENT' ? 1 : 5,
+      schoolId,
     }, {
-      priority: 3,
+      priority: delivery.announcement.priority === 'URGENT' ? 1 : 5,
       attempts: 3,
     });
 
-    await repo.updateDeliveryLogStatus(log.id, 'Pending');
-    return { queued: true };
+    await repo.updateDelivery(deliveryId, { status: 'PENDING', retryCount: { increment: 1 } });
+    return { success: true };
   }
 
-  // ─── Messages & Threads ───────────────────────────────────
-  async getOrCreateThread(parentId, schoolAdminId, schoolId, studentName, studentClass) {
-    return repo.findOrCreateThread(parentId, schoolAdminId, schoolId, studentName, studentClass);
-  }
-
-  async sendMessage(data, senderId, senderRole, schoolId, req) {
-    let thread;
-    if (data.threadId) {
-      thread = await repo.findThreadById(data.threadId, schoolId);
-      if (!thread) throw ApiError.notFound('Thread not found');
-    } else if (data.parentId) {
-      thread = await repo.findOrCreateThread(data.parentId, senderId, schoolId, null, null);
-    } else {
-      throw ApiError.badRequest('Either threadId or parentId required');
-    }
-
+  // ─── Messages ──────────────────────────────────────────────────
+  async sendMessage(data, schoolId, senderId) {
     const message = await repo.createMessage({
-      threadId: thread.id,
+      id: generateId('MSG'),
+      schoolId,
       senderId,
-      senderRole,
-      text: data.text,
+      parentId: data.parentId,
+      studentId: data.studentId,
+      subject: data.subject,
+      body: data.body,
+      type: data.type,
       attachments: data.attachments || [],
+      direction: 'SCHOOL_TO_PARENT',
+      status: 'SENT',
+      channels: ['PUSH', 'EMAIL'],
     });
 
-    await repo.updateThreadLastMessage(thread.id, data.text, senderRole);
-
-    // If sender is admin, mark thread as read for admin (no unread for admin)
-    if (senderRole === 'school_admin') {
-      await repo.markThreadAsRead(thread.id);
-    }
-
-    // Send push notification to the other party
-    if (senderRole === 'school_admin') {
-      // Notify parent
-      await this._notifyParent(thread.parentId, data.text);
-    } else if (senderRole === 'parent') {
-      // Notify admin (already unread increment handled)
-      // Optionally send email/SMS
-    }
-
-    await auditLog(req, AUDIT_ACTION.MESSAGE_SENT, {
-      actorId: senderId,
-      targetId: message.id,
-      metadata: { threadId: thread.id, role: senderRole },
-    });
+    await notificationsQueue.add('send-message', {
+      type: 'MESSAGE',
+      messageId: message.id,
+      recipientId: data.parentId,
+      channels: ['PUSH', 'EMAIL'],
+      title: data.subject || 'New message from school',
+      body: data.body,
+      priority: 5,
+      schoolId,
+    }, { priority: 5 });
 
     return message;
   }
 
-  async listThreads(query, schoolAdminId, schoolId) {
-    return repo.listThreads({ ...query, schoolAdminId, schoolId });
+  async getMessages(query, schoolId) {
+    const { page, limit, skip } = getPagination(query);
+    const where = { schoolId };
+    if (query.parentId) where.parentId = query.parentId;
+    if (query.studentId) where.studentId = query.studentId;
+    if (query.type) where.type = query.type;
+    if (query.unreadOnly) where.isRead = false;
+
+    const { items, total } = await repo.listMessages(where, skip, limit);
+    const meta = paginateMeta(total, page, limit);
+    return { items, meta };
   }
 
-  async getThreadDetails(threadId, schoolAdminId, schoolId) {
-    const thread = await repo.findThreadById(threadId, schoolId);
-    if (!thread || thread.schoolAdminId !== schoolAdminId) {
-      throw ApiError.forbidden('Access denied');
-    }
-    // Mark as read when opened
-    await repo.markThreadAsRead(threadId);
-    return thread;
+  async getThreads(schoolId, query) {
+    const { page, limit, skip } = getPagination(query);
+    const threads = await repo.getThreads(schoolId, skip, limit, query.search);
+    const total = threads.length;
+    const meta = paginateMeta(total, page, limit);
+    return { threads, meta };
   }
 
-  async getUnreadCount(schoolAdminId, schoolId) {
-    return repo.getTotalUnreadCount(schoolAdminId, schoolId);
-  }
-
-  // ─── Private helpers ──────────────────────────────────────
-  async _queueAnnouncementDeliveries(announcement, schoolId) {
-    // Resolve recipients based on audience
-    const recipients = await this._resolveRecipients(announcement, schoolId);
-    for (const recipient of recipients) {
-      await notificationsQueue.add('announcement-delivery', {
-        announcementId: announcement.id,
-        recipientId: recipient.id,
-        recipientName: recipient.name,
-        phone: recipient.phone,
-        email: recipient.email,
-        pushToken: recipient.pushToken,
-        title: announcement.title,
-        body: announcement.body,
-        category: announcement.category,
-      }, {
-        priority: announcement.priority === 'Urgent' ? 1 : 3,
-      });
-    }
-  }
-
-  async _resolveRecipients(announcement, schoolId) {
-    // Simplified – implement based on your user tables
-    const { audience, specificClass } = announcement;
-    let parents = [];
-
-    if (audience === 'All Students' || audience === 'All') {
-      parents = await prisma.parentUser.findMany({
-        where: { schoolId: { equals: schoolId }, isActive: true },
-        select: { id: true, firstName: true, lastName: true, phone: true, email: true, devices: true },
-      });
-    } else if (audience === 'All Parents') {
-      parents = await prisma.parentUser.findMany({
-        where: { schoolId: { equals: schoolId }, isActive: true },
-        select: { id: true, firstName: true, lastName: true, phone: true, email: true, devices: true },
-      });
-    } else if (audience === 'Specific Class' && specificClass) {
-      const students = await prisma.student.findMany({
-        where: { schoolId, grade: specificClass },
-        select: { parentLinks: { select: { parentId: true } } },
-      });
-      const parentIds = [...new Set(students.flatMap(s => s.parentLinks.map(pl => pl.parentId)))];
-      parents = await prisma.parentUser.findMany({
-        where: { id: { in: parentIds } },
-        select: { id: true, firstName: true, lastName: true, phone: true, email: true, devices: true },
-      });
-    }
-    // For 'All Teachers' – similar logic
-    return parents.map(p => ({
-      id: p.id,
-      name: `${p.firstName} ${p.lastName}`,
-      phone: p.phone,
-      email: p.email,
-      pushToken: p.devices?.[0]?.expoPushToken,
-    }));
-  }
-
-  async _notifyParent(parentId, message) {
-    const parent = await prisma.parentUser.findUnique({
-      where: { id: parentId },
-      select: { email: true, phone: true, devices: true },
-    });
-    if (!parent) return;
-
-    // Push
-    if (parent.devices?.length) {
-      const push = getPush();
-      const tokens = parent.devices.map(d => d.expoPushToken).filter(Boolean);
-      if (tokens.length) {
-        await push.sendToDevices(tokens, { title: 'New message from school', body: message });
-      }
-    }
-    // Email (optional)
-    if (parent.email) {
-      const email = getEmail();
-      await email.send({ to: parent.email, subject: 'New message from school', html: `<p>${message}</p>` });
-    }
-    // SMS (optional)
-    if (parent.phone) {
-      const sms = getSms();
-      await sms.send(parent.phone, `School message: ${message.slice(0, 140)}`);
-    }
+  async markThreadRead(parentId, schoolId) {
+    const result = await repo.markThreadRead(parentId, schoolId);
+    return { updatedCount: result.count };
   }
 }
