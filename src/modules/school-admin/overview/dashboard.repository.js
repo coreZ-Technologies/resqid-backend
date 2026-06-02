@@ -1,311 +1,238 @@
-// TODO: Add implementation
-// =============================================================================
-// dashboard.repository.js — RESQID School Admin / Overview
-//
-// All Prisma queries for the school-admin dashboard.
-// Every query is school-scoped (schoolId filter mandatory).
-// Queries are grouped by stat section — mirrors the service layer structure.
-//
-// Design notes:
-//   - Promise.all() batches used wherever queries are independent.
-//   - Only the fields needed for display are selected (no fat SELECT *).
-//   - "today" and "week" sub-counts are derived in a single pass where possible.
-// =============================================================================
-
+// school-admin/dashboard/dashboard.repository.js
 import { prisma } from '#config/prisma.js';
+import { todayRangeUTC, addDays } from '#shared/helpers/dateTime.js';
 
-// =============================================================================
-// STUDENTS
-// =============================================================================
+export class DashboardRepository {
+  async getTotalStudents(schoolId) {
+    return prisma.student.count({ where: { schoolId, isActive: true } });
+  }
 
-/**
- * Total students, split by isActive.
- * Also returns count created within the range window (trend).
- */
-export async function getStudentStats({ schoolId, rangeStart }) {
-  const [total, active, addedInRange] = await Promise.all([
-    prisma.student.count({ where: { schoolId } }),
+  async getTotalTeachers(schoolId) {
+    return prisma.schoolUser.count({
+      where: { schoolId, role: 'TEACHER', isActive: true },
+    });
+  }
 
-    prisma.student.count({ where: { schoolId, isActive: true } }),
-
-    prisma.student.count({
-      where: { schoolId, createdAt: { gte: rangeStart } },
-    }),
-  ]);
-
-  return {
-    total,
-    active,
-    inactive: total - active,
-    addedInRange,
-  };
-}
-
-// =============================================================================
-// TOKENS / CARDS
-// =============================================================================
-
-/**
- * Token stats — assigned vs unassigned, expiring soon (within 30 days).
- *
- * Assumes Token model has:
- *   schoolId, status (UNASSIGNED | ASSIGNED | ACTIVE | DEACTIVATED),
- *   expiresAt (nullable)
- */
-export async function getTokenStats({ schoolId }) {
-  const thirtyDaysFromNow = new Date();
-  thirtyDaysFromNow.setUTCDate(thirtyDaysFromNow.getUTCDate() + 30);
-
-  const [total, assigned, unassigned, expiringSoon] = await Promise.all([
-    prisma.token.count({
-      where: { schoolId, status: { not: 'DEACTIVATED' } },
-    }),
-
-    prisma.token.count({
-      where: { schoolId, status: { in: ['ASSIGNED', 'ACTIVE'] } },
-    }),
-
-    prisma.token.count({
-      where: { schoolId, status: 'UNASSIGNED' },
-    }),
-
-    prisma.token.count({
+  async getParentsLinked(schoolId) {
+    return prisma.parentUser.count({
       where: {
-        schoolId,
-        status: { in: ['ASSIGNED', 'ACTIVE'] },
-        expiresAt: { lte: thirtyDaysFromNow, gte: new Date() },
+        students: { some: { student: { schoolId, isActive: true } } },
+        isActive: true,
       },
-    }),
-  ]);
+    });
+  }
 
-  return { total, assigned, unassigned, expiringSoon };
-}
+  async getTodayAttendanceByClass(schoolId) {
+    const { start, end } = todayRangeUTC();
+    const records = await prisma.studentAttendanceRecord.findMany({
+      where: {
+        student: { schoolId, isActive: true },
+        markedAt: { gte: start, lte: end },
+      },
+      include: { student: { select: { grade: true, section: true } } },
+    });
+    const classMap = new Map();
+    for (const rec of records) {
+      const grade = rec.student.grade || 'Unknown';
+      const section = rec.student.section || '';
+      const key = `${grade}-${section}`;
+      if (!classMap.has(key)) {
+        classMap.set(key, { className: key, total: 0, present: 0 });
+      }
+      const classData = classMap.get(key);
+      classData.total++;
+      if (rec.status === 'PRESENT') classData.present++;
+    }
+    const studentsByClass = await prisma.student.groupBy({
+      by: ['grade', 'section'],
+      where: { schoolId, isActive: true },
+      _count: { id: true },
+    });
+    const result = [];
+    for (const cls of studentsByClass) {
+      const grade = cls.grade || 'Unknown';
+      const section = cls.section || '';
+      const key = `${grade}-${section}`;
+      const total = cls._count.id;
+      const present = classMap.get(key)?.present || 0;
+      const absent = total - present;
+      result.push({
+        className: `${grade}${section ? '-' + section : ''}`,
+        total,
+        present,
+        absent,
+      });
+    }
+    return result;
+  }
 
-// =============================================================================
-// EMERGENCY ALERTS
-// =============================================================================
+  async getWeeklyTrend(schoolId) {
+    const today = new Date();
+    const dates = [];
+    for (let i = 6; i >= 0; i--) {
+      dates.push(addDays(today, -i));
+    }
+    const trend = [];
+    for (const date of dates) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      const records = await prisma.studentAttendanceRecord.findMany({
+        where: {
+          student: { schoolId, isActive: true },
+          markedAt: { gte: start, lte: end },
+        },
+        select: { status: true },
+      });
+      const total = records.length;
+      const present = records.filter(r => r.status === 'PRESENT').length;
+      const percentage = total ? (present / total) * 100 : 0;
+      const dayName = date.toLocaleDateString('en-IN', { weekday: 'short' });
+      trend.push({ day: dayName, percentage: Math.round(percentage * 10) / 10 });
+    }
+    return trend;
+  }
 
-/**
- * Emergency alert counts — today and this week, plus range total.
- *
- * Assumes EmergencyAlert model with: schoolId, createdAt, status
- */
-export async function getEmergencyStats({ schoolId, rangeStart, todayStart, weekStart }) {
-  const [today, thisWeek, inRange] = await Promise.all([
-    prisma.emergencyAlert.count({
-      where: { schoolId, createdAt: { gte: todayStart } },
-    }),
+  async getRecentActivity(schoolId, type, limit) {
+    // For 'late' type, we query StudentAttendanceRecord instead of ScanLog
+    if (type === 'late') {
+      const { start, end } = todayRangeUTC();
+      const lateRecords = await prisma.studentAttendanceRecord.findMany({
+        where: {
+          student: { schoolId, isActive: true },
+          markedAt: { gte: start, lte: end },
+          status: 'LATE',
+        },
+        include: { student: true },
+        orderBy: { markedAt: 'desc' },
+        take: limit,
+      });
+      return lateRecords.map(rec => {
+        const student = rec.student;
+        const name = `${student.firstName} ${student.lastName}`;
+        const className = `${student.grade || ''}${student.section ? '-' + student.section : ''}`;
+        const initials = name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+        return {
+          id: rec.id,
+          name,
+          className,
+          rfid: student.rfidTagNumber || 'N/A',
+          type: 'late',
+          time: rec.markedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          avatar: initials,
+          avatarColor: 'bg-amber-500',
+        };
+      });
+    }
 
-    prisma.emergencyAlert.count({
-      where: { schoolId, createdAt: { gte: weekStart } },
-    }),
+    const where = { schoolId };
+    if (type !== 'all') {
+      const resultMap = {
+        check_in: 'SUCCESS',
+        absent: 'ABSENT',
+      };
+      // 'late' is already handled above, so we only map check_in and absent
+      if (resultMap[type]) {
+        where.result = resultMap[type];
+      }
+    }
+    const logs = await prisma.scanLog.findMany({
+      where,
+      orderBy: { scannedAt: 'desc' },
+      take: limit,
+      include: { token: { include: { student: true } } },
+    });
+    return logs.map(log => {
+      let studentName = log.studentName;
+      let studentClass = log.studentClass;
+      let studentSection = log.studentSection;
+      if (!studentName && log.token?.student) {
+        studentName = `${log.token.student.firstName} ${log.token.student.lastName}`;
+        studentClass = log.token.student.grade;
+        studentSection = log.token.student.section;
+      }
+      const className = studentClass ? `${studentClass}${studentSection ? '-' + studentSection : ''}` : '';
+      const initials = studentName ? studentName.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase() : '??';
+      return {
+        id: log.id,
+        name: studentName || 'Unknown',
+        className,
+        rfid: log.token?.rfidUid || log.tokenId || 'N/A',
+        type: log.result === 'SUCCESS' ? 'check_in' : 'absent',
+        time: log.scannedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        avatar: initials,
+        avatarColor: 'bg-blue-500',
+      };
+    });
+  }
 
-    prisma.emergencyAlert.count({
-      where: { schoolId, createdAt: { gte: rangeStart } },
-    }),
-  ]);
-
-  return { today, thisWeek, inRange };
-}
-
-// =============================================================================
-// SCAN LOGS
-// =============================================================================
-
-/**
- * QR scan counts — today, this week, and within selected range.
- *
- * Assumes ScanLog model with: schoolId, scannedAt
- */
-export async function getScanStats({ schoolId, rangeStart, todayStart, weekStart }) {
-  const [today, thisWeek, inRange] = await Promise.all([
-    prisma.scanLog.count({
-      where: { schoolId, scannedAt: { gte: todayStart } },
-    }),
-
-    prisma.scanLog.count({
-      where: { schoolId, scannedAt: { gte: weekStart } },
-    }),
-
-    prisma.scanLog.count({
-      where: { schoolId, scannedAt: { gte: rangeStart } },
-    }),
-  ]);
-
-  return { today, thisWeek, inRange };
-}
-
-// =============================================================================
-// SCAN ANOMALIES
-// =============================================================================
-
-/**
- * Unresolved anomaly count, plus how many appeared in the selected range.
- *
- * Assumes ScanAnomaly model with: schoolId, resolvedAt (nullable), createdAt
- */
-export async function getAnomalyStats({ schoolId, rangeStart }) {
-  const [unresolved, inRange] = await Promise.all([
-    prisma.scanAnomaly.count({
-      where: { schoolId, resolvedAt: null },
-    }),
-
-    prisma.scanAnomaly.count({
-      where: { schoolId, createdAt: { gte: rangeStart } },
-    }),
-  ]);
-
-  return { unresolved, inRange };
-}
-
-// =============================================================================
-// ATTENDANCE
-// =============================================================================
-
-/**
- * Today's attendance summary as a percentage.
- *
- * Queries today's attendance session records for this school.
- * Returns present/total and a derived percentage.
- *
- * Assumes Attendance model with: schoolId, date (Date), status ('PRESENT'|'ABSENT'|…)
- */
-export async function getAttendanceStats({ schoolId, todayStart }) {
-  const [total, present] = await Promise.all([
-    prisma.attendance.count({
-      where: { schoolId, date: { gte: todayStart } },
-    }),
-
-    prisma.attendance.count({
-      where: { schoolId, date: { gte: todayStart }, status: 'PRESENT' },
-    }),
-  ]);
-
-  const percentage = total > 0 ? Math.round((present / total) * 100) : null;
-
-  return { present, total, percentage };
-}
-
-// =============================================================================
-// PARENTS
-// =============================================================================
-
-/**
- * Count of parents with at least one active child link in this school.
- *
- * Assumes ParentStudent join model with: schoolId (or via student.schoolId),
- * and Parent.isActive flag.
- *
- * Uses a nested filter: parents where any linked student belongs to this school.
- */
-export async function getParentStats({ schoolId }) {
-  const activeParents = await prisma.parent.count({
-    where: {
-      isActive: true,
-      children: {
-        some: {
-          student: { schoolId },
+  async getLowAttendanceStudents(schoolId, threshold = 80, limit = 5) {
+    const startDate = addDays(new Date(), -180);
+    const students = await prisma.student.findMany({
+      where: { schoolId, isActive: true },
+      include: {
+        attendanceRecords: {
+          where: { markedAt: { gte: startDate } },
+          select: { status: true },
         },
       },
-    },
-  });
+    });
+    const result = [];
+    for (const student of students) {
+      const total = student.attendanceRecords.length;
+      const present = student.attendanceRecords.filter(r => r.status === 'PRESENT').length;
+      const percent = total ? (present / total) * 100 : 100;
+      if (percent < threshold) {
+        result.push({
+          name: `${student.firstName} ${student.lastName}`,
+          className: `${student.grade || ''}${student.section ? '-' + student.section : ''}`,
+          attendancePercent: Math.round(percent),
+          absentsCount: total - present,
+          avatar: `${student.firstName[0]}${student.lastName[0]}`.toUpperCase(),
+          avatarColor: 'bg-rose-500',
+        });
+      }
+    }
+    result.sort((a, b) => a.attendancePercent - b.attendancePercent);
+    return result.slice(0, limit);
+  }
 
-  return { activeParents };
-}
-
-// =============================================================================
-// RECENT ACTIVITY FEED
-// =============================================================================
-
-// ─── Recent QR scans ──────────────────────────────────────────────────────────
-
-export async function getRecentScans({ schoolId, limit = 10 }) {
-  return prisma.scanLog.findMany({
-    where: { schoolId },
-    orderBy: { scannedAt: 'desc' },
-    take: limit,
-    select: {
-      id:        true,
-      scannedAt: true,
-      location:  true,
-      student: {
-        select: { id: true, name: true, className: true },
+  async getNotifications(schoolId, limit = 5) {
+    return prisma.notification.findMany({
+      where: { schoolId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        category: true,
+        title: true,
+        body: true,
+        createdAt: true,
+        isRead: true,
       },
-    },
-  });
-}
+    });
+  }
 
-// ─── Recent emergency triggers ────────────────────────────────────────────────
+  async getTodayTimetable(schoolId, className, section) {
+    // TODO: Replace with actual timetable query when timetable module is ready.
+    // For now, return static mock as placeholder.
+    return [
+      { period: 'P1', time: '8:00–8:45', subject: 'Mathematics', teacher: 'Mr. S. Kumar', status: 'done' },
+      { period: 'P2', time: '8:45–9:30', subject: 'English', teacher: 'Ms. P. Nair', status: 'done' },
+      { period: 'P3', time: '9:45–10:30', subject: 'Science', teacher: 'Mr. A. Das', status: 'ongoing' },
+      { period: 'P4', time: '10:30–11:15', subject: 'History', teacher: 'Ms. S. Roy', status: 'upcoming' },
+      { period: 'P5', time: '11:45–12:30', subject: 'Comp. Sci.', teacher: 'Mr. R. Sen', status: 'upcoming' },
+    ];
+  }
 
-export async function getRecentEmergencies({ schoolId, limit = 5 }) {
-  return prisma.emergencyAlert.findMany({
-    where: { schoolId },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    select: {
-      id:        true,
-      createdAt: true,
-      status:    true,
-      student: {
-        select: { id: true, name: true, className: true },
-      },
-    },
-  });
-}
-
-// ─── Recent anomalies ─────────────────────────────────────────────────────────
-
-export async function getRecentAnomalies({ schoolId, limit = 5 }) {
-  return prisma.scanAnomaly.findMany({
-    where: { schoolId },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    select: {
-      id:          true,
-      createdAt:   true,
-      anomalyType: true,
-      resolvedAt:  true,
-      student: {
-        select: { id: true, name: true, className: true },
-      },
-    },
-  });
-}
-
-// ─── Recent student additions ─────────────────────────────────────────────────
-
-export async function getRecentStudents({ schoolId, limit = 5 }) {
-  return prisma.student.findMany({
-    where: { schoolId },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    select: {
-      id:        true,
-      name:      true,
-      className: true,
-      isActive:  true,
-      createdAt: true,
-    },
-  });
-}
-
-// ─── Recent card assignments ──────────────────────────────────────────────────
-
-export async function getRecentCardAssignments({ schoolId, limit = 5 }) {
-  return prisma.token.findMany({
-    where: {
-      schoolId,
-      status: { in: ['ASSIGNED', 'ACTIVE'] },
-    },
-    orderBy: { assignedAt: 'desc' },
-    take: limit,
-    select: {
-      id:         true,
-      status:     true,
-      assignedAt: true,
-      student: {
-        select: { id: true, name: true, className: true },
-      },
-    },
-  });
+  async getSubscriptionPlan(schoolId) {
+    const school = await prisma.school.findUnique({
+      where: { id: schoolId },
+      include: { plan: { select: { name: true } } }, // assumes Plan model has a `name` field
+    });
+    let plan = school?.plan?.name?.toLowerCase() || 'basic';
+    // Normalize plan names if needed (e.g., 'Standard' -> 'standard')
+    return { plan };
+  }
 }

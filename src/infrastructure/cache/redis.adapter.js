@@ -16,6 +16,7 @@ export class RedisAdapter extends CacheProvider {
     this.config = {
       url: config.url || process.env.REDIS_URL || 'redis://localhost:6379',
       password: config.password || process.env.REDIS_PASSWORD,
+      keyPrefix: config.keyPrefix || 'resqid:cache:',
       socket: {
         reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
         connectTimeout: 10000,
@@ -24,6 +25,8 @@ export class RedisAdapter extends CacheProvider {
     };
     this.isConnected = false;
   }
+
+  // Connection Lifecycle
 
   async connect() {
     try {
@@ -64,7 +67,7 @@ export class RedisAdapter extends CacheProvider {
     }
   }
 
-  // ─── Core Operations ──────────────────────────────────────────────────────
+  // Core Operations
 
   async get(key) {
     try {
@@ -134,8 +137,23 @@ export class RedisAdapter extends CacheProvider {
     }
   }
 
-  // ─── Batch Operations ─────────────────────────────────────────────────────
+  async keys(pattern) {
+    try {
+      const keys = [];
+      let cursor = 0;
+      do {
+        const reply = await this.client.scan(cursor, { MATCH: pattern, COUNT: 100 });
+        cursor = reply.cursor;
+        keys.push(...reply.keys);
+      } while (cursor !== 0);
+      return keys;
+    } catch (err) {
+      logger.warn({ pattern, err: err.message }, '[RedisAdapter] KEYS failed');
+      return [];
+    }
+  }
 
+  // Batch Operations
   async mget(keys) {
     try {
       const values = await this.client.mGet(keys);
@@ -173,11 +191,12 @@ export class RedisAdapter extends CacheProvider {
     }
   }
 
-  // ─── Atomic Operations ────────────────────────────────────────────────────
+  // Atomic Operations──
 
   async incr(key, by = 1, ttl = null) {
     try {
       const val = await this.client.incrBy(key, by);
+      // Set TTL only when the key is first created (val === by)
       if (val === by && ttl) {
         await this.client.expire(key, ttl);
       }
@@ -192,7 +211,7 @@ export class RedisAdapter extends CacheProvider {
     try {
       return await this.client.ttl(key);
     } catch {
-      return -2;
+      return -2; // Key not found
     }
   }
 
@@ -206,15 +225,118 @@ export class RedisAdapter extends CacheProvider {
     }
   }
 
-  // ─── Locking ──────────────────────────────────────────────────────────────
+  // Set Operations─
 
+  async sadd(key, ...members) {
+    try {
+      return await this.client.sAdd(key, members);
+    } catch (err) {
+      logger.warn({ key, err: err.message }, '[RedisAdapter] SADD failed');
+      return 0;
+    }
+  }
+
+  async smembers(key) {
+    try {
+      return await this.client.sMembers(key);
+    } catch (err) {
+      logger.warn({ key, err: err.message }, '[RedisAdapter] SMEMBERS failed');
+      return [];
+    }
+  }
+
+  async sismember(key, member) {
+    try {
+      return await this.client.sIsMember(key, member);
+    } catch (err) {
+      logger.warn({ key, err: err.message }, '[RedisAdapter] SISMEMBER failed');
+      return false;
+    }
+  }
+
+  // Hash Operations
+
+  async hget(key, field) {
+    try {
+      const value = await this.client.hGet(key, field);
+      if (value === null) return null;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    } catch (err) {
+      logger.warn({ key, field, err: err.message }, '[RedisAdapter] HGET failed');
+      return null;
+    }
+  }
+
+  async hset(key, field, value) {
+    try {
+      const serialized = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      return await this.client.hSet(key, field, serialized);
+    } catch (err) {
+      logger.warn({ key, field, err: err.message }, '[RedisAdapter] HSET failed');
+      return 0;
+    }
+  }
+
+  async hgetall(key) {
+    try {
+      const data = await this.client.hGetAll(key);
+      // Parse JSON values
+      for (const [field, value] of Object.entries(data)) {
+        try {
+          data[field] = JSON.parse(value);
+        } catch {
+          // Keep as string
+        }
+      }
+      return data;
+    } catch (err) {
+      logger.warn({ key, err: err.message }, '[RedisAdapter] HGETALL failed');
+      return {};
+    }
+  }
+
+  // Locking
+  /**
+   * Acquire a distributed lock.
+   * @param {string} key - Lock key
+   * @param {number} ttl - Lock timeout in seconds (prevents deadlocks)
+   * @returns {Promise<boolean>} true if lock acquired
+   */
   async lock(key, ttl = 30) {
     const result = await this.client.set(key, '1', { NX: true, EX: ttl });
     return result === 'OK';
   }
 
+  /**
+   * Release a distributed lock.
+   * @param {string} key - Lock key
+   */
   async unlock(key) {
     await this.del(key);
+  }
+
+  /**
+   * Execute a function with a distributed lock.
+   * Automatically releases lock after execution.
+   *
+   * @param {string} key - Lock key
+   * @param {number} ttl - Lock timeout
+   * @param {Function} fn - Async function to execute
+   * @returns {Promise<any>} Result of fn, or null if lock not acquired
+   */
+  async withLock(key, ttl, fn) {
+    const acquired = await this.lock(key, ttl);
+    if (!acquired) return null;
+
+    try {
+      return await fn();
+    } finally {
+      await this.unlock(key);
+    }
   }
 }
 
