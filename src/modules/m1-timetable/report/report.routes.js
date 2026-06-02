@@ -1,21 +1,15 @@
-// =============================================================================
-// modules/m1-timetable/report/report.routes.js — RESQID
-// Mounted at /api/timetable/report
-// =============================================================================
-
 import { Router } from 'express';
-import { authenticate } from '#middleware/auth/authenticate.middleware.js';
-import { authorize } from '#middleware/auth/rbac.middleware.js';
-import { ROLES } from '#shared/constants/roles.js';
-import * as controller from './report.controller.js';
+import * as ctrl from './report.controller.js';
+import { requireSchoolAuth } from '#middleware/auth/index.js';
 
 const router = Router();
+router.use(requireSchoolAuth);
 
-const STAFF = [ROLES.TEACHER, ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN];
-
-router.get('/substitution', authenticate, authorize(STAFF), controller.getSubstitutionRegister);
-router.get('/substitution/weekly', authenticate, authorize(STAFF), controller.getWeeklyAnalysis);
-router.get('/compliance', authenticate, authorize(STAFF), controller.getComplianceReport);
-router.get('/workload', authenticate, authorize(STAFF), controller.getWorkloadReport);
+router.get('/:timetableId/teachers', ctrl.teachers);
+router.get('/:timetableId/classes', ctrl.classes);
+router.get('/:timetableId/rooms', ctrl.rooms);
+router.get('/:timetableId/validation', ctrl.validation);
+router.get('/:timetableId/improvements', ctrl.improvements);
+router.get('/:timetableId/daily/:day', ctrl.dailySummary);
 
 export default router;

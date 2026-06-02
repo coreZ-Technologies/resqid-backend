@@ -5,8 +5,8 @@
 //   WORKER_ROLE=emergency     → EmergencyWorker only
 //   WORKER_ROLE=notification  → NotificationWorker only
 //   WORKER_ROLE=attendance    → AttendanceWorker only
-//   WORKER_ROLE=timetable     → Timetable workers only
-//   WORKER_ROLE=all           → All 8 workers
+//   WORKER_ROLE=timetable     → Timetable workers (generate, crisis, validate, swap, bulk)
+//   WORKER_ROLE=all           → All workers
 // =============================================================================
 
 process.env.WORKER_PROCESS = 'true';
@@ -18,8 +18,10 @@ import { startScanWorker, stopScanWorker } from './scan.worker.js';
 import { startMaintenanceWorker, stopMaintenanceWorker } from './maintenance.worker.js';
 import { startAttendanceWorker, stopAttendanceWorker } from './attendance.worker.js';
 import { startGenerateWorker, stopGenerateWorker } from './generate.worker.js';
-import { startSubstituteWorker, stopSubstituteWorker } from './substitute.worker.js';
+import { startCrisisWorker, stopCrisisWorker } from './crisis.worker.js';
+import { startValidateWorker, stopValidateWorker } from './validate.worker.js';
 import { startSwapWorker, stopSwapWorker } from './swap.worker.js';
+import { startBulkUploadWorker, stopBulkUploadWorker } from './bulkUpload.worker.js';
 import { closeAllQueues } from '../queues/queue.config.js';
 import { closeQueueConnection } from '../queues/queue.connection.js';
 import { flushDlqSlackBatch } from '../dlq/dlq.handler.js';
@@ -43,6 +45,8 @@ const c = {
   lime: '\x1b[38;5;154m',
   pink: '\x1b[38;5;205m',
   teal: '\x1b[38;5;51m',
+  purple: '\x1b[38;5;141m',
+  rose: '\x1b[38;5;211m',
 };
 
 const ok = `${c.green}${c.bold}✓${c.reset}`;
@@ -52,7 +56,7 @@ const pad = (s, n) => String(s).padEnd(n);
 const ROLE = (process.env.WORKER_ROLE ?? 'all').toLowerCase();
 
 // =============================================================================
-// WORKER REGISTRY — 8 Workers
+// WORKER REGISTRY
 // =============================================================================
 
 const ALL_WORKERS = [
@@ -95,19 +99,29 @@ const ALL_WORKERS = [
     conc: 2,
     roles: ['all', 'timetable'],
     col: c.teal,
-    desc: 'Timetable generation solver (MAC algorithm)',
+    desc: 'Timetable generation solver (CSP backtracking)',
     start: startGenerateWorker,
     stop: stopGenerateWorker,
   },
   {
-    name: 'SubstituteWorker',
-    queue: 'timetable_substitute_queue',
+    name: 'CrisisWorker',
+    queue: 'crisis_handling_queue',
     conc: 5,
     roles: ['all', 'timetable'],
-    col: c.pink,
-    desc: 'Daily REPLACE for absent teachers',
-    start: startSubstituteWorker,
-    stop: stopSubstituteWorker,
+    col: c.coral,
+    desc: 'Teacher absence · room unavailability · substitutions',
+    start: startCrisisWorker,
+    stop: stopCrisisWorker,
+  },
+  {
+    name: 'ValidateWorker',
+    queue: 'timetable_validate_queue',
+    conc: 3,
+    roles: ['all', 'timetable'],
+    col: c.purple,
+    desc: 'Timetable validation · scoring · reports',
+    start: startValidateWorker,
+    stop: stopValidateWorker,
   },
   {
     name: 'SwapWorker',
@@ -115,9 +129,19 @@ const ALL_WORKERS = [
     conc: 3,
     roles: ['all', 'timetable'],
     col: c.amber,
-    desc: 'Long-term SWAP assignments + auto-revert',
+    desc: 'Manual slot swaps · reassignments',
     start: startSwapWorker,
     stop: stopSwapWorker,
+  },
+  {
+    name: 'BulkUploadWorker',
+    queue: 'timetable_bulk_upload_queue',
+    conc: 2,
+    roles: ['all', 'timetable'],
+    col: c.rose,
+    desc: 'Excel/CSV bulk upload processing',
+    start: startBulkUploadWorker,
+    stop: stopBulkUploadWorker,
   },
 
   // ── Background ───────────────────────────────────────────────────────────
@@ -190,21 +214,22 @@ function printTopology() {
   console.log(`\n${SEP}`);
   console.log(`  ${c.bold}${c.cyan}Worker Topology${c.reset}`);
   console.log(SEP);
-  console.log(`  ${c.dim}${'Worker'.padEnd(24)} ${'Queue / Interval'.padEnd(24)} Conc${c.reset}`);
+  console.log(`  ${c.dim}${'Worker'.padEnd(26)} ${'Queue'.padEnd(28)} Conc${c.reset}`);
   console.log(SEP);
 
   ALL_WORKERS.forEach((w) => {
     const isActive = ACTIVE.some((a) => a.name === w.name);
     const dot = isActive ? `${w.col}●${c.reset}` : `${c.gray}○${c.reset}`;
     const name = isActive
-      ? `${w.col}${c.bold}${pad(w.name, 22)}${c.reset}`
-      : `${c.gray}${pad(w.name, 22)}${c.reset}`;
+      ? `${w.col}${c.bold}${pad(w.name, 24)}${c.reset}`
+      : `${c.gray}${pad(w.name, 24)}${c.reset}`;
     console.log(
-      `  ${dot}  ${name}${c.dim}${pad(w.queue, 24)}${c.reset}${c.gray}×${w.conc}${c.reset}`
+      `  ${dot}  ${name}${c.dim}${pad(w.queue, 28)}${c.reset}${c.gray}×${w.conc}${c.reset}`
     );
   });
 
   console.log(SEP);
+  console.log('');
 }
 
 // =============================================================================

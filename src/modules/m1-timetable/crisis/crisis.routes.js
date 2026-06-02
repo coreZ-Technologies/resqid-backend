@@ -1,26 +1,28 @@
-// =============================================================================
-// modules/m1-timetable/crisis/crisis.routes.js — RESQID
-// Mounted at /api/timetable/crisis
-// =============================================================================
-
 import { Router } from 'express';
-import { authenticate } from '#middleware/auth/authenticate.middleware.js';
-import { authorize } from '#middleware/auth/rbac.middleware.js';
-import { ROLES } from '#shared/constants/roles.js';
-import * as controller from './crisis.controller.js';
+import * as ctrl from './crisis.controller.js';
+import { requireSchoolAuth } from '#middleware/auth/authenticate.middleware.js';
 
 const router = Router();
 
-const STAFF = [ROLES.TEACHER, ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN];
-const ADMIN = [ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN];
+// All crisis routes require school authentication
+router.use(requireSchoolAuth);
 
-router.get('/level', authenticate, authorize(STAFF), controller.getCrisisLevel);
-router.post('/execute', authenticate, authorize(ADMIN), controller.executeCrisisStrategy);
-router.post(
-  '/override',
-  authenticate,
-  authorize(ROLES.SUPER_ADMIN),
-  controller.overrideCrisisLevel
-);
+// Trigger a new crisis
+router.post('/', ctrl.triggerCrisis);
+
+// List active crises (must be before :crisisId routes)
+router.get('/active', ctrl.getActiveCrises);
+
+// Crisis history with filters
+router.get('/history', ctrl.getCrisisHistory);
+
+// Poll job status
+router.get('/job/:jobId', ctrl.getCrisisJobStatus);
+
+// Get specific crisis details
+router.get('/:crisisId', ctrl.getCrisisDetails);
+
+// Resolve a crisis
+router.post('/:crisisId/resolve', ctrl.resolveCrisis);
 
 export default router;

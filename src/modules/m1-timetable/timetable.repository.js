@@ -1,227 +1,256 @@
-// =============================================================================
-// modules/m1-timetable/timetable.repository.js — RESQID
-// All DB queries for timetable module.
-// =============================================================================
+/**
+ * Timetable data access layer.
+ */
 
 import { prisma } from '#config/prisma.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CONFIG
-// ═══════════════════════════════════════════════════════════════════════════════
+export const timetableRepository = {
+  // ─── Timetables ────────────────────────────────────────────────────────────
 
-export const getTimetableConfig = (schoolId) =>
-  prisma.schoolTimetableConfig.findUnique({ where: { schoolId } });
-
-export const upsertTimetableConfig = (schoolId, data) =>
-  prisma.schoolTimetableConfig.upsert({
-    where: { schoolId },
-    create: { schoolId, ...data },
-    update: data,
-  });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// TEACHER
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createTeacher = (data) => prisma.teacher.create({ data });
-
-export const listTeachers = (schoolId) =>
-  prisma.teacher.findMany({ where: { schoolId, isActive: true } });
-
-export const findTeacher = (id, schoolId) => prisma.teacher.findFirst({ where: { id, schoolId } });
-
-export const updateTeacher = (id, data) => prisma.teacher.update({ where: { id }, data });
-
-export const deleteTeacher = (id) =>
-  prisma.teacher.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
-
-export const getTeachersWithConstraints = (schoolId) =>
-  prisma.teacher.findMany({
-    where: { schoolId, isActive: true },
-    select: {
-      id: true,
-      name: true,
-      subjects: true,
-      maxPeriodsPerDay: true,
-      maxPeriodsPerWeek: true,
-      maxConsecutive: true,
-      gradeMin: true,
-      gradeMax: true,
-      floorRestriction: true,
-      noLabDuty: true,
-      noSubstitutionDuty: true,
-      unavailableDays: true,
-      preferredSlots: true,
-      loadPreference: true,
-    },
-  });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBJECT
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createSubject = (data) => prisma.subject.create({ data });
-
-export const listSubjects = (schoolId) =>
-  prisma.subject.findMany({ where: { schoolId, isActive: true } });
-
-export const findSubject = (id, schoolId) => prisma.subject.findFirst({ where: { id, schoolId } });
-
-export const getSubjectsForClasses = (schoolId, classIds) =>
-  prisma.subject.findMany({
-    where: {
-      schoolId,
-      isActive: true,
-      periods: { some: { classId: { in: classIds } } },
-    },
-    include: {
-      classSubjects: {
-        where: { classId: { in: classIds } },
-        select: { classId: true },
-      },
-    },
-  });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CLASS GROUP
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createClassGroup = (data) => prisma.classGroup.create({ data });
-
-export const listClassGroups = (schoolId) =>
-  prisma.classGroup.findMany({ where: { schoolId, isActive: true } });
-
-export const findClassGroup = (id, schoolId) =>
-  prisma.classGroup.findFirst({ where: { id, schoolId } });
-
-export const getClassesWithDetails = (classIds) =>
-  prisma.classGroup.findMany({
-    where: { id: { in: classIds }, isActive: true },
-    select: { id: true, grade: true, section: true, roomNumber: true, studentCount: true },
-  });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PERIOD
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createPeriod = (data) => prisma.period.create({ data });
-
-export const bulkCreatePeriods = (periods) =>
-  prisma.period.createMany({ data: periods, skipDuplicates: true });
-
-export const getClassTimetable = (classId, schoolId) =>
-  prisma.period.findMany({
-    where: { classId, schoolId, isActive: true },
-    orderBy: [{ dayOfWeek: 'asc' }, { periodNumber: 'asc' }],
-    include: {
-      teacher: { select: { id: true, name: true } },
-      subject: { select: { id: true, name: true, code: true, category: true } },
-    },
-  });
-
-export const getTeacherTimetable = (teacherId, schoolId) =>
-  prisma.period.findMany({
-    where: { teacherId, schoolId, isActive: true },
-    orderBy: [{ dayOfWeek: 'asc' }, { periodNumber: 'asc' }],
-    include: {
-      classGroup: { select: { id: true, grade: true, section: true } },
-      subject: { select: { id: true, name: true } },
-    },
-  });
-
-export const getExistingPeriods = (classIds) =>
-  prisma.period.findMany({
-    where: { classId: { in: classIds }, isActive: true },
-  });
-
-export const deletePeriod = (id) =>
-  prisma.period.update({ where: { id }, data: { isActive: false } });
-
-export const clearClassTimetable = (classId) =>
-  prisma.period.updateMany({ where: { classId }, data: { isActive: false } });
-
-export const findTeacherPeriodAtSlot = (teacherId, dayOfWeek, periodNumber, excludeId) =>
-  prisma.period.findFirst({
-    where: {
-      teacherId,
-      dayOfWeek,
-      periodNumber,
-      isActive: true,
-      ...(excludeId && { id: { not: excludeId } }),
-    },
-  });
-
-export const findClassPeriodAtSlot = (classId, dayOfWeek, periodNumber, excludeId) =>
-  prisma.period.findFirst({
-    where: {
-      classId,
-      dayOfWeek,
-      periodNumber,
-      isActive: true,
-      ...(excludeId && { id: { not: excludeId } }),
-    },
-  });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBSTITUTION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createSubstitution = (data) => prisma.substitution.create({ data });
-
-export const listSubstitutions = (schoolId, date) =>
-  prisma.substitution.findMany({
-    where: { schoolId, ...(date && { date: new Date(date) }) },
-    orderBy: { date: 'desc' },
-    include: {
-      period: {
-        include: {
-          classGroup: { select: { grade: true, section: true } },
-          subject: { select: { name: true } },
-          teacher: { select: { name: true } },
+  /**
+   * Find timetable by ID with ownership check.
+   */
+  async findById(id, schoolId) {
+    return prisma.timetable.findFirst({
+      where: { id, schoolId },
+      include: {
+        assignments: {
+          include: {
+            classGroup: { select: { grade: true, section: true, label: true } },
+            subject: { select: { name: true, code: true } },
+            teacher: { select: { name: true } },
+            room: { select: { roomNumber: true, roomName: true } },
+          },
+        },
+        template: {
+          select: { name: true, academicYear: true, term: true },
+        },
+        validations: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
         },
       },
-      substitute: { select: { name: true } },
-      originalTeacher: { select: { name: true } },
-    },
-  });
-
-export const findSubstitution = (id, schoolId) =>
-  prisma.substitution.findFirst({ where: { id, schoolId } });
-
-export const updateSubstitutionStatus = (id, status, approvedBy) =>
-  prisma.substitution.update({
-    where: { id },
-    data: { status, approvedBy, approvedAt: new Date() },
-  });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// BULK SAVE GENERATED TIMETABLE
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const saveGeneratedTimetable = async (schoolId, classIds, periods) => {
-  // Clear existing for these classes
-  await prisma.period.updateMany({
-    where: { classId: { in: classIds }, schoolId },
-    data: { isActive: false },
-  });
-
-  // Insert new periods
-  if (periods.length > 0) {
-    await prisma.period.createMany({
-      data: periods.map((p) => ({
-        schoolId,
-        classId: p.classId,
-        teacherId: p.teacherId,
-        subjectId: p.subjectId,
-        dayOfWeek: p.dayOfWeek,
-        periodNumber: p.periodNumber,
-        roomNumber: p.roomNumber || null,
-        periodType: p.type || 'REGULAR',
-        isActive: true,
-      })),
-      skipDuplicates: true,
     });
-  }
+  },
 
-  return { replaced: periods.length };
+  /**
+   * Find all timetables for a school.
+   */
+  async findAllBySchool(schoolId, filters = {}) {
+    const { status, limit = 10, offset = 0 } = filters;
+    const where = { schoolId };
+    if (status) where.status = status;
+
+    return prisma.timetable.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+      select: {
+        id: true,
+        status: true,
+        generationType: true,
+        totalSlots: true,
+        healthScore: true,
+        wellnessScore: true,
+        createdAt: true,
+        publishedAt: true,
+        template: { select: { name: true } },
+      },
+    });
+  },
+
+  /**
+   * Save a complete timetable with assignments.
+   */
+  async saveTimetable({ schoolId, templateId, assignments, validation, meta, generationType }) {
+    const timetable = await prisma.timetable.create({
+      data: {
+        schoolId,
+        templateId,
+        generationType: generationType || 'FRESH',
+        status: 'GENERATED',
+        totalSlots: assignments.length,
+        assignedSlots: assignments.length,
+        healthScore: meta?.qualityScore || 0,
+        wellnessScore: meta?.wellnessScore || 0,
+        generatedAt: new Date(),
+        meta,
+        assignments: {
+          create: assignments.map((a) => ({
+            dayOfWeek: a.day || a.dayOfWeek,
+            periodNumber: a.period || a.periodNumber,
+            classGroupId: a.classId,
+            subjectId: a.subjectId,
+            teacherId: a.teacherId,
+            roomId: a.roomId || null,
+            periodType: a.periodType || 'REGULAR',
+            isSubstituted: a.isSubstituted || false,
+            isTemporary: a.isTemporary || false,
+            isManuallyPlaced: a.isManuallyPlaced || false,
+            notes: a.notes || null,
+          })),
+        },
+      },
+    });
+
+    // Save validation report if provided
+    if (validation) {
+      await prisma.timetableValidation.create({
+        data: {
+          timetableId: timetable.id,
+          overallScore: validation.score || 0,
+          healthScore: validation.scores?.hard || 0,
+          wellnessScore: validation.scores?.wellness || 0,
+          utilizationScore: validation.scores?.utilization || 0,
+          criticalIssues: validation.violations?.length || 0,
+          warnings: validation.warnings?.length || 0,
+          suggestions: validation.suggestions?.length || 0,
+          criticalList: validation.violations || [],
+          warningList: validation.warnings || [],
+          suggestionList: validation.suggestions || [],
+        },
+      });
+    }
+
+    return timetable;
+  },
+
+  /**
+   * Update timetable status.
+   */
+  async updateStatus(id, status) {
+    const data = { status };
+    if (status === 'PUBLISHED') data.publishedAt = new Date();
+
+    return prisma.timetable.update({
+      where: { id },
+      data,
+    });
+  },
+
+  /**
+   * Delete a timetable.
+   */
+  async remove(id) {
+    return prisma.timetable.delete({ where: { id } });
+  },
+
+  // ─── Jobs ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a job record.
+   */
+  async createJobRecord(jobId, type, schoolId) {
+    return prisma.timetableJob.create({
+      data: {
+        id: jobId,
+        type,
+        schoolId,
+        status: 'QUEUED',
+      },
+    });
+  },
+
+  /**
+   * Update job status.
+   */
+  async updateJobStatus(jobId, status, extra = {}) {
+    return prisma.timetableJob.update({
+      where: { id: jobId },
+      data: { status, ...extra, updatedAt: new Date() },
+    });
+  },
+
+  /**
+   * Get job record.
+   */
+  async getJobRecord(jobId) {
+    return prisma.timetableJob.findUnique({ where: { id: jobId } });
+  },
+
+  // ─── Context Loading ───────────────────────────────────────────────────────
+
+  /**
+   * Load full template context for solver.
+   */
+  async loadTemplateContext(templateId, schoolId) {
+    const template = await prisma.timetableTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) return null;
+
+    const [teachers, rooms, classes, subjects, wellness, config] = await Promise.all([
+      prisma.teacher.findMany({ where: { schoolId, isActive: true } }),
+      prisma.room.findMany({ where: { schoolId, isActive: true } }),
+      prisma.classGroup.findMany({ where: { schoolId, isActive: true } }),
+      prisma.subject.findMany({ where: { schoolId, isActive: true } }),
+      prisma.teacherWellness.findMany({ where: { schoolId } }),
+      prisma.schoolTimetableConfig.findUnique({ where: { schoolId } }),
+    ]);
+
+    const wellnessMap = Object.fromEntries(wellness.map((w) => [w.teacherId, w]));
+
+    return {
+      template: {
+        ...template,
+        configSnapshot: template.configSnapshot,
+        constraintsSnapshot: template.constraintsSnapshot,
+        classes,
+        teachers,
+        subjects,
+        rooms,
+      },
+      schoolConfig: {
+        periodsPerDay: config?.periodsPerDay || 8,
+        workingDays: config?.workingDays || [1, 2, 3, 4, 5, 6],
+        breakAfterPeriods: config?.breakAfterPeriods || [],
+        morningPeriodsEnd: config?.morningPeriodsEnd || 4,
+        gradeLevels: template.configSnapshot?.gradeLevels || [],
+      },
+      resolvers: {
+        getTeacherConfig: (teacherId) => teachers.find((t) => t.id === teacherId) || {},
+        getTeacherWellness: (teacherId) => wellnessMap[teacherId] || null,
+        getSubjectConfig: (subjectId) => subjects.find((s) => s.id === subjectId) || {},
+        getRoomConfig: (roomId) => rooms.find((r) => r.id === roomId) || null,
+        getClassConfig: (classId) => classes.find((c) => c.id === classId) || null,
+      },
+    };
+  },
+
+  // ─── Slot Operations (for crisis) ──────────────────────────────────────────
+
+  async getSlotsByTeacherAndDate(timetableId, teacherId, dayOfWeek) {
+    return prisma.timetableAssignment.findMany({
+      where: { timetableId, teacherId, dayOfWeek },
+    });
+  },
+
+  async getSlotsByRoom(timetableId, roomId, dayOfWeek) {
+    return prisma.timetableAssignment.findMany({
+      where: { timetableId, roomId, dayOfWeek },
+    });
+  },
+
+  async updateSlotTeacher(slotId, newTeacherId, extra = {}) {
+    return prisma.timetableAssignment.update({
+      where: { id: slotId },
+      data: { teacherId: newTeacherId, ...extra },
+    });
+  },
+
+  async updateSlotRoom(slotId, newRoomId) {
+    return prisma.timetableAssignment.update({
+      where: { id: slotId },
+      data: { roomId: newRoomId },
+    });
+  },
+
+  async moveSlot(slotId, newDay, newPeriod) {
+    return prisma.timetableAssignment.update({
+      where: { id: slotId },
+      data: { dayOfWeek: newDay, periodNumber: newPeriod },
+    });
+  },
 };

@@ -1,35 +1,79 @@
-// =============================================================================
-// modules/m1-timetable/crisis/crisis.controller.js — RESQID
-// =============================================================================
+/**
+ * Crisis controller — thin layer, delegates to service.
+ */
 
-import { ApiResponse } from '#shared/response/ApiResponse.js';
+import { crisisService } from './crisis.service.js';
+import {
+  triggerCrisisSchema,
+  updateCrisisStatusSchema,
+  crisisHistoryQuerySchema,
+  jobIdParamsSchema,
+  crisisIdParamsSchema,
+} from './crisis.validation.js';
+import { ApiError } from '#shared/response/ApiError.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
-import * as crisisService from './crisis.service.js';
 
 /**
- * GET /api/timetable/crisis/level
- * Get current crisis level for the school.
+ * POST /crisis — Trigger a crisis
  */
-export const getCrisisLevel = asyncHandler(async (req, res) => {
-  const crisis = await crisisService.detectCrisisLevel(req.schoolId);
-  return ApiResponse.ok(res, crisis);
+export const triggerCrisis = asyncHandler(async (req, res) => {
+  const parsed = triggerCrisisSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new ApiError(400, 'Validation failed', parsed.error.flatten().fieldErrors);
+  }
+
+  const result = await crisisService.triggerCrisis(req.schoolId, parsed.data, req.user);
+
+  res.status(202).json({ success: true, ...result });
 });
 
 /**
- * POST /api/timetable/crisis/execute
- * Manually trigger crisis strategy execution.
+ * GET /crisis/job/:jobId — Poll job status
  */
-export const executeCrisisStrategy = asyncHandler(async (req, res) => {
-  const result = await crisisService.executeCrisisStrategy(req.schoolId);
-  return ApiResponse.ok(res, result, result.executed ? 'Strategy executed' : 'No crisis detected');
+export const getCrisisJobStatus = asyncHandler(async (req, res) => {
+  const { jobId } = jobIdParamsSchema.parse(req.params);
+  const record = await crisisService.getJobStatus(jobId, req.schoolId);
+  res.json({ success: true, data: record });
 });
 
 /**
- * POST /api/timetable/crisis/override
- * Manually set crisis level (super admin only).
+ * GET /crisis/active — List active crises
  */
-export const overrideCrisisLevel = asyncHandler(async (req, res) => {
-  const { level, reason } = req.body;
-  // This would set a manual override in the database
-  return ApiResponse.ok(res, { level, reason }, 'Crisis level overridden');
+export const getActiveCrises = asyncHandler(async (req, res) => {
+  const crises = await crisisService.getActiveCrises(req.schoolId);
+  res.json({ success: true, data: crises, count: crises.length });
+});
+
+/**
+ * GET /crisis/:crisisId — Get crisis details
+ */
+export const getCrisisDetails = asyncHandler(async (req, res) => {
+  const { crisisId } = crisisIdParamsSchema.parse(req.params);
+  const crisis = await crisisService.getCrisisDetails(crisisId, req.schoolId);
+  res.json({ success: true, data: crisis });
+});
+
+/**
+ * POST /crisis/:crisisId/resolve — Resolve a crisis
+ */
+export const resolveCrisis = asyncHandler(async (req, res) => {
+  const { crisisId } = crisisIdParamsSchema.parse(req.params);
+
+  const parsed = updateCrisisStatusSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new ApiError(400, 'Validation failed', parsed.error.flatten().fieldErrors);
+  }
+
+  const updated = await crisisService.resolveCrisis(crisisId, req.schoolId, parsed.data, req.user);
+
+  res.json({ success: true, data: updated });
+});
+
+/**
+ * GET /crisis/history — Crisis history
+ */
+export const getCrisisHistory = asyncHandler(async (req, res) => {
+  const query = crisisHistoryQuerySchema.parse(req.query);
+  const result = await crisisService.getCrisisHistory(req.schoolId, query);
+  res.json({ success: true, ...result });
 });

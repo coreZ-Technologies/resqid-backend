@@ -4,11 +4,9 @@ import { PrismaClient } from '@prisma/client';
 import { ENV } from './env.js';
 import { logger } from './logger.js';
 
-const SLOW_QUERY_MS = 1000; // warn if query exceeds 1 second
+const SLOW_QUERY_MS = 1000;
 
 // ─── Log Config ───────────────────────────────────────────────────────────────
-// query events enabled in dev only — too noisy for production
-// warn + error always on
 
 const LOG_CONFIG = ENV.IS_DEV
   ? [
@@ -42,7 +40,6 @@ function createPrismaClient() {
             query: e.query,
             durationMs: duration,
             target: e.target,
-            // params intentionally omitted — may contain PII
           },
           `Slow query: ${duration}ms`
         );
@@ -59,10 +56,6 @@ function createPrismaClient() {
     });
   }
 
-  // ── Slow query logging in production — no query text, just duration ─────────
-  // In prod we can't emit query events, but we can use $extends for metrics.
-  // Tracked via external APM (Railway metrics / Sentry perf) — add here if needed.
-
   // ── Warn + error — all environments ─────────────────────────────────────────
   client.$on('warn', (e) => {
     logger.warn({ type: 'prisma_warn', message: e.message }, 'Prisma warning');
@@ -76,7 +69,6 @@ function createPrismaClient() {
 }
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
-// Symbol key avoids collision with any other global that uses __prisma string key
 
 const PRISMA_GLOBAL_KEY = Symbol.for('resqid.prisma');
 
@@ -93,7 +85,6 @@ export async function checkPrismaHealth() {
 
     const latencyMs = Date.now() - start;
 
-    // Warn if health check itself is slow — DB under load
     if (latencyMs > SLOW_QUERY_MS) {
       logger.warn({ type: 'db_health_slow', latencyMs }, `DB health check slow: ${latencyMs}ms`);
     }
@@ -123,8 +114,6 @@ export async function disconnectPrisma() {
 }
 
 // ─── Startup Connection Check ─────────────────────────────────────────────────
-// Eagerly verify DB is reachable at boot — fail fast instead of silent failure.
-// Call this in your app entry point (server.js) after imports.
 
 export async function connectPrisma(retries = 3, delayMs = 2000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -141,7 +130,6 @@ export async function connectPrisma(retries = 3, delayMs = 2000) {
     }
   }
 
-  // All retries exhausted — crash fast
   logger.fatal('DB connection failed after all retries — shutting down');
   process.exit(1);
 }
