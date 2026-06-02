@@ -1,7 +1,10 @@
 // wellness.routes.js
 import { Router } from 'express';
 import * as ctrl from './wellness.controller.js';
+
 import { requireSchoolAuth, requireHRRole } from '#middleware/auth/index.js';
+import { requireSchoolAuth, requireHRRole } from '#middleware/auth/index.js';
+
 
 const router = Router();
 
