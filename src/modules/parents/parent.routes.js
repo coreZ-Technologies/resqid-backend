@@ -1,81 +1,41 @@
-// =============================================================================
-// modules/parents/parent.routes.js — RESQID
-// Mounted at /api/parents
-// =============================================================================
-
+// src/modules/parents/parent.routes.js
 import { Router } from 'express';
-import { validate, validateAll } from '#middleware/validate.middleware.js';
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
-import { authorize } from '#middleware/auth/rbac.middleware.js';
-import { ROLES } from '#shared/constants/roles.js';
-import * as controller from './parent.controller.js';
+import { authorizeMin, ROLES } from '#middleware/auth/authorize.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { sanitizeDeep } from '#middleware/sanitize.middleware.js';
+import { ownSchoolOnly } from '#middleware/restrictionOwnSchool.middleware.js';
 import {
-  parentProfileSchema,
-  updateVisibilitySchema,
-  updateNotificationsSchema,
-  lockCardSchema,
-  registerDeviceTokenSchema,
-  linkCardSchema,
-  setActiveStudentSchema,
-  scanHistorySchema,
-  generateUploadUrlSchema,
-  confirmUploadSchema,
+  createParent,
+  getParent,
+  listParents,
+  updateParent,
+  deleteParent,
+  getParentStats,
+  exportParents,
+} from './parent.controller.js';
+import {
+  createParentSchema,
+  updateParentSchema,
+  listParentsQuerySchema,
+  exportParentsQuerySchema,
 } from './parent.validation.js';
 
 const router = Router();
 
-// All routes require PARENT role
-router.use(authenticate, authorize(ROLES.PARENT));
+// All routes require authentication and at least SCHOOL_ADMIN role
+router.use(authenticate);
+router.use(authorizeMin(ROLES.SCHOOL_ADMIN));
+router.use(ownSchoolOnly);
+router.use(sanitizeDeep);
 
-// Dashboard
-router.get('/me', controller.getMe);
-
-// Profile
-router.patch('/me', validate(parentProfileSchema), controller.updateParentProfile);
-
-// Card visibility per child
-router.patch(
-  '/me/students/:studentId/visibility',
-  validateAll(updateVisibilitySchema),
-  controller.updateVisibility
-);
-
-// Notification preferences
-router.patch(
-  '/me/notifications',
-  validate(updateNotificationsSchema),
-  controller.updateNotifications
-);
-
-// Lock card (emergency)
-router.post('/me/students/:studentId/lock', validateAll(lockCardSchema), controller.lockCard);
-
-// Device token for push
-router.post('/me/device', validate(registerDeviceTokenSchema), controller.registerDeviceToken);
-
-// Add child
-router.post('/me/children', validate(linkCardSchema), controller.linkCard);
-
-// Switch active child
-router.patch('/me/active-child', validate(setActiveStudentSchema), controller.setActiveStudent);
-
-// Scan history per child
-router.get(
-  '/me/students/:studentId/scans',
-  validateAll(scanHistorySchema),
-  controller.getScanHistory
-);
-
-// Photo upload
-router.post(
-  '/me/students/:studentId/photo/upload-url',
-  validate(generateUploadUrlSchema),
-  controller.generatePhotoUploadUrl
-);
-router.post(
-  '/me/students/:studentId/photo/confirm',
-  validate(confirmUploadSchema),
-  controller.confirmPhotoUpload
-);
+// ─── CRUD ─────────────────────────────────────────────────────────────────
+router.post('/', validate(createParentSchema), createParent);
+router.get('/', validate(listParentsQuerySchema, 'query'), listParents);
+router.get('/stats', getParentStats);
+router.get('/export', validate(exportParentsQuerySchema, 'query'), exportParents);
+router.get('/:id', getParent);
+router.put('/:id', validate(updateParentSchema), updateParent);
+router.delete('/:id', deleteParent);
 
 export default router;

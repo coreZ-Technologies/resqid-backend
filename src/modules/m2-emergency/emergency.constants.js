@@ -1,24 +1,24 @@
 // =============================================================================
-// modules/emergency/emergency.constants.js — RESQID
+// modules/m2-emergency/emergency.constants.js — RESQID
 // =============================================================================
 
-export const INCIDENT_TYPES = [
-  'Medical',
-  'Injury',
-  'Behavioral',
-  'Mental Health',
-  'Allergic Reaction',
-  'Asthma Attack',
-  'Accident',
-  'Other',
+export const BLOOD_GROUPS = [
+  'A_POS',
+  'A_NEG',
+  'B_POS',
+  'B_NEG',
+  'O_POS',
+  'O_NEG',
+  'AB_POS',
+  'AB_NEG',
 ];
 
-export const INCIDENT_SEVERITIES = ['Low', 'Medium', 'High', 'Critical'];
+export const VISIBILITY_LEVELS = ['PUBLIC', 'MINIMAL', 'HIDDEN'];
 
-export const INCIDENT_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
-
-export const EMERGENCY_NUMBERS = [
-  { label: 'Ambulance', number: '108' },
-  { label: 'Police', number: '100' },
-  { label: 'Fire', number: '101' },
-];
+export const EMERGENCY_NUMBERS = {
+  POLICE: '100',
+  AMBULANCE: '108',
+  FIRE: '101',
+  WOMEN_HELPLINE: '1091',
+  CHILD_HELPLINE: '1098',
+};

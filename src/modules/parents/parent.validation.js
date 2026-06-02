@@ -1,106 +1,80 @@
-// =============================================================================
-// modules/parents/parent.validation.js — RESQID
-// Zod schemas for parent module endpoints.
-// =============================================================================
-
+// src/modules/parents/parent.validation.js
 import { z } from 'zod';
 
-const cuid = z.string().min(1, 'Invalid ID format');
-const phoneRegex = /^[6-9]\d{9}$/;
+// ─── Reusable helpers ─────────────────────────────────────────────────────
+const phoneRegex = /^\+?[1-9]\d{1,14}$/; // E.164 format
+const relationEnum = ['father', 'mother', 'guardian', 'grandparent', 'other'];
+const channelEnum = ['App', 'SMS', 'Email'];
+const engagementEnum = ['all', 'high', 'medium', 'low'];
+const dateRangeEnum = ['all', 'this_month', 'last_month', 'this_year', 'last_quarter'];
+const sortByEnum = ['name', 'joinedDate', 'engagement', 'notifications'];
+const exportFormatEnum = ['csv', 'xlsx', 'pdf', 'json'];
+const exportFieldsEnum = [
+  'name', 'email', 'phone', 'location', 'children',
+  'attendance', 'engagement', 'joined', 'notifs', 'rfid'
+];
 
-// ─── Profile ──────────────────────────────────────────────────────────────────
-
-export const parentProfileSchema = z.object({
-  body: z.object({
-    name: z.string().min(1).max(100).transform(v => v.trim()),
-    email: z.string().email().toLowerCase().optional(),
-  }),
+// ─── Create parent (matches frontend form) ───────────────────────────────
+export const createParentSchema = z.object({
+  firstName: z.string().min(1).max(50).transform(s => s.trim()),
+  lastName: z.string().min(1).max(50).transform(s => s.trim()),
+  email: z.string().email().transform(s => s.toLowerCase().trim()),
+  phone: z.string().regex(phoneRegex, 'Invalid phone number'),
+  relation: z.enum(relationEnum),
+  address: z.string().max(200).optional().transform(s => s?.trim()),
+  password: z.string().min(8),
+  confirmPassword: z.string().min(8),
+  notifyAttendance: z.boolean().default(true),
+  notifyAbsent: z.boolean().default(true),
+  notifyLate: z.boolean().default(false),
+  notifyEmergency: z.boolean().default(true),
+  weeklyReport: z.boolean().default(false),
+  notifChannel: z.enum(channelEnum).default('App'),
+  childIds: z.array(z.string()).default([]),
+}).refine(data => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ['confirmPassword'],
 });
 
-// ─── Card Visibility ──────────────────────────────────────────────────────────
-
-export const updateVisibilitySchema = z.object({
-  params: z.object({ studentId: cuid }),
-  body: z.object({
-    visibility: z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']),
-  }),
+// ─── Update parent (all fields optional) ──────────────────────────────────
+export const updateParentSchema = z.object({
+  firstName: z.string().min(1).max(50).optional().transform(s => s?.trim()),
+  lastName: z.string().min(1).max(50).optional().transform(s => s?.trim()),
+  email: z.string().email().optional().transform(s => s?.toLowerCase().trim()),
+  phone: z.string().regex(phoneRegex).optional(),
+  relation: z.enum(relationEnum).optional(),
+  address: z.string().max(200).optional().transform(s => s?.trim()),
+  notifyAttendance: z.boolean().optional(),
+  notifyAbsent: z.boolean().optional(),
+  notifyLate: z.boolean().optional(),
+  notifyEmergency: z.boolean().optional(),
+  weeklyReport: z.boolean().optional(),
+  notifChannel: z.enum(channelEnum).optional(),
+  childIds: z.array(z.string()).optional(),
+  isActive: z.boolean().optional(),
+}).refine(data => Object.keys(data).length > 0, {
+  message: 'At least one field must be updated',
 });
 
-// ─── Notification Preferences ─────────────────────────────────────────────────
-
-export const updateNotificationsSchema = z.object({
-  body: z.object({
-    pushEnabled: z.boolean().optional(),
-    smsEnabled: z.boolean().optional(),
-    emailEnabled: z.boolean().optional(),
-    onScan: z.boolean().optional(),
-    onAttendance: z.boolean().optional(),
-    onEmergency: z.boolean().optional(),
-    onAnnouncement: z.boolean().optional(),
-  }),
+// ─── List query params (filters, pagination, sorting) ────────────────────
+export const listParentsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().optional().transform(s => s?.trim()),
+  engagement: z.enum(engagementEnum).default('all'),
+  dateRange: z.enum(dateRangeEnum).default('all'),
+  sortBy: z.enum(sortByEnum).default('name'),
+  sortOrder: z.enum(['asc', 'desc']).default('asc'),
 });
 
-// ─── Lock Card ────────────────────────────────────────────────────────────────
-
-export const lockCardSchema = z.object({
-  params: z.object({ studentId: cuid }),
-  body: z.object({
-    confirmation: z.literal('LOCK'),
-  }),
+// ─── Export query params (matches exportpage.jsx) ─────────────────────────
+export const exportParentsQuerySchema = z.object({
+  format: z.enum(exportFormatEnum).default('csv'),
+  dateRange: z.enum(dateRangeEnum).default('all'),
+  engagement: z.enum(engagementEnum).default('all'),
+  fields: z.array(z.enum(exportFieldsEnum)).default([]),
+  emailDelivery: z.coerce.boolean().default(false),
 });
 
-// ─── Device Token ─────────────────────────────────────────────────────────────
-
-export const registerDeviceTokenSchema = z.object({
-  body: z.object({
-    token: z.string().min(10, 'Token is required'),
-    platform: z.enum(['IOS', 'ANDROID', 'WEB']),
-    deviceName: z.string().max(100).optional(),
-    deviceModel: z.string().max(100).optional(),
-    osVersion: z.string().max(50).optional(),
-  }),
-});
-
-// ─── Link Card (Add Child) ───────────────────────────────────────────────────
-
-export const linkCardSchema = z.object({
-  body: z.object({
-    cardNumber: z.string().trim().min(5).max(20)
-      .transform(v => v.toUpperCase().replace(/[^A-Z0-9-]/g, '')),
-  }),
-});
-
-// ─── Set Active Student ──────────────────────────────────────────────────────
-
-export const setActiveStudentSchema = z.object({
-  body: z.object({
-    studentId: cuid,
-  }),
-});
-
-// ─── Scan History ────────────────────────────────────────────────────────────
-
-export const scanHistorySchema = z.object({
-  params: z.object({ studentId: cuid }),
-  query: z.object({
-    page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(50).default(20),
-    filter: z.enum(['all', 'emergency', 'success']).default('all'),
-  }),
-});
-
-// ─── Photo Upload ────────────────────────────────────────────────────────────
-
-export const generateUploadUrlSchema = z.object({
-  body: z.object({
-    contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
-    fileSize: z.number().int().positive().max(5 * 1024 * 1024, 'Max 5MB'),
-  }),
-});
-
-export const confirmUploadSchema = z.object({
-  body: z.object({
-    key: z.string().min(10),
-    nonce: z.string().min(10),
-  }),
-});
+// ─── Stats endpoint (no params) ──────────────────────────────────────────
+export const statsQuerySchema = z.object({}).optional();

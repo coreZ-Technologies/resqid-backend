@@ -1,67 +1,95 @@
-// =============================================================================
-// modules/m4-communication/communication.controller.js — RESQID
-// Thin HTTP layer.
-// =============================================================================
-
+// src/modules/m4-communication/communication.controller.js
 import { ApiResponse } from '#shared/response/ApiResponse.js';
-import * as service from './communication.service.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { CommunicationService } from './communication.service.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ANNOUNCEMENTS (Teacher/Admin)
-// ═══════════════════════════════════════════════════════════════════════════════
+const service = new CommunicationService();
 
-export const createAnnouncement = async (req, res) => {
-  const result = await service.createAnnouncement({
-    schoolId: req.schoolId,
-    authorId: req.user.id,
-    ...req.body,
-  });
-  return ApiResponse.created(res, result, 'Announcement queued for delivery');
-};
+// ─── Announcements ────────────────────────────────────────────────
+export const createAnnouncement = asyncHandler(async (req, res) => {
+  const data = req.body;
+  const schoolId = req.user.schoolId;
+  const authorId = req.user.id;
+  const announcement = await service.createAnnouncement(data, schoolId, authorId);
+  return ApiResponse.created(res, announcement, 'Announcement created and queued for delivery');
+});
 
-export const listAnnouncements = async (req, res) => {
-  const { page, limit } = req.query;
-  const result = await service.listAnnouncements(req.schoolId, page, limit);
-  return ApiResponse.paginated(res, result.announcements, {
-    page: result.page,
-    limit: result.limit,
-    total: result.total,
-  });
-};
+export const updateAnnouncement = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const data = req.body;
+  const schoolId = req.user.schoolId;
+  const updated = await service.updateAnnouncement(id, data, schoolId);
+  return ApiResponse.ok(res, updated, 'Announcement updated');
+});
 
-export const getAnnouncement = async (req, res) => {
-  const announcement = await service.getAnnouncement(req.params.id, req.schoolId);
-  return ApiResponse.ok(res, announcement);
-};
+export const deleteAnnouncement = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const schoolId = req.user.schoolId;
+  await service.deleteAnnouncement(id, schoolId);
+  return ApiResponse.ok(res, null, 'Announcement archived');
+});
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DIRECT MESSAGES (Teacher/Admin → Parent)
-// ═══════════════════════════════════════════════════════════════════════════════
+export const listAnnouncements = asyncHandler(async (req, res) => {
+  const query = req.query;
+  const schoolId = req.user.schoolId;
+  const result = await service.listAnnouncements(query, schoolId);
+  return ApiResponse.paginated(res, result.items, result.meta);
+});
 
-export const sendMessage = async (req, res) => {
-  const message = await service.sendMessage({
-    schoolId: req.schoolId,
-    senderId: req.user.id,
-    ...req.body,
-  });
+export const getAnnouncementStats = asyncHandler(async (req, res) => {
+  const schoolId = req.user.schoolId;
+  const stats = await service.getAnnouncementStats(schoolId);
+  return ApiResponse.ok(res, stats);
+});
+
+// ─── Delivery Logs ────────────────────────────────────────────────
+export const getDeliveryLogs = asyncHandler(async (req, res) => {
+  const query = req.query;
+  const schoolId = req.user.schoolId;
+  const result = await service.getDeliveryLogs(query, schoolId);
+  return ApiResponse.paginated(res, result.items, result.meta);
+});
+
+export const getDeliveryStats = asyncHandler(async (req, res) => {
+  const schoolId = req.user.schoolId;
+  const stats = await service.getDeliveryStats(schoolId);
+  return ApiResponse.ok(res, stats);
+});
+
+export const retryDelivery = asyncHandler(async (req, res) => {
+  const { deliveryId } = req.params;
+  const schoolId = req.user.schoolId;
+  const result = await service.retryDelivery(deliveryId, schoolId);
+  return ApiResponse.ok(res, result, 'Retry queued');
+});
+
+// ─── Messages ─────────────────────────────────────────────────────
+export const sendMessage = asyncHandler(async (req, res) => {
+  const data = req.body;
+  const schoolId = req.user.schoolId;
+  const senderId = req.user.id;
+  const message = await service.sendMessage(data, schoolId, senderId);
   return ApiResponse.created(res, message, 'Message sent');
-};
+});
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MESSAGES (Parent view)
-// ═══════════════════════════════════════════════════════════════════════════════
+export const getMessages = asyncHandler(async (req, res) => {
+  const query = req.query;
+  const schoolId = req.user.schoolId;
+  const result = await service.getMessages(query, schoolId);
+  return ApiResponse.paginated(res, result.items, result.meta);
+});
 
-export const listMessages = async (req, res) => {
-  const { page, limit, studentId } = req.query;
-  const result = await service.listMessages(req.user.id, page, limit, studentId);
-  return ApiResponse.paginated(res, result.messages, {
-    page: result.page,
-    limit: result.limit,
-    total: result.total,
-  });
-};
+export const getThreads = asyncHandler(async (req, res) => {
+  const query = req.query;
+  const schoolId = req.user.schoolId;
+  const result = await service.getThreads(schoolId, query);
+  return ApiResponse.paginated(res, result.threads, result.meta);
+});
 
-export const markRead = async (req, res) => {
-  await service.markMessageRead(req.params.id, req.user.id);
-  return ApiResponse.ok(res, null, 'Marked as read');
-};
+// Thread-level mark as read (replaces single message version)
+export const markThreadRead = asyncHandler(async (req, res) => {
+  const { parentId } = req.params;
+  const schoolId = req.user.schoolId;
+  const result = await service.markThreadRead(parentId, schoolId);
+  return ApiResponse.ok(res, result, 'Thread marked as read');
+});

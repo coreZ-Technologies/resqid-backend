@@ -1,49 +1,51 @@
-// =============================================================================
-// modules/m4-communication/communication.validation.js — RESQID
-// Zod schemas for communication endpoints.
-// =============================================================================
+// src/modules/m4-communication/communication.routes.js
+import { Router } from 'express';
+import { authenticate } from '#middleware/auth/authenticate.middleware.js';
+import { authorize, ROLES } from '#middleware/auth/authorize.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { rateLimit } from 'express-rate-limit';
+import {
+  createAnnouncementSchema,
+  updateAnnouncementSchema,
+  listAnnouncementsQuerySchema,
+  sendMessageSchema,
+  listMessagesQuerySchema,
+  deliveryLogQuerySchema,
+  retryDeliverySchema,
+  markThreadReadSchema,
+} from './communication.validation.js';
+import * as controller from './communication.controller.js';
 
-import { z } from 'zod';
+const router = Router();
 
-const cuid = z.string().min(1, 'Invalid ID format');
+// All routes require authentication and school admin role
+router.use(authenticate);
+router.use(authorize(ROLES.SCHOOL_ADMIN));
 
-// ─── Announcement ─────────────────────────────────────────────────────────────
-
-export const createAnnouncementSchema = z.object({
-  body: z.object({
-    title: z.string().min(1, 'Title is required').max(200),
-    body: z.string().min(1, 'Body is required').max(2000),
-    targetAll: z.boolean().default(true),
-    targetGrades: z.array(z.string()).default([]),
-    channels: z.array(z.enum(['PUSH', 'SMS', 'EMAIL'])).min(1, 'At least one channel required'),
-  }),
+// Rate limiting for sending (prevent spam)
+const sendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
-export const listAnnouncementsSchema = z.object({
-  query: z.object({
-    page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(50).default(20),
-  }),
-});
+// ─── Announcements ────────────────────────────────────────────────
+router.get('/announcements', validate(listAnnouncementsQuerySchema, 'query'), controller.listAnnouncements);
+router.get('/announcements/stats', controller.getAnnouncementStats);
+router.post('/announcements', sendLimiter, validate(createAnnouncementSchema), controller.createAnnouncement);
+router.put('/announcements/:id', validate(updateAnnouncementSchema), controller.updateAnnouncement);
+router.delete('/announcements/:id', controller.deleteAnnouncement);
 
-export const getAnnouncementSchema = z.object({
-  params: z.object({ id: cuid }),
-});
+// ─── Delivery Logs ────────────────────────────────────────────────
+router.get('/delivery-logs', validate(deliveryLogQuerySchema, 'query'), controller.getDeliveryLogs);
+router.get('/delivery-logs/stats', controller.getDeliveryStats);
+router.post('/delivery-logs/:deliveryId/retry', validate(retryDeliverySchema, 'params'), controller.retryDelivery);
 
-// ─── Direct Message ───────────────────────────────────────────────────────────
+// ─── Messages ─────────────────────────────────────────────────────
+router.get('/messages/threads', validate(listMessagesQuerySchema, 'query'), controller.getThreads);
+router.get('/messages', validate(listMessagesQuerySchema, 'query'), controller.getMessages);
+router.post('/messages', sendLimiter, validate(sendMessageSchema), controller.sendMessage);
+router.patch('/messages/threads/:parentId/read', validate(markThreadReadSchema, 'params'), controller.markThreadRead);
 
-export const sendMessageSchema = z.object({
-  body: z.object({
-    parentId: cuid,
-    studentId: cuid,
-    body: z.string().min(1, 'Message body is required').max(1000),
-  }),
-});
-
-export const listMessagesSchema = z.object({
-  query: z.object({
-    page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(50).default(20),
-    studentId: cuid.optional(),
-  }),
-});
+export default router;

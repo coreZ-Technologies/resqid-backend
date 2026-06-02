@@ -1,63 +1,51 @@
-// =============================================================================
-// modules/m4-communication/communication.routes.js — RESQID
-// Mounted at /api/communication
-// =============================================================================
-
+// src/modules/m4-communication/communication.routes.js
 import { Router } from 'express';
-import { validate, validateAll } from '#middleware/validate.middleware.js';
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
-import { authorize } from '#middleware/auth/rbac.middleware.js';
-import { ROLES } from '#shared/constants/roles.js';
-import * as controller from './communication.controller.js';
+import { authorize, ROLES } from '#middleware/auth/authorize.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { rateLimit } from 'express-rate-limit';
 import {
   createAnnouncementSchema,
-  listAnnouncementsSchema,
-  getAnnouncementSchema,
+  updateAnnouncementSchema,
+  listAnnouncementsQuerySchema,
   sendMessageSchema,
-  listMessagesSchema,
+  listMessagesQuerySchema,
+  deliveryLogQuerySchema,
+  retryDeliverySchema,
+  markThreadReadSchema,        // changed from markReadSchema
 } from './communication.validation.js';
+import * as controller from './communication.controller.js';
 
 const router = Router();
 
-const STAFF = [ROLES.TEACHER, ROLES.SCHOOL_ADMIN, ROLES.SUPER_ADMIN];
-const PARENT = [ROLES.PARENT];
+// All routes require authentication and school admin role
+router.use(authenticate);
+router.use(authorize(ROLES.SCHOOL_ADMIN));
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ANNOUNCEMENTS — Teacher/Admin only
-// ═══════════════════════════════════════════════════════════════════════════════
+// Rate limiting for sending (prevent spam)
+const sendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-router.post(
-  '/announcements',
-  authenticate,
-  authorize(STAFF),
-  validate(createAnnouncementSchema),
-  controller.createAnnouncement
-);
+// ─── Announcements ────────────────────────────────────────────────
+router.get('/announcements', validate(listAnnouncementsQuerySchema, 'query'), controller.listAnnouncements);
+router.get('/announcements/stats', controller.getAnnouncementStats);
+router.post('/announcements', sendLimiter, validate(createAnnouncementSchema), controller.createAnnouncement);
+router.put('/announcements/:id', validate(updateAnnouncementSchema), controller.updateAnnouncement);
+router.delete('/announcements/:id', controller.deleteAnnouncement);
 
-router.get('/announcements', authenticate, authorize(STAFF), controller.listAnnouncements);
+// ─── Delivery Logs ────────────────────────────────────────────────
+router.get('/delivery-logs', validate(deliveryLogQuerySchema, 'query'), controller.getDeliveryLogs);
+router.get('/delivery-logs/stats', controller.getDeliveryStats);          // NEW
+router.post('/delivery-logs/:deliveryId/retry', validate(retryDeliverySchema, 'params'), controller.retryDelivery);
 
-router.get(
-  '/announcements/:id',
-  authenticate,
-  authorize(STAFF),
-  validateAll(getAnnouncementSchema),
-  controller.getAnnouncement
-);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DIRECT MESSAGES — Teacher/Admin sends, Parent reads
-// ═══════════════════════════════════════════════════════════════════════════════
-
-router.post(
-  '/messages',
-  authenticate,
-  authorize(STAFF),
-  validate(sendMessageSchema),
-  controller.sendMessage
-);
-
-router.get('/messages', authenticate, authorize(PARENT), controller.listMessages);
-
-router.patch('/messages/:id/read', authenticate, authorize(PARENT), controller.markRead);
+// ─── Messages ─────────────────────────────────────────────────────
+router.get('/messages/threads', validate(listMessagesQuerySchema, 'query'), controller.getThreads);
+router.get('/messages', validate(listMessagesQuerySchema, 'query'), controller.getMessages);
+router.post('/messages', sendLimiter, validate(sendMessageSchema), controller.sendMessage);
+router.patch('/messages/threads/:parentId/read', validate(markThreadReadSchema, 'params'), controller.markThreadRead);  // changed
 
 export default router;

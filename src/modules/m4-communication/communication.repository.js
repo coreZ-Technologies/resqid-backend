@@ -1,182 +1,164 @@
-// =============================================================================
-// modules/m4-communication/communication.repository.js — RESQID
-// All DB queries — no business logic.
-// =============================================================================
-
+// src/modules/m4-communication/communication.repository.js
 import { prisma } from '#config/prisma.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ANNOUNCEMENTS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createAnnouncement = ({
-  schoolId,
-  authorId,
-  title,
-  body,
-  targetAll,
-  targetGrades,
-  channels,
-}) =>
-  prisma.announcement.create({
-    data: { schoolId, authorId, title, body, targetAll, targetGrades, channels },
-    select: {
-      id: true,
-      title: true,
-      targetAll: true,
-      targetGrades: true,
-      channels: true,
-      createdAt: true,
-    },
-  });
-
-export const listAnnouncements = (schoolId, page = 1, limit = 20) => {
-  const where = { schoolId };
-  return Promise.all([
-    prisma.announcement.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        targetAll: true,
-        targetGrades: true,
-        channels: true,
-        sentAt: true,
-        createdAt: true,
-        author: { select: { id: true, name: true } },
-      },
-    }),
-    prisma.announcement.count({ where }),
-  ]);
-};
-
-export const findAnnouncement = (id, schoolId) =>
-  prisma.announcement.findFirst({
-    where: { id, schoolId },
-    select: {
-      id: true,
-      title: true,
-      body: true,
-      targetAll: true,
-      targetGrades: true,
-      channels: true,
-      sentAt: true,
-      createdAt: true,
-      author: { select: { id: true, name: true } },
-    },
-  });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// RECIPIENT LOOKUP (for worker)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const findRecipients = async (schoolId, targetGrades, targetAll) => {
-  const where = {
-    schoolId,
-    isActive: true,
-  };
-
-  if (!targetAll && targetGrades.length > 0) {
-    where.grade = { in: targetGrades };
+export class CommunicationRepository {
+  // ─── Announcements ──────────────────────────────────────────────
+  async createAnnouncement(data) {
+    return prisma.announcement.create({ data });
   }
 
-  const students = await prisma.student.findMany({
-    where,
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      grade: true,
-      section: true,
-      parentLinks: {
-        select: {
-          parent: {
-            select: {
-              id: true,
-              phone: true,
-              email: true,
-              notificationPref: {
-                select: {
-                  pushEnabled: true,
-                  smsEnabled: true,
-                  emailEnabled: true,
-                  onAnnouncement: true,
-                },
-              },
-              devices: {
-                where: { isActive: true, expoPushToken: { not: null } },
-                select: { expoPushToken: true },
-              },
-            },
-          },
+  async updateAnnouncement(id, data) {
+    return prisma.announcement.update({ where: { id }, data });
+  }
+
+  async deleteAnnouncement(id) {
+    return prisma.announcement.update({ where: { id }, data: { isArchived: true } });
+  }
+
+  async findAnnouncementById(id, schoolId) {
+    return prisma.announcement.findFirst({ where: { id, schoolId } });
+  }
+
+  async listAnnouncements(where, skip, take, orderBy = { createdAt: 'desc' }) {
+    const [items, total] = await Promise.all([
+      prisma.announcement.findMany({ where, skip, take, orderBy }),
+      prisma.announcement.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  // ─── Announcement Deliveries ────────────────────────────────────
+  async createDelivery(data) {
+    return prisma.announcementDelivery.create({ data });
+  }
+
+  async updateDelivery(id, data) {
+    return prisma.announcementDelivery.update({ where: { id }, data });
+  }
+
+  async findDeliveryById(id) {
+    return prisma.announcementDelivery.findUnique({
+      where: { id },
+      include: { announcement: true, parent: true },
+    });
+  }
+
+  async listDeliveries(where, skip, take) {
+    const [items, total] = await Promise.all([
+      prisma.announcementDelivery.findMany({
+        where,
+        skip,
+        take,
+        include: {
+          announcement: { select: { title: true, type: true, category: true } },
+          parent: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }
         },
-      },
-    },
-  });
-
-  // Flatten: each parent gets unique entry with their children info
-  const parentMap = new Map();
-  for (const student of students) {
-    for (const link of student.parentLinks) {
-      const parent = link.parent;
-      if (!parentMap.has(parent.id)) {
-        parentMap.set(parent.id, {
-          parentId: parent.id,
-          phone: parent.phone,
-          email: parent.email,
-          prefs: parent.notificationPref || {},
-          expoTokens: parent.devices.map((d) => d.expoPushToken),
-          students: [],
-        });
-      }
-      parentMap.get(parent.id).students.push({
-        id: student.id,
-        name: `${student.firstName} ${student.lastName}`.trim(),
-        grade: student.grade,
-        section: student.section,
-      });
-    }
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.announcementDelivery.count({ where }),
+    ]);
+    return { items, total };
   }
 
-  return Array.from(parentMap.values());
-};
+  // ─── Messages ───────────────────────────────────────────────────
+  async createMessage(data) {
+    return prisma.message.create({ data });
+  }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DIRECT MESSAGES
-// ═══════════════════════════════════════════════════════════════════════════════
+  async findMessageById(id, schoolId) {
+    return prisma.message.findFirst({ where: { id, schoolId } });
+  }
 
-export const createMessage = ({ schoolId, senderId, parentId, studentId, body }) =>
-  prisma.message.create({
-    data: { schoolId, senderId, parentId, studentId, body },
-    select: { id: true, parentId: true, studentId: true, body: true, createdAt: true },
-  });
+  async listMessages(where, skip, take) {
+    const [items, total] = await Promise.all([
+      prisma.message.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: { parent: true, student: true },
+      }),
+      prisma.message.count({ where }),
+    ]);
+    return { items, total };
+  }
 
-export const listMessages = (parentId, page = 1, limit = 20, studentId) => {
-  const where = { parentId, ...(studentId && { studentId }) };
-  return Promise.all([
-    prisma.message.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        body: true,
-        isRead: true,
-        createdAt: true,
-        student: { select: { id: true, firstName: true, lastName: true } },
-        sender: { select: { id: true, name: true } },
+  // Mark a single message as read (used internally)
+  async markMessageRead(messageId, parentId) {
+    return prisma.message.updateMany({
+      where: { id: messageId, parentId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
+  }
+
+  // Mark all messages in a thread (from a specific parent) as read
+  async markThreadRead(parentId, schoolId) {
+    return prisma.message.updateMany({
+      where: {
+        schoolId,
+        parentId,
+        direction: 'PARENT_TO_SCHOOL',
+        isRead: false
       },
-    }),
-    prisma.message.count({ where }),
-  ]);
-};
+      data: { isRead: true, readAt: new Date() }
+    });
+  }
 
-export const markMessageRead = (id, parentId) =>
-  prisma.message.updateMany({
-    where: { id, parentId, isRead: false },
-    data: { isRead: true, readAt: new Date() },
-  });
+  // ─── Threads (group messages by parent) ─────────────────────────
+  async getThreads(schoolId, skip, take, search) {
+    // Simplified: group by parentId, get last message
+    const threads = await prisma.message.groupBy({
+      by: ['parentId'],
+      where: { schoolId },
+      _count: { id: true },
+      _max: { createdAt: true, id: true },
+      orderBy: { _max: { createdAt: 'desc' } },
+      skip,
+      take,
+    });
+    
+    const parentIds = threads.map(t => t.parentId).filter(Boolean);
+    const parents = await prisma.parentUser.findMany({
+      where: { id: { in: parentIds } },
+      select: { id: true, firstName: true, lastName: true, phone: true },
+    });
+    
+    const unreadCounts = await prisma.message.groupBy({
+      by: ['parentId'],
+      where: { schoolId, isRead: false, direction: 'PARENT_TO_SCHOOL' },
+      _count: { id: true },
+    });
+    const unreadMap = Object.fromEntries(unreadCounts.map(u => [u.parentId, u._count.id]));
+    
+    return threads.map(t => ({
+      parentId: t.parentId,
+      parent: parents.find(p => p.id === t.parentId),
+      lastMessageAt: t._max.createdAt,
+      lastMessageId: t._max.id,
+      totalMessages: t._count.id,
+      unreadCount: unreadMap[t.parentId] || 0,
+    }));
+  }
+
+  // ─── Stats ──────────────────────────────────────────────────────
+  async getAnnouncementStats(schoolId) {
+    const [total, published, pinned, totalViews] = await Promise.all([
+      prisma.announcement.count({ where: { schoolId, isArchived: false } }),
+      prisma.announcement.count({ where: { schoolId, status: 'SENT', isArchived: false } }),
+      prisma.announcement.count({ where: { schoolId, pinned: true, isArchived: false } }),
+      prisma.announcement.aggregate({ where: { schoolId, isArchived: false }, _sum: { views: true } }),
+    ]);
+    return { total, published, pinned, totalViews: totalViews._sum.views || 0 };
+  }
+
+  async getDeliveryStats(schoolId) {
+    const where = { announcement: { schoolId, isArchived: false } };
+    const [total, delivered, failed] = await Promise.all([
+      prisma.announcementDelivery.count({ where }),
+      prisma.announcementDelivery.count({ where: { ...where, status: 'DELIVERED' } }),
+      prisma.announcementDelivery.count({ where: { ...where, status: 'FAILED' } })
+    ]);
+    const rate = total ? Math.round((delivered / total) * 100) : 0;
+    return { total, delivered, failed, rate };
+  }
+}
