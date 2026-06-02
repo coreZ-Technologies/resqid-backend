@@ -11,6 +11,10 @@ import { QUEUE_NAMES } from './queue.names.js';
 import { logger } from '#config/logger.js';
 import { ENV } from '#config/env.js';
 
+// =============================================================================
+// QUEUE FACTORY
+// =============================================================================
+
 const makeQueue = (name, customOptions = {}) => {
   const connection = getQueueConnection();
 
@@ -38,7 +42,7 @@ const makeQueue = (name, customOptions = {}) => {
 };
 
 // =============================================================================
-// RAILWAY QUEUES — always on
+// EMERGENCY QUEUE
 // =============================================================================
 
 export const emergencyAlertsQueue = makeQueue(QUEUE_NAMES.EMERGENCY_ALERTS, {
@@ -51,6 +55,10 @@ export const emergencyAlertsQueue = makeQueue(QUEUE_NAMES.EMERGENCY_ALERTS, {
   },
 });
 
+// =============================================================================
+// NOTIFICATION QUEUE
+// =============================================================================
+
 export const notificationsQueue = makeQueue(QUEUE_NAMES.NOTIFICATIONS, {
   defaultJobOptions: {
     attempts: 3,
@@ -60,6 +68,10 @@ export const notificationsQueue = makeQueue(QUEUE_NAMES.NOTIFICATIONS, {
     removeOnFail: { age: 604800, count: 5000 },
   },
 });
+
+// =============================================================================
+// ATTENDANCE QUEUE
+// =============================================================================
 
 export const attendanceBulkQueue = makeQueue(QUEUE_NAMES.ATTENDANCE_BULK, {
   defaultJobOptions: {
@@ -71,42 +83,72 @@ export const attendanceBulkQueue = makeQueue(QUEUE_NAMES.ATTENDANCE_BULK, {
   },
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TIMETABLE QUEUES — NEW
-// ═══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
+// TIMETABLE QUEUES
+// =============================================================================
 
+/** Generate — long running, no retry */
 export const generateQueue = makeQueue(QUEUE_NAMES.TIMETABLE_GENERATE, {
   defaultJobOptions: {
-    attempts: 2,
+    attempts: 1,
     backoff: { type: 'exponential', delay: 5000 },
+    timeout: 300000,
     priority: 5,
     removeOnComplete: { age: 86400, count: 50 },
-    removeOnFail: { age: 604800, count: 100 },
+    removeOnFail: { age: 604800, count: 200 },
   },
 });
 
-export const substituteQueue = makeQueue(QUEUE_NAMES.TIMETABLE_SUBSTITUTE, {
+/** Crisis/Substitute — highest priority */
+export const crisisQueue = makeQueue(QUEUE_NAMES.CRISIS_HANDLING, {
   defaultJobOptions: {
     attempts: 2,
     backoff: { type: 'fixed', delay: 5000 },
-    priority: 1, // Highest — must run before school starts
+    timeout: 120000,
+    priority: 1,
     removeOnComplete: { age: 86400, count: 500 },
     removeOnFail: { age: 604800, count: 1000 },
   },
 });
 
+/** Validate — single attempt */
+export const validateQueue = makeQueue(QUEUE_NAMES.TIMETABLE_VALIDATE, {
+  defaultJobOptions: {
+    attempts: 1,
+    backoff: { type: 'fixed', delay: 3000 },
+    timeout: 60000,
+    priority: 4,
+    removeOnComplete: { age: 86400, count: 100 },
+    removeOnFail: { age: 604800, count: 500 },
+  },
+});
+
+/** Swap/Reassign */
 export const swapQueue = makeQueue(QUEUE_NAMES.TIMETABLE_SWAP, {
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 1000 },
+    timeout: 30000,
     priority: 3,
     removeOnComplete: { age: 86400, count: 100 },
     removeOnFail: { age: 604800, count: 500 },
   },
 });
 
+/** Bulk upload processing */
+export const bulkUploadQueue = makeQueue(QUEUE_NAMES.TIMETABLE_BULK_UPLOAD, {
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: 'exponential', delay: 10000 },
+    timeout: 300000,
+    priority: 8,
+    removeOnComplete: { age: 86400, count: 50 },
+    removeOnFail: { age: 604800, count: 200 },
+  },
+});
+
 // =============================================================================
-// LOCAL-ONLY QUEUE — npm run worker:pipeline
+// PIPELINE QUEUE (Local only)
 // =============================================================================
 
 export const pipelineJobsQueue =
@@ -115,6 +157,7 @@ export const pipelineJobsQueue =
         defaultJobOptions: {
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
+          timeout: 600000,
           priority: 10,
           removeOnComplete: { age: 86400, count: 500 },
           removeOnFail: { age: 604800, count: 2000 },
@@ -131,10 +174,16 @@ export const allQueues = {
   [QUEUE_NAMES.NOTIFICATIONS]: notificationsQueue,
   [QUEUE_NAMES.ATTENDANCE_BULK]: attendanceBulkQueue,
   [QUEUE_NAMES.TIMETABLE_GENERATE]: generateQueue,
-  [QUEUE_NAMES.TIMETABLE_SUBSTITUTE]: substituteQueue,
+  [QUEUE_NAMES.CRISIS_HANDLING]: crisisQueue,
+  [QUEUE_NAMES.TIMETABLE_VALIDATE]: validateQueue,
   [QUEUE_NAMES.TIMETABLE_SWAP]: swapQueue,
+  [QUEUE_NAMES.TIMETABLE_BULK_UPLOAD]: bulkUploadQueue,
   ...(pipelineJobsQueue ? { [QUEUE_NAMES.PIPELINE_JOBS]: pipelineJobsQueue } : {}),
 };
+
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
 
 export const getQueueByName = (name) => {
   const queue = allQueues[name];
@@ -152,14 +201,70 @@ export const closeAllQueues = async () => {
 export const getAllQueueMetrics = async () => {
   const metrics = {};
   for (const [name, queue] of Object.entries(allQueues)) {
-    const [waiting, active, completed, failed, delayed] = await Promise.all([
-      queue.getWaitingCount(),
-      queue.getActiveCount(),
-      queue.getCompletedCount(),
-      queue.getFailedCount(),
-      queue.getDelayedCount(),
-    ]);
-    metrics[name] = { waiting, active, completed, failed, delayed };
+    try {
+      const [waiting, active, completed, failed, delayed] = await Promise.all([
+        queue.getWaitingCount(),
+        queue.getActiveCount(),
+        queue.getCompletedCount(),
+        queue.getFailedCount(),
+        queue.getDelayedCount(),
+      ]);
+      metrics[name] = { waiting, active, completed, failed, delayed };
+    } catch (err) {
+      metrics[name] = { error: err.message };
+    }
   }
   return metrics;
+};
+
+// =============================================================================
+// ENQUEUE HELPERS
+// =============================================================================
+
+export const enqueueGenerate = async (data) => {
+  const { jobId, templateId, schoolId, opts = {} } = data;
+  return generateQueue.add(
+    QUEUE_NAMES.TIMETABLE_GENERATE,
+    { templateId, schoolId, opts },
+    {
+      jobId: jobId || `generate-${schoolId}-${Date.now()}`,
+      priority: opts.priority || 5,
+    }
+  );
+};
+
+export const enqueueCrisis = async (data) => {
+  const { jobId, schoolId, type, payload, crisisEventId } = data;
+  return crisisQueue.add(
+    QUEUE_NAMES.CRISIS_HANDLING,
+    { schoolId, type, payload, crisisEventId },
+    {
+      jobId: jobId || `crisis-${schoolId}-${Date.now()}`,
+      priority: 1,
+    }
+  );
+};
+
+export const enqueueValidate = async (data) => {
+  const { jobId, timetableId, schoolId } = data;
+  return validateQueue.add(
+    QUEUE_NAMES.TIMETABLE_VALIDATE,
+    { timetableId, schoolId },
+    {
+      jobId: jobId || `validate-${timetableId}-${Date.now()}`,
+      priority: 4,
+    }
+  );
+};
+
+export const enqueueBulkUpload = async (data) => {
+  const { jobId, schoolId, uploadType, filePath } = data;
+  return bulkUploadQueue.add(
+    QUEUE_NAMES.TIMETABLE_BULK_UPLOAD,
+    { schoolId, uploadType, filePath },
+    {
+      jobId: jobId || `bulk-upload-${schoolId}-${Date.now()}`,
+      priority: 8,
+    }
+  );
 };

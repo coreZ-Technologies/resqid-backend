@@ -1,47 +1,71 @@
-// =============================================================================
-// modules/m1-timetable/report/report.controller.js — RESQID
-// =============================================================================
+/**
+ * Report controller — thin layer.
+ */
 
-import { ApiResponse } from '#shared/response/ApiResponse.js';
-import { asyncHandler } from '#shared/response/asyncHandler.js';
 import * as reportService from './report.service.js';
+import {
+  timetableIdParamsSchema,
+  reportQuerySchema,
+  improvementQuerySchema,
+} from './report.validation.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
 
 /**
- * GET /api/timetable/report/substitution
+ * GET /reports/:timetableId/teachers
  */
-export const getSubstitutionRegister = asyncHandler(async (req, res) => {
-  const { from, to, teacherId, grade } = req.query;
-  const data = await reportService.getSubstitutionRegister(req.schoolId, {
-    from,
-    to,
-    teacherId,
-    grade,
-  });
-  return ApiResponse.ok(res, data);
+export const teachers = asyncHandler(async (req, res) => {
+  const { timetableId } = timetableIdParamsSchema.parse(req.params);
+  const data = await reportService.teacherReport(timetableId, req.schoolId);
+  res.json({ success: true, data, count: data.length });
 });
 
 /**
- * GET /api/timetable/report/substitution/weekly
+ * GET /reports/:timetableId/classes
  */
-export const getWeeklyAnalysis = asyncHandler(async (req, res) => {
-  const { weekStart } = req.query;
-  const data = await reportService.getWeeklyAnalysis(req.schoolId, weekStart);
-  return ApiResponse.ok(res, data);
+export const classes = asyncHandler(async (req, res) => {
+  const { timetableId } = timetableIdParamsSchema.parse(req.params);
+  const data = await reportService.classReport(timetableId, req.schoolId);
+  res.json({ success: true, data, count: data.length });
 });
 
 /**
- * GET /api/timetable/report/compliance
+ * GET /reports/:timetableId/rooms
  */
-export const getComplianceReport = asyncHandler(async (req, res) => {
-  const { weekStart } = req.query;
-  const data = await reportService.getComplianceReport(req.schoolId, weekStart);
-  return ApiResponse.ok(res, data);
+export const rooms = asyncHandler(async (req, res) => {
+  const { timetableId } = timetableIdParamsSchema.parse(req.params);
+  const data = await reportService.roomUtilisationReport(
+    timetableId,
+    req.schoolId,
+    req.schoolConfig
+  );
+  res.json({ success: true, data, count: data.length });
 });
 
 /**
- * GET /api/timetable/report/workload
+ * GET /reports/:timetableId/validation
  */
-export const getWorkloadReport = asyncHandler(async (req, res) => {
-  const data = await reportService.getWorkloadReport(req.schoolId);
-  return ApiResponse.ok(res, data);
+export const validation = asyncHandler(async (req, res) => {
+  const { timetableId } = timetableIdParamsSchema.parse(req.params);
+  const data = await reportService.validationReport(timetableId, req.schoolId);
+  res.json({ success: true, data });
+});
+
+/**
+ * GET /reports/:timetableId/improvements
+ */
+export const improvements = asyncHandler(async (req, res) => {
+  const { timetableId } = timetableIdParamsSchema.parse(req.params);
+  const query = improvementQuerySchema.parse(req.query);
+  const data = await reportService.improvementSuggestions(timetableId, req.schoolId, query.limit);
+  res.json({ success: true, ...data });
+});
+
+/**
+ * GET /reports/:timetableId/daily/:day
+ */
+export const dailySummary = asyncHandler(async (req, res) => {
+  const { timetableId } = timetableIdParamsSchema.parse(req.params);
+  const day = parseInt(req.params.day);
+  const data = await reportService.dailySummary(timetableId, req.schoolId, day);
+  res.json({ success: true, data });
 });

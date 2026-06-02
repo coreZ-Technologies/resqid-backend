@@ -1,393 +1,191 @@
-// =============================================================================
-// modules/m1-timetable/report/report.service.js — RESQID
-// Auto-generated reports: substitution register, compliance, workload.
-// =============================================================================
+/**
+ * Report service — business logic for generating reports.
+ */
 
-import { prisma } from '#config/prisma.js';
+import { reportRepository } from './report.repository.js';
 import { ApiError } from '#shared/response/ApiError.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBSTITUTION REGISTER
-// ═══════════════════════════════════════════════════════════════════════════════
+export const reportService = {
+  /**
+   * Teacher-wise timetable report.
+   */
+  async teacherReport(timetableId, schoolId) {
+    const timetable = await reportRepository.getTimetableWithAssignments(timetableId, schoolId);
+    if (!timetable) throw new ApiError(404, 'Timetable not found');
 
-/**
- * Generate substitution register for a date range.
- * Shows every substitution that happened: who was absent, who covered, which class.
- *
- * @param {string} schoolId
- * @param {Object} filters - { from, to, teacherId, grade }
- * @returns {Object} { entries[], summary }
- */
-export const getSubstitutionRegister = async (schoolId, filters = {}) => {
-  const { from, to, teacherId, grade } = filters;
+    const map = {};
 
-  const where = {
-    schoolId,
-    ...(from || to
-      ? {
-          date: {
-            ...(from && { gte: new Date(from) }),
-            ...(to && { lte: new Date(to) }),
-          },
-        }
-      : {}),
-  };
+    for (const a of timetable.assignments) {
+      if (!map[a.teacherId]) {
+        map[a.teacherId] = {
+          teacherId: a.teacherId,
+          teacherName: a.teacher?.name || 'Unknown',
+          slots: [],
+        };
+      }
 
-  const overrides = await prisma.dayOverride.findMany({
-    where,
-    orderBy: { date: 'desc' },
-    include: {
-      timetableSlot: {
-        include: {
-          classGroup: { select: { grade: true, section: true } },
-          subject: { select: { name: true } },
-        },
-      },
-      originalTeacher: { select: { id: true, name: true } },
-      substituteTeacher: { select: { id: true, name: true } },
-    },
-  });
+      map[a.teacherId].slots.push({
+        day: a.dayOfWeek,
+        period: a.periodNumber,
+        classId: a.classGroupId,
+        className: a.classGroup ? `${a.classGroup.grade}-${a.classGroup.section}` : null,
+        subjectId: a.subjectId,
+        subjectName: a.subject?.name || null,
+        roomId: a.roomId,
+        roomNumber: a.room?.roomNumber || null,
+        isSubstituted: a.isSubstituted,
+        isTemporary: a.isTemporary,
+      });
+    }
 
-  // Filter by teacher if specified
-  let filtered = overrides;
-  if (teacherId) {
-    filtered = overrides.filter(
-      (o) => o.originalTeacherId === teacherId || o.substituteTeacherId === teacherId
-    );
-  }
+    // Sort slots and calculate totals
+    for (const t of Object.values(map)) {
+      t.slots.sort((a, b) => a.day - b.day || a.period - b.period);
+      t.totalPeriods = t.slots.length;
+      t.daysActive = new Set(t.slots.map((s) => s.day)).size;
+    }
 
-  // Filter by grade if specified
-  if (grade) {
-    filtered = overrides.filter((o) => o.timetableSlot?.classGroup?.grade === grade);
-  }
+    return Object.values(map);
+  },
 
-  // Group by date
-  const byDate = {};
-  for (const entry of filtered) {
-    const dateKey = entry.date.toISOString().split('T')[0];
-    if (!byDate[dateKey]) byDate[dateKey] = [];
-    byDate[dateKey].push(formatRegisterEntry(entry));
-  }
+  /**
+   * Class-wise timetable report.
+   */
+  async classReport(timetableId, schoolId) {
+    const timetable = await reportRepository.getTimetableWithAssignments(timetableId, schoolId);
+    if (!timetable) throw new ApiError(404, 'Timetable not found');
 
-  // Summary stats
-  const summary = {
-    totalSubstitutions: filtered.length,
-    uniqueAbsentTeachers: new Set(filtered.map((o) => o.originalTeacherId)).size,
-    uniqueSubstitutes: new Set(filtered.map((o) => o.substituteTeacherId)).size,
-    dateRange: {
-      from: from || filtered[filtered.length - 1]?.date?.toISOString(),
-      to: to || filtered[0]?.date?.toISOString(),
-    },
-  };
+    const map = {};
 
-  return {
-    entries: byDate,
-    summary,
-  };
-};
+    for (const a of timetable.assignments) {
+      if (!map[a.classGroupId]) {
+        map[a.classGroupId] = {
+          classId: a.classGroupId,
+          className: a.classGroup ? `${a.classGroup.grade}-${a.classGroup.section}` : null,
+          grade: a.classGroup?.grade || null,
+          section: a.classGroup?.section || null,
+          slots: [],
+        };
+      }
 
-/**
- * Format a DayOverride entry for the register.
- */
-function formatRegisterEntry(entry) {
-  return {
-    id: entry.id,
-    date: entry.date.toISOString().split('T')[0],
-    period: entry.timetableSlot?.periodNumber,
-    dayOfWeek: entry.timetableSlot?.dayOfWeek,
-    class: entry.timetableSlot?.classGroup
-      ? `${entry.timetableSlot.classGroup.grade}-${entry.timetableSlot.classGroup.section}`
-      : 'N/A',
-    subject: entry.timetableSlot?.subject?.name || 'N/A',
-    absentTeacher: entry.originalTeacher?.name || 'Unknown',
-    substituteTeacher: entry.substituteTeacher?.name || 'Unknown',
-    reason: entry.reason,
-  };
-}
+      map[a.classGroupId].slots.push({
+        day: a.dayOfWeek,
+        period: a.periodNumber,
+        subjectId: a.subjectId,
+        subjectName: a.subject?.name || null,
+        teacherId: a.teacherId,
+        teacherName: a.teacher?.name || null,
+        roomId: a.roomId,
+        roomNumber: a.room?.roomNumber || null,
+        periodType: a.periodType,
+      });
+    }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// WEEKLY SUBSTITUTION ANALYSIS
-// ═══════════════════════════════════════════════════════════════════════════════
+    for (const c of Object.values(map)) {
+      c.slots.sort((a, b) => a.day - b.day || a.period - b.period);
+      c.totalPeriods = c.slots.length;
+      c.subjectsStudied = new Set(c.slots.map((s) => s.subjectId)).size;
+    }
 
-/**
- * Weekly analysis of substitutions.
- * Who was absent most? Which subjects lost most periods? Which classes affected most?
- *
- * @param {string} schoolId
- * @param {string} weekStart - Monday date
- * @returns {Object} analysis
- */
-export const getWeeklyAnalysis = async (schoolId, weekStart) => {
-  const start = new Date(weekStart);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
+    return Object.values(map);
+  },
 
-  const overrides = await prisma.dayOverride.findMany({
-    where: {
-      schoolId,
-      date: { gte: start, lte: end },
-    },
-    include: {
-      timetableSlot: {
-        include: {
-          classGroup: { select: { grade: true, section: true } },
-          subject: { select: { id: true, name: true } },
-        },
-      },
-      originalTeacher: { select: { id: true, name: true } },
-      substituteTeacher: { select: { id: true, name: true } },
-    },
-  });
+  /**
+   * Room utilisation report.
+   */
+  async roomUtilisationReport(timetableId, schoolId, schoolConfig) {
+    const timetable = await reportRepository.getTimetableWithAssignments(timetableId, schoolId);
+    if (!timetable) throw new ApiError(404, 'Timetable not found');
 
-  // ── Most absent teachers ──────────────────────────────────────────────────
-  const absentCount = {};
-  for (const entry of overrides) {
-    const key = entry.originalTeacherId;
-    if (!absentCount[key]) absentCount[key] = { name: entry.originalTeacher?.name, count: 0 };
-    absentCount[key].count++;
-  }
+    const config = schoolConfig || (await reportRepository.getSchoolConfig(schoolId));
+    const workingDays = config?.workingDays?.length || 6;
+    const periodsPerDay = config?.periodsPerDay || 8;
+    const totalSlots = workingDays * periodsPerDay;
 
-  const mostAbsent = Object.values(absentCount)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+    const roomCounts = {};
+    const roomDetails = {};
 
-  // ── Most affected subjects ───────────────────────────────────────────────
-  const subjectLoss = {};
-  for (const entry of overrides) {
-    const key = entry.timetableSlot?.subjectId;
-    if (!key) continue;
-    if (!subjectLoss[key])
-      subjectLoss[key] = { name: entry.timetableSlot?.subject?.name, count: 0 };
-    subjectLoss[key].count++;
-  }
+    for (const a of timetable.assignments) {
+      if (!a.roomId) continue;
+      roomCounts[a.roomId] = (roomCounts[a.roomId] || 0) + 1;
+      if (!roomDetails[a.roomId] && a.room) {
+        roomDetails[a.roomId] = {
+          roomNumber: a.room.roomNumber,
+          roomName: a.room.roomName,
+          type: a.room.type,
+        };
+      }
+    }
 
-  const mostAffectedSubjects = Object.values(subjectLoss)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+    return Object.entries(roomCounts)
+      .map(([roomId, used]) => ({
+        roomId,
+        roomNumber: roomDetails[roomId]?.roomNumber || roomId,
+        roomName: roomDetails[roomId]?.roomName || null,
+        type: roomDetails[roomId]?.type || null,
+        usedSlots: used,
+        totalSlots,
+        utilisationPct: Math.round((used / totalSlots) * 100),
+        freeSlots: totalSlots - used,
+      }))
+      .sort((a, b) => b.utilisationPct - a.utilisationPct);
+  },
 
-  // ── Most affected classes ────────────────────────────────────────────────
-  const classImpact = {};
-  for (const entry of overrides) {
-    const key = entry.timetableSlot?.classGroup
-      ? `${entry.timetableSlot.classGroup.grade}-${entry.timetableSlot.classGroup.section}`
-      : null;
-    if (!key) continue;
-    if (!classImpact[key]) classImpact[key] = { className: key, count: 0 };
-    classImpact[key].count++;
-  }
+  /**
+   * Validation report for a timetable.
+   */
+  async validationReport(timetableId, schoolId) {
+    const timetable = await reportRepository.getTimetableWithAssignments(timetableId, schoolId);
+    if (!timetable) throw new ApiError(404, 'Timetable not found');
 
-  const mostAffectedClasses = Object.values(classImpact)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+    const report = await reportRepository.getValidationReport(timetableId);
+    if (!report) {
+      throw new ApiError(404, 'No validation report found. Run validation first.');
+    }
 
-  // ── Day-wise breakdown ───────────────────────────────────────────────────
-  const byDay = {};
-  for (const entry of overrides) {
-    const day = entry.date.toISOString().split('T')[0];
-    if (!byDay[day]) byDay[day] = 0;
-    byDay[day]++;
-  }
+    return report;
+  },
 
-  // ── Busiest substitutes ──────────────────────────────────────────────────
-  const substituteLoad = {};
-  for (const entry of overrides) {
-    const key = entry.substituteTeacherId;
-    if (!substituteLoad[key])
-      substituteLoad[key] = { name: entry.substituteTeacher?.name, count: 0 };
-    substituteLoad[key].count++;
-  }
+  /**
+   * Improvement suggestions.
+   */
+  async improvementSuggestions(timetableId, schoolId, limit = 20) {
+    const report = await this.validationReport(timetableId, schoolId);
 
-  const busiestSubstitutes = Object.values(substituteLoad)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
-  return {
-    weekRange: {
-      start: start.toISOString().split('T')[0],
-      end: end.toISOString().split('T')[0],
-    },
-    totalSubstitutions: overrides.length,
-    mostAbsentTeachers: mostAbsent,
-    mostAffectedSubjects,
-    mostAffectedClasses,
-    busiestSubstitutes,
-    byDay,
-  };
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// COMPLIANCE REPORT — Period Deficit Per Subject
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Check if each subject is getting its required periods per week.
- * Shows which subjects are falling behind due to teacher absences.
- *
- * @param {string} schoolId
- * @param {string} weekStart
- * @returns {Object} { subjects[], summary }
- */
-export const getComplianceReport = async (schoolId, weekStart) => {
-  const start = new Date(weekStart);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-
-  // Get all subjects with their required periods per week
-  const subjects = await prisma.subject.findMany({
-    where: { schoolId, isActive: true },
-    select: {
-      id: true,
-      name: true,
-      periodsPerWeek: true,
-      classSubjects: {
-        select: {
-          classId: true,
-          class: { select: { grade: true, section: true } },
-        },
-      },
-    },
-  });
-
-  // Get actual periods delivered this week
-  const actualPeriods = await prisma.period.findMany({
-    where: {
-      schoolId,
-      isActive: true,
-    },
-    select: {
-      subjectId: true,
-      classId: true,
-    },
-  });
-
-  // Get substitutions that happened
-  const substitutions = await prisma.dayOverride.findMany({
-    where: {
-      schoolId,
-      date: { gte: start, lte: end },
-    },
-    include: {
-      timetableSlot: { select: { subjectId: true, classId: true } },
-    },
-  });
-
-  // Calculate deficit per subject per class
-  const report = [];
-
-  for (const subject of subjects) {
-    const required = subject.periodsPerWeek || 5;
-    const actual = actualPeriods.filter((p) => p.subjectId === subject.id).length;
-    const substituted = substitutions.filter(
-      (s) => s.timetableSlot?.subjectId === subject.id
-    ).length;
-
-    const deficit = Math.max(0, required - actual);
-    const coveragePercent = required > 0 ? Math.round((actual / required) * 100) : 100;
-
-    report.push({
-      subjectId: subject.id,
-      subjectName: subject.name,
-      requiredPeriods: required,
-      actualPeriods: actual,
-      substitutedPeriods: substituted,
-      deficit,
-      coveragePercent,
-      status: coveragePercent >= 90 ? 'GOOD' : coveragePercent >= 75 ? 'WARNING' : 'CRITICAL',
-    });
-  }
-
-  // Sort by worst coverage first
-  report.sort((a, b) => a.coveragePercent - b.coveragePercent);
-
-  const criticalCount = report.filter((r) => r.status === 'CRITICAL').length;
-  const warningCount = report.filter((r) => r.status === 'WARNING').length;
-
-  return {
-    weekRange: {
-      start: start.toISOString().split('T')[0],
-      end: end.toISOString().split('T')[0],
-    },
-    subjects: report,
-    summary: {
-      totalSubjects: report.length,
-      critical: criticalCount,
-      warning: warningCount,
-      good: report.length - criticalCount - warningCount,
-      overallCompliance: Math.round(
-        report.reduce((sum, r) => sum + r.coveragePercent, 0) / report.length
-      ),
-    },
-  };
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// TEACHER WORKLOAD REPORT
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Shows workload distribution across all teachers.
- * Helps identify overloaded and underutilized teachers.
- *
- * @param {string} schoolId
- * @returns {Object} { teachers[], summary }
- */
-export const getWorkloadReport = async (schoolId) => {
-  const teachers = await prisma.teacher.findMany({
-    where: { schoolId, isActive: true },
-    select: {
-      id: true,
-      name: true,
-      maxPeriodsPerDay: true,
-      maxPeriodsPerWeek: true,
-      subjects: true,
-      _count: {
-        select: {
-          periods: { where: { isActive: true } },
-          substitutions: { where: { status: 'APPROVED' } },
-        },
-      },
-    },
-  });
-
-  const report = teachers.map((teacher) => {
-    const actualPeriods = teacher._count.periods;
-    const maxWeek = teacher.maxPeriodsPerWeek || 30;
-    const loadPercent = Math.round((actualPeriods / maxWeek) * 100);
-    const substitutionCount = teacher._count.substitutions;
+    const all = [
+      ...(report.criticalList || []).map((item) => ({ ...item, severity: 'ERROR' })),
+      ...(report.warningList || []).map((item) => ({ ...item, severity: 'WARNING' })),
+      ...(report.suggestionList || []).map((item) => ({ ...item, severity: 'SUGGESTION' })),
+    ].sort((a, b) => (b.penalty || 0) - (a.penalty || 0));
 
     return {
-      teacherId: teacher.id,
-      teacherName: teacher.name,
-      subjectsCount: teacher.subjects.length,
-      actualPeriods,
-      maxPeriodsPerWeek: maxWeek,
-      loadPercent,
-      substitutionDuty: substitutionCount,
-      status:
-        loadPercent > 90
-          ? 'OVERLOADED'
-          : loadPercent > 70
-            ? 'FULL'
-            : loadPercent > 40
-              ? 'NORMAL'
-              : 'UNDERUTILIZED',
+      total: all.length,
+      items: all.slice(0, limit),
+      bySeverity: {
+        errors: all.filter((i) => i.severity === 'ERROR').length,
+        warnings: all.filter((i) => i.severity === 'WARNING').length,
+        suggestions: all.filter((i) => i.severity === 'SUGGESTION').length,
+      },
     };
-  });
+  },
 
-  report.sort((a, b) => b.loadPercent - a.loadPercent);
+  /**
+   * Daily summary report.
+   */
+  async dailySummary(timetableId, schoolId, day) {
+    const timetable = await reportRepository.getTimetableWithAssignments(timetableId, schoolId);
+    if (!timetable) throw new ApiError(404, 'Timetable not found');
 
-  const overloaded = report.filter((t) => t.status === 'OVERLOADED').length;
-  const underutilized = report.filter((t) => t.status === 'UNDERUTILIZED').length;
-  const avgLoad = Math.round(report.reduce((sum, t) => sum + t.loadPercent, 0) / report.length);
+    const dayAssignments = timetable.assignments.filter((a) => a.dayOfWeek === day);
 
-  return {
-    teachers: report,
-    summary: {
-      totalTeachers: report.length,
-      overloaded,
-      underutilized,
-      averageLoadPercent: avgLoad,
-      totalSubstitutionDuty: report.reduce((sum, t) => sum + t.substitutionDuty, 0),
-    },
-  };
+    return {
+      timetableId,
+      day,
+      totalPeriods: dayAssignments.length,
+      classesActive: new Set(dayAssignments.map((a) => a.classGroupId)).size,
+      teachersActive: new Set(dayAssignments.map((a) => a.teacherId)).size,
+      roomsUsed: new Set(dayAssignments.filter((a) => a.roomId).map((a) => a.roomId)).size,
+      substitutions: dayAssignments.filter((a) => a.isSubstituted).length,
+    };
+  },
 };

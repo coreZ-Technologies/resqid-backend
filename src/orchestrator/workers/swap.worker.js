@@ -1,117 +1,116 @@
 // =============================================================================
 // orchestrator/workers/swap.worker.js — RESQID
-// BullMQ worker: handles long-term teacher SWAP assignments.
-// Auto-reverts on end_date.
+// Handles manual slot swaps and reassignments.
 // =============================================================================
 
 import { Worker } from 'bullmq';
 import { getQueueConnection } from '../queues/queue.connection.js';
+import { QUEUE_NAMES } from '../queues/queue.names.js';
+import { timetableRepository } from '#modules/m1-timetable-main/timetable.repository.js';
+import * as hardConstraints from '#modules/m1-timetable-main/constraints/hard.js';
 import { logger } from '#config/logger.js';
-import { prisma } from '#config/prisma.js';
-
-const QUEUE_NAME = 'timetable_swap_queue';
-
-let _worker = null;
 
 /**
- * Process a SWAP job.
- *
- * Job data: { swapId, action: 'APPLY' | 'REVERT' }
+ * Start the swap worker.
  */
-const processSwapJob = async (job) => {
-  const { swapId, action } = job.data;
-
-  const swap = await prisma.swapAssignment.findUnique({
-    where: { id: swapId },
-    include: {
-      originalTeacher: { select: { name: true } },
-      replacementTeacher: { select: { name: true } },
-    },
-  });
-
-  if (!swap) {
-    throw new Error(`Swap ${swapId} not found`);
-  }
-
-  if (action === 'APPLY') {
-    // Apply the swap
-    const slots = swap.timetableSlotIds || [];
-
-    for (const slotId of slots) {
-      await prisma.period.update({
-        where: { id: slotId },
-        data: { teacherId: swap.replacementTeacherId },
-      });
-    }
-
-    await prisma.swapAssignment.update({
-      where: { id: swapId },
-      data: { status: 'ACTIVE' },
-    });
-
-    logger.info(
-      {
-        swapId,
-        originalTeacher: swap.originalTeacher?.name,
-        replacement: swap.replacementTeacher?.name,
-        slots,
-      },
-      '[swap.worker] SWAP applied'
-    );
-  }
-
-  if (action === 'REVERT') {
-    // Revert the swap
-    const slots = swap.timetableSlotIds || [];
-
-    for (const slotId of slots) {
-      await prisma.period.update({
-        where: { id: slotId },
-        data: { teacherId: swap.originalTeacherId },
-      });
-    }
-
-    await prisma.swapAssignment.update({
-      where: { id: swapId },
-      data: { status: 'REVERTED', revertedAt: new Date() },
-    });
-
-    logger.info(
-      { swapId, originalTeacher: swap.originalTeacher?.name },
-      '[swap.worker] SWAP reverted'
-    );
-  }
-
-  return { swapId, action, status: 'DONE' };
-};
-
 export const startSwapWorker = () => {
-  if (_worker) return _worker;
+  const worker = new Worker(
+    QUEUE_NAMES.TIMETABLE_SWAP,
+    async (job) => {
+      const { schoolId, timetableId, swaps } = job.data;
+      const jobId = job.id;
 
-  _worker = new Worker(QUEUE_NAME, processSwapJob, {
-    connection: getQueueConnection(),
-    concurrency: 3,
-    stalledInterval: 60_000,
-    maxStalledCount: 1,
-    lockDuration: 30_000,
-  });
+      logger.info({ jobId, swaps: swaps?.length }, '[swap.worker] Processing swaps');
 
-  _worker.on('completed', (job) => {
-    logger.info({ jobId: job.id }, '[swap.worker] Completed');
-  });
+      await timetableRepository.updateJobStatus(jobId, 'PROCESSING', {
+        statusMessage: `Processing ${swaps?.length || 0} swap(s)...`,
+        progressPercent: 0,
+      });
 
-  _worker.on('failed', (job, error) => {
-    logger.error({ jobId: job?.id, err: error.message }, '[swap.worker] Failed');
-  });
+      try {
+        const results = [];
+        const errors = [];
 
-  logger.info({ queue: QUEUE_NAME, concurrency: 3 }, '[swap.worker] Started');
-  return _worker;
+        for (let i = 0; i < swaps.length; i++) {
+          const swap = swaps[i];
+
+          // Validate the swap
+          const validation = await validateSwap(swap, timetableId, schoolId);
+
+          if (!validation.ok) {
+            errors.push({ slotId: swap.slotId, reason: validation.reason });
+            continue;
+          }
+
+          // Apply the swap
+          await timetableRepository.moveSlot(swap.slotId, swap.newDay, swap.newPeriod);
+
+          results.push({ slotId: swap.slotId, moved: true });
+
+          // Update progress
+          await timetableRepository.updateJobStatus(jobId, 'PROCESSING', {
+            progressPercent: Math.round(((i + 1) / swaps.length) * 100),
+            statusMessage: `Processed ${i + 1}/${swaps.length} swaps`,
+          });
+        }
+
+        const summary = {
+          total: swaps.length,
+          succeeded: results.length,
+          failed: errors.length,
+          results,
+          errors,
+        };
+
+        await timetableRepository.updateJobStatus(jobId, 'COMPLETED', {
+          statusMessage: `${results.length}/${swaps.length} swaps completed`,
+          progressPercent: 100,
+          output: summary,
+        });
+
+        return summary;
+      } catch (error) {
+        logger.error({ jobId, error: error.message }, '[swap.worker] Swap failed');
+
+        await timetableRepository.updateJobStatus(jobId, 'FAILED', {
+          error: error.message,
+        });
+
+        throw error;
+      }
+    },
+    {
+      connection: getQueueConnection(),
+      concurrency: 3,
+      lockDuration: 30000,
+    }
+  );
+
+  return worker;
 };
 
-export const stopSwapWorker = async () => {
-  if (_worker) {
-    await _worker.close();
-    _worker = null;
-    logger.info('[swap.worker] Stopped');
+/**
+ * Validate a swap against hard constraints.
+ */
+async function validateSwap(swap, timetableId, schoolId) {
+  const context = await timetableRepository.loadTimetableContext(timetableId, schoolId);
+
+  const assignment = context.assignments.find((a) => a.id === swap.slotId);
+  if (!assignment) {
+    return { ok: false, reason: 'Slot not found' };
   }
-};
+
+  const existing = context.assignments.filter((a) => a.id !== swap.slotId);
+
+  const proposed = {
+    ...assignment,
+    dayOfWeek: swap.newDay,
+    periodNumber: swap.newPeriod,
+    day: swap.newDay,
+    period: swap.newPeriod,
+  };
+
+  const teacherConfig = context.resolvers.getTeacherConfig(proposed.teacherId) || {};
+
+  return hardConstraints.checkAll(proposed, existing, context.schoolConfig, teacherConfig);
+}
