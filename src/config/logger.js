@@ -12,8 +12,7 @@
 import pino from 'pino';
 import { ENV } from './env.js';
 
-// ─── Sensitive Field Redaction ────────────────────────────────────────────────
-
+// Sensitive Field Redaction
 const REDACT_PATHS = [
   // Auth secrets
   'password',
@@ -71,7 +70,7 @@ const REDACT_PATHS = [
   '*.ip',
 ];
 
-// ─── Transport Config ─────────────────────────────────────────────────────────
+// Transport Config
 
 function buildTransport() {
   const targets = [];
@@ -110,7 +109,7 @@ function buildTransport() {
   return pino.transport({ targets });
 }
 
-// ─── Base Logger ──────────────────────────────────────────────────────────────
+// Base Logger─
 
 export const logger = pino(
   {
@@ -143,7 +142,7 @@ export const logger = pino(
   buildTransport()
 );
 
-// ─── Sentry Integration ───────────────────────────────────────────────────────
+// Sentry Integration
 
 let sentryInitialized = false;
 
@@ -179,7 +178,7 @@ async function initSentry() {
 // Initialize Sentry (async, non-blocking)
 initSentry();
 
-// ─── Child Logger Factory ─────────────────────────────────────────────────────
+// Child Logger Factory
 
 /**
  * Create a child logger bound to request context
@@ -189,7 +188,7 @@ export function createRequestLogger(context) {
   return logger.child(context);
 }
 
-// ─── Audit Logger ─────────────────────────────────────────────────────────────
+// Audit Logger
 
 /**
  * Create an audit logger instance
@@ -199,7 +198,7 @@ export function createAuditLogger() {
   return logger.child({ logger_type: 'audit' });
 }
 
-// ─── Security Logger ──────────────────────────────────────────────────────────
+// Security Logger─
 
 /**
  * Create a security event logger instance
@@ -209,7 +208,7 @@ export function createSecurityLogger() {
   return logger.child({ logger_type: 'security' });
 }
 
-// ─── HTTP Logger ──────────────────────────────────────────────────────────────
+// HTTP Logger─
 
 /**
  * Create HTTP request logger instance
@@ -219,7 +218,7 @@ export function createHttpLogger() {
   return logger.child({ logger_type: 'http' });
 }
 
-// ─── Convenience Methods ──────────────────────────────────────────────────────
+// Convenience Methods
 
 /**
  * Log audit event
@@ -246,7 +245,7 @@ export const attackLog = (attackType, context = {}) => {
   secLogger.error({ attackType, ...context }, `ATTACK: ${attackType}`);
 };
 
-// ─── Shutdown ─────────────────────────────────────────────────────────────────
+// Shutdown
 
 /**
  * Graceful shutdown — flush logs before exit

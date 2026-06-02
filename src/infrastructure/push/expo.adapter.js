@@ -1,26 +1,36 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-// TODO: Add implementation
-=======
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+// infrastructure/push/expo.adapter.js — RESQID
+//
+// Expo push notification adapter.
+// Handles single and bulk push notifications via Expo Push API.
+
 import { Expo } from 'expo-server-sdk';
 import { PushProvider } from './push.provider.js';
 import { logger } from '#config/logger.js';
+import { ENV } from '#config/env.js';
 
 export class ExpoAdapter extends PushProvider {
   constructor() {
     super();
     this.expo = new Expo({
-      accessToken: process.env.EXPO_ACCESS_TOKEN,
+      accessToken: ENV.EXPO_ACCESS_TOKEN || process.env.EXPO_ACCESS_TOKEN,
     });
   }
 
+  /**
+   * Send push notification to a single device.
+   * @param {string} deviceToken - Expo push token
+   * @param {Object} notification - { title, body, data }
+   * @returns {Promise<Object>}
+   */
   async sendToDevice(deviceToken, notification) {
     if (!Expo.isExpoPushToken(deviceToken)) {
       logger.warn({ deviceToken: deviceToken.slice(0, 10) + '…' }, '[Expo] Invalid token');
-      return { success: false, error: 'Invalid Expo push token', successCount: 0, failureCount: 1 };
+      return {
+        success: false,
+        error: 'Invalid Expo push token',
+        successCount: 0,
+        failureCount: 1,
+      };
     }
 
     const message = {
@@ -28,8 +38,10 @@ export class ExpoAdapter extends PushProvider {
       title: notification.title,
       body: notification.body,
       data: notification.data ?? {},
-      sound: 'default',
-      priority: 'high',
+      sound: notification.sound || 'default',
+      priority: notification.priority || 'high',
+      ...(notification.badge !== undefined && { badge: notification.badge }),
+      ...(notification.categoryId && { categoryId: notification.categoryId }),
     };
 
     try {
@@ -66,22 +78,28 @@ export class ExpoAdapter extends PushProvider {
       };
     } catch (err) {
       logger.error({ err: err.message }, '[Expo] sendToDevice failed');
-      return { success: false, error: err.message, successCount: 0, failureCount: 1 };
+      return {
+        success: false,
+        error: err.message,
+        successCount: 0,
+        failureCount: 1,
+      };
     }
   }
 
+  /**
+   * Send push notification to multiple devices.
+   * Automatically chunks into batches of 100 (Expo limit).
+   * @param {string[]} deviceTokens - Array of Expo push tokens
+   * @param {Object} notification - { title, body, data }
+   * @returns {Promise<Object>}
+   */
   async sendToDevices(deviceTokens, notification) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-    const validTokens = deviceTokens.filter(t => {
-=======
     const validTokens = deviceTokens.filter((t) => {
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-    const validTokens = deviceTokens.filter((t) => {
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       const valid = Expo.isExpoPushToken(t);
-      if (!valid) logger.warn({ token: t.slice(0, 10) + '…' }, '[Expo] Invalid token filtered');
+      if (!valid) {
+        logger.warn({ token: t.slice(0, 10) + '…' }, '[Expo] Invalid token filtered');
+      }
       return valid;
     });
 
@@ -94,24 +112,19 @@ export class ExpoAdapter extends PushProvider {
       };
     }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-    const messages = validTokens.map(token => ({
-=======
     const messages = validTokens.map((token) => ({
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-    const messages = validTokens.map((token) => ({
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       to: token,
       title: notification.title,
       body: notification.body,
       data: notification.data ?? {},
-      sound: 'default',
-      priority: 'high',
+      sound: notification.sound || 'default',
+      priority: notification.priority || 'high',
+      ...(notification.badge !== undefined && { badge: notification.badge }),
+      ...(notification.categoryId && { categoryId: notification.categoryId }),
     }));
 
     try {
+      // Expo limits: 100 messages per chunk
       const chunks = this.expo.chunkPushNotifications(messages);
       let successCount = 0;
       let failureCount = 0;
@@ -143,7 +156,12 @@ export class ExpoAdapter extends PushProvider {
       }
 
       logger.info(
-        { successCount, failureCount, deadCount: deadTokens.length, total: validTokens.length },
+        {
+          successCount,
+          failureCount,
+          deadCount: deadTokens.length,
+          total: validTokens.length,
+        },
         '[Expo] Multicast complete'
       );
 
@@ -162,6 +180,15 @@ export class ExpoAdapter extends PushProvider {
         failureCount: validTokens.length,
       };
     }
+  }
+
+  /**
+   * Validate an Expo push token.
+   * @param {string} token
+   * @returns {boolean}
+   */
+  isValidToken(token) {
+    return Expo.isExpoPushToken(token);
   }
 }
 

@@ -1,11 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-// TODO: Add implementation
-import { createClient } from 'redis';
-import { CacheProvider } from './cache.provider.js';
-=======
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 // =============================================================================
 // redis.adapter.js — RESQID
 //
@@ -16,108 +8,53 @@ import { CacheProvider } from './cache.provider.js';
 import { createClient } from 'redis';
 import { CacheProvider } from './cache.provider.js';
 import { logger } from '#config/logger.js';
-<<<<<<< HEAD
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
 
 export class RedisAdapter extends CacheProvider {
   constructor(config = {}) {
     super();
     this.client = null;
     this.config = {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      url: config.REDIS_URL || process.env.REDIS_URL || 'redis://localhost:6379',
-      password: config.REDIS_PASSWORD || process.env.REDIS_PASSWORD,
-      db: config.REDIS_DB ?? parseInt(process.env.REDIS_DB, 10) ?? 0,
-      socket: {
-        reconnectStrategy: retries => Math.min(retries * 50, 2000),
-=======
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       url: config.url || process.env.REDIS_URL || 'redis://localhost:6379',
       password: config.password || process.env.REDIS_PASSWORD,
+      keyPrefix: config.keyPrefix || 'resqid:cache:',
       socket: {
         reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
         connectTimeout: 10000,
-<<<<<<< HEAD
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       },
       ...config,
     };
     this.isConnected = false;
   }
 
+  // Connection Lifecycle
+
   async connect() {
     try {
       this.client = createClient(this.config);
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-      this.client.on('error', err => {
-        console.error('[Redis] Client error:', err.message);
-=======
       this.client.on('error', (err) => {
         logger.error({ err: err.message }, '[RedisAdapter] Client error');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      this.client.on('error', (err) => {
-        logger.error({ err: err.message }, '[RedisAdapter] Client error');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
         this.isConnected = false;
       });
 
       this.client.on('connect', () => {
-<<<<<<< HEAD
-<<<<<<< HEAD
-        console.info('[Redis] Connection established.');
-=======
         logger.info('[RedisAdapter] Connected');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-        logger.info('[RedisAdapter] Connected');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
         this.isConnected = true;
       });
 
       this.client.on('reconnecting', () => {
-<<<<<<< HEAD
-<<<<<<< HEAD
-        console.warn('[Redis] Attempting to reconnect...');
-      });
-
-      this.client.on('end', () => {
-        console.warn('[Redis] Connection closed.');
-=======
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
         logger.warn('[RedisAdapter] Reconnecting...');
       });
 
       this.client.on('end', () => {
         logger.warn('[RedisAdapter] Connection closed');
-<<<<<<< HEAD
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
         this.isConnected = false;
       });
 
       await this.client.connect();
       return this;
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.error('[Redis] Failed to connect:', err.message);
-=======
       logger.error({ err: err.message }, '[RedisAdapter] Failed to connect');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      logger.error({ err: err.message }, '[RedisAdapter] Failed to connect');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       throw err;
     }
   }
@@ -126,25 +63,12 @@ export class RedisAdapter extends CacheProvider {
     if (this.client) {
       await this.client.quit();
       this.isConnected = false;
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.info('[Redis] Connection gracefully closed.');
-    }
-  }
-
-=======
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       logger.info('[RedisAdapter] Disconnected');
     }
   }
 
-  // ─── Core Operations ──────────────────────────────────────────────────────
+  // Core Operations
 
-<<<<<<< HEAD
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
   async get(key) {
     try {
       const value = await this.client.get(key);
@@ -155,15 +79,7 @@ export class RedisAdapter extends CacheProvider {
         return value;
       }
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.warn(`[Redis] GET failed for key "${key}":`, err.message);
-=======
       logger.warn({ key, err: err.message }, '[RedisAdapter] GET failed');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      logger.warn({ key, err: err.message }, '[RedisAdapter] GET failed');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       return null;
     }
   }
@@ -178,15 +94,7 @@ export class RedisAdapter extends CacheProvider {
       }
       return true;
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.warn(`[Redis] SET failed for key "${key}":`, err.message);
-=======
       logger.warn({ key, err: err.message }, '[RedisAdapter] SET failed');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      logger.warn({ key, err: err.message }, '[RedisAdapter] SET failed');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       return false;
     }
   }
@@ -196,15 +104,7 @@ export class RedisAdapter extends CacheProvider {
     try {
       return await this.client.del(keys);
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.warn(`[Redis] DEL failed for keys [${keys.join(', ')}]:`, err.message);
-=======
       logger.warn({ keys, err: err.message }, '[RedisAdapter] DEL failed');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      logger.warn({ keys, err: err.message }, '[RedisAdapter] DEL failed');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       return 0;
     }
   }
@@ -214,13 +114,6 @@ export class RedisAdapter extends CacheProvider {
       let cursor = 0;
       let deleted = 0;
       do {
-<<<<<<< HEAD
-<<<<<<< HEAD
-        // FIX: node-redis v4 scan() takes an options object, not positional args
-=======
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
         const reply = await this.client.scan(cursor, { MATCH: pattern, COUNT: 100 });
         cursor = reply.cursor;
         if (reply.keys.length) {
@@ -230,15 +123,7 @@ export class RedisAdapter extends CacheProvider {
       } while (cursor !== 0);
       return deleted;
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.warn(`[Redis] DEL pattern "${pattern}" failed:`, err.message);
-=======
       logger.warn({ pattern, err: err.message }, '[RedisAdapter] DEL pattern failed');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      logger.warn({ pattern, err: err.message }, '[RedisAdapter] DEL pattern failed');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       return 0;
     }
   }
@@ -247,29 +132,28 @@ export class RedisAdapter extends CacheProvider {
     try {
       return (await this.client.exists(key)) === 1;
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.warn(`[Redis] EXISTS failed for key "${key}":`, err.message);
-=======
       logger.warn({ key, err: err.message }, '[RedisAdapter] EXISTS failed');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      logger.warn({ key, err: err.message }, '[RedisAdapter] EXISTS failed');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       return false;
     }
   }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-  // ─── Batch Operations ─────────────────────────────────────────────────────
+  async keys(pattern) {
+    try {
+      const keys = [];
+      let cursor = 0;
+      do {
+        const reply = await this.client.scan(cursor, { MATCH: pattern, COUNT: 100 });
+        cursor = reply.cursor;
+        keys.push(...reply.keys);
+      } while (cursor !== 0);
+      return keys;
+    } catch (err) {
+      logger.warn({ pattern, err: err.message }, '[RedisAdapter] KEYS failed');
+      return [];
+    }
+  }
 
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-  // ─── Batch Operations ─────────────────────────────────────────────────────
-
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+  // Batch Operations
   async mget(keys) {
     try {
       const values = await this.client.mGet(keys);
@@ -285,15 +169,7 @@ export class RedisAdapter extends CacheProvider {
         return acc;
       }, {});
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.warn(`[Redis] MGET failed for keys [${keys.join(', ')}]:`, err.message);
-=======
       logger.warn({ keys, err: err.message }, '[RedisAdapter] MGET failed');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      logger.warn({ keys, err: err.message }, '[RedisAdapter] MGET failed');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       return {};
     }
   }
@@ -311,46 +187,22 @@ export class RedisAdapter extends CacheProvider {
       }
       await pipeline.exec();
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.warn('[Redis] MSET failed:', err.message);
+      logger.warn({ err: err.message }, '[RedisAdapter] MSET failed');
     }
   }
+
+  // Atomic Operations──
 
   async incr(key, by = 1, ttl = null) {
     try {
       const val = await this.client.incrBy(key, by);
       // Set TTL only when the key is first created (val === by)
-=======
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
-      logger.warn({ err: err.message }, '[RedisAdapter] MSET failed');
-    }
-  }
-
-  // ─── Atomic Operations ────────────────────────────────────────────────────
-
-  async incr(key, by = 1, ttl = null) {
-    try {
-      const val = await this.client.incrBy(key, by);
-<<<<<<< HEAD
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       if (val === by && ttl) {
         await this.client.expire(key, ttl);
       }
       return val;
     } catch (err) {
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.warn(`[Redis] INCR failed for key "${key}":`, err.message);
-=======
       logger.warn({ key, err: err.message }, '[RedisAdapter] INCR failed');
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
-      logger.warn({ key, err: err.message }, '[RedisAdapter] INCR failed');
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       return 0;
     }
   }
@@ -359,24 +211,13 @@ export class RedisAdapter extends CacheProvider {
     try {
       return await this.client.ttl(key);
     } catch {
-      return -2;
+      return -2; // Key not found
     }
   }
 
   async clear() {
     try {
       await this.client.flushDb();
-<<<<<<< HEAD
-<<<<<<< HEAD
-      console.info('[Redis] Database flushed successfully.');
-    } catch (err) {
-      console.error('[Redis] FLUSHDB failed:', err.message);
-      throw err;
-    }
-  }
-=======
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
       logger.warn('[RedisAdapter] Database flushed');
     } catch (err) {
       logger.error({ err: err.message }, '[RedisAdapter] FLUSHDB failed');
@@ -384,20 +225,119 @@ export class RedisAdapter extends CacheProvider {
     }
   }
 
-  // ─── Locking ──────────────────────────────────────────────────────────────
+  // Set Operations─
 
+  async sadd(key, ...members) {
+    try {
+      return await this.client.sAdd(key, members);
+    } catch (err) {
+      logger.warn({ key, err: err.message }, '[RedisAdapter] SADD failed');
+      return 0;
+    }
+  }
+
+  async smembers(key) {
+    try {
+      return await this.client.sMembers(key);
+    } catch (err) {
+      logger.warn({ key, err: err.message }, '[RedisAdapter] SMEMBERS failed');
+      return [];
+    }
+  }
+
+  async sismember(key, member) {
+    try {
+      return await this.client.sIsMember(key, member);
+    } catch (err) {
+      logger.warn({ key, err: err.message }, '[RedisAdapter] SISMEMBER failed');
+      return false;
+    }
+  }
+
+  // Hash Operations
+
+  async hget(key, field) {
+    try {
+      const value = await this.client.hGet(key, field);
+      if (value === null) return null;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    } catch (err) {
+      logger.warn({ key, field, err: err.message }, '[RedisAdapter] HGET failed');
+      return null;
+    }
+  }
+
+  async hset(key, field, value) {
+    try {
+      const serialized = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      return await this.client.hSet(key, field, serialized);
+    } catch (err) {
+      logger.warn({ key, field, err: err.message }, '[RedisAdapter] HSET failed');
+      return 0;
+    }
+  }
+
+  async hgetall(key) {
+    try {
+      const data = await this.client.hGetAll(key);
+      // Parse JSON values
+      for (const [field, value] of Object.entries(data)) {
+        try {
+          data[field] = JSON.parse(value);
+        } catch {
+          // Keep as string
+        }
+      }
+      return data;
+    } catch (err) {
+      logger.warn({ key, err: err.message }, '[RedisAdapter] HGETALL failed');
+      return {};
+    }
+  }
+
+  // Locking
+  /**
+   * Acquire a distributed lock.
+   * @param {string} key - Lock key
+   * @param {number} ttl - Lock timeout in seconds (prevents deadlocks)
+   * @returns {Promise<boolean>} true if lock acquired
+   */
   async lock(key, ttl = 30) {
     const result = await this.client.set(key, '1', { NX: true, EX: ttl });
     return result === 'OK';
   }
 
+  /**
+   * Release a distributed lock.
+   * @param {string} key - Lock key
+   */
   async unlock(key) {
     await this.del(key);
   }
-<<<<<<< HEAD
->>>>>>> 968b0de918a92400b738d75ff34fed5a70d11b67
-=======
->>>>>>> d8dcdbb0f5562330b20af4965a94bb6b45d79bea
+
+  /**
+   * Execute a function with a distributed lock.
+   * Automatically releases lock after execution.
+   *
+   * @param {string} key - Lock key
+   * @param {number} ttl - Lock timeout
+   * @param {Function} fn - Async function to execute
+   * @returns {Promise<any>} Result of fn, or null if lock not acquired
+   */
+  async withLock(key, ttl, fn) {
+    const acquired = await this.lock(key, ttl);
+    if (!acquired) return null;
+
+    try {
+      return await fn();
+    } finally {
+      await this.unlock(key);
+    }
+  }
 }
 
 export default RedisAdapter;
