@@ -1,147 +1,52 @@
-// TODO: Add implementation
-// =============================================================================
-// students.routes.js — RESQID
-//
-// Base path: /api/school/students (mounted by school-admin router)
-//
-// Middleware chain per request:
-//   authenticate → tenantScope → [rbac] → validate → asyncHandler(controller)
-//
-// Auth: SCHOOL_ADMIN can do everything; TEACHER gets read-only access.
-// =============================================================================
-
+// school-admin/students/students.routes.js
 import { Router } from 'express';
-import { asyncHandler } from '#shared/response/asyncHandler.js';
-import { validate } from '#shared/middleware/validate.middleware.js';
-import { can, canAny } from '#shared/middleware/rbac.middleware.js';
-
+import multer from 'multer';
+import { authenticate } from '#middleware/auth/authenticate.middleware.js';
+import { authorize, ROLES } from '#middleware/auth/authorize.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { rateLimit } from 'express-rate-limit';
 import {
   createStudentSchema,
   updateStudentSchema,
-  listStudentsSchema,
-  studentIdParamSchema,
-  bulkImportSchema,
-  linkParentSchema,
-  transferStudentSchema,
+  listStudentsQuerySchema,
+  linkParentsSchema,
+  unlinkParentSchema,
+  updateEmergencyVisibilitySchema,
+  sendMessageSchema,
+  exportStudentsQuerySchema,
+  bulkUploadSchema,
 } from './students.validation.js';
-
 import * as controller from './students.controller.js';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
-// =============================================================================
-// COLLECTION ROUTES — /students
-// =============================================================================
+router.use(authenticate);
+router.use(authorize(ROLES.SCHOOL_ADMIN));
 
-// GET /students — list with filters + pagination
-// Query params are coerced + validated inside the service via listStudentsSchema.parse(req.query)
-router.get(
-  '/',
-  can('student:read'),
-  asyncHandler(controller.list)
-);
+const createLimiter = rateLimit({ windowMs: 60 * 1000, max: 20 });
+const exportLimiter = rateLimit({ windowMs: 60 * 1000, max: 5 });
+const uploadLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 
-// GET /students/stats — class breakdown, counts (must be before /:studentId)
-router.get(
-  '/stats',
-  can('student:read'),
-  asyncHandler(controller.stats)
-);
+router.get('/', validate(listStudentsQuerySchema, 'query'), controller.listStudents);
+router.get('/stats', controller.getStats);
+router.post('/', createLimiter, upload.single('photo'), validate(createStudentSchema), controller.createStudent);
+router.get('/:id', controller.getStudent);
+router.put('/:id', upload.single('photo'), validate(updateStudentSchema), controller.updateStudent);
+router.delete('/:id', controller.deleteStudent);
 
-// POST /students — create single student
-router.post(
-  '/',
-  can('student:create'),
-  validate(createStudentSchema),
-  asyncHandler(controller.create)
-);
+router.post('/:id/parents', validate(linkParentsSchema), controller.linkParents);
+router.delete('/:studentId/parents/:parentId', validate(unlinkParentSchema, 'params'), controller.unlinkParent);
 
-// POST /students/bulk-import — CSV/JSON bulk import (Premium)
-router.post(
-  '/bulk-import',
-  can('student:create'),
-  validate(bulkImportSchema),
-  asyncHandler(controller.bulkImport)
-);
+router.patch('/:id/emergency-visibility', validate(updateEmergencyVisibilitySchema), controller.updateEmergencyVisibility);
 
-// =============================================================================
-// MEMBER ROUTES — /students/:studentId
-// =============================================================================
+router.post('/:id/message', validate(sendMessageSchema), controller.sendMessageToParents);
 
-// GET /students/:studentId — fetch single student (with card + emergency summary)
-router.get(
-  '/:studentId',
-  can('student:read'),
-  validate({ params: studentIdParamSchema }),
-  asyncHandler(controller.getOne)
-);
+router.get('/export', exportLimiter, validate(exportStudentsQuerySchema, 'query'), controller.exportStudents);
 
-// PATCH /students/:studentId — update student profile
-router.patch(
-  '/:studentId',
-  can('student:update'),
-  validate({ params: studentIdParamSchema, body: updateStudentSchema }),
-  asyncHandler(controller.update)
-);
+router.post('/:id/documents', uploadLimiter, upload.single('file'), controller.uploadDocument);
+router.delete('/:studentId/documents/:documentId', controller.deleteDocument);
 
-// DELETE /students/:studentId — soft delete
-router.delete(
-  '/:studentId',
-  can('student:delete'),
-  validate({ params: studentIdParamSchema }),
-  asyncHandler(controller.remove)
-);
-
-// =============================================================================
-// PARENT LINKAGE — /students/:studentId/parent
-// =============================================================================
-
-// POST /students/:studentId/parent — link parent
-router.post(
-  '/:studentId/parent',
-  can('student:update'),
-  validate({ params: studentIdParamSchema, body: linkParentSchema }),
-  asyncHandler(controller.linkParent)
-);
-
-// DELETE /students/:studentId/parent — unlink parent
-router.delete(
-  '/:studentId/parent',
-  can('student:update'),
-  validate({ params: studentIdParamSchema }),
-  asyncHandler(controller.unlinkParent)
-);
-
-// =============================================================================
-// CLASS TRANSFER — /students/:studentId/transfer
-// =============================================================================
-
-// POST /students/:studentId/transfer
-router.post(
-  '/:studentId/transfer',
-  can('student:update'),
-  validate({ params: studentIdParamSchema, body: transferStudentSchema }),
-  asyncHandler(controller.transfer)
-);
-
-// =============================================================================
-// STATUS TOGGLES — /students/:studentId/activate|deactivate
-// =============================================================================
-
-// PATCH /students/:studentId/activate
-router.patch(
-  '/:studentId/activate',
-  can('student:update'),
-  validate({ params: studentIdParamSchema }),
-  asyncHandler(controller.activate)
-);
-
-// PATCH /students/:studentId/deactivate
-router.patch(
-  '/:studentId/deactivate',
-  can('student:update'),
-  validate({ params: studentIdParamSchema }),
-  asyncHandler(controller.deactivate)
-);
+router.post('/bulk-upload', upload.single('file'), validate(bulkUploadSchema), controller.bulkUploadStudents);
 
 export default router;

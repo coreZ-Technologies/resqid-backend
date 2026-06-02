@@ -101,6 +101,15 @@ enum PeriodType {
   SUBSTITUTION
 }
 
+enum GradeLevel {
+  PRE_PRIMARY
+  PRIMARY
+  UPPER_PRIMARY
+  MIDDLE
+  SECONDARY
+  SENIOR_SECONDARY
+}
+
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
@@ -110,14 +119,14 @@ model SchoolTimetableConfig {
   schoolId        String   @unique
   school          School   @relation(fields: [schoolId], references: [id])
 
-  // ─── Basic Schedule Structure ───
+  // ─── Default Schedule (used if grade-level not specified) ───
   periodsPerDay   Int      @default(8)
-  periodDuration  Int      @default(45) // in minutes
+  periodDuration  Int      @default(45)
   startTime       String   @default("08:00")
   endTime         String   @default("15:00")
-  workingDays     Int[]    @default([1,2,3,4,5,6]) // 1=Mon, 6=Sat
+  workingDays     Int[]    @default([1,2,3,4,5,6])
 
-  // ─── Breaks ───
+  // ─── Default Breaks ───
   breakAfterPeriods    Int[]    @default([2,4,6])
   breakDurations       Int[]    @default([15,30,10])
   lunchAfterPeriod     Int      @default(4)
@@ -126,6 +135,9 @@ model SchoolTimetableConfig {
   // ─── Morning/Afternoon Split ───
   morningPeriodsEnd    Int      @default(4)
 
+  // ─── 🔧 NEW: Use Grade-Level Config? ───
+  useGradeLevelConfigs Boolean  @default(false)  // Toggle for grade-level support
+  
   // ─── Substitution Rules ───
   allowSubstitution      Boolean @default(true)
   maxSubstitutionsPerDay Int    @default(3)
@@ -140,8 +152,10 @@ model SchoolTimetableConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  templates   TimetableTemplate[]
-  constraints ConstraintPreset[]
+  // ─── Relations ───
+  templates       TimetableTemplate[]
+  constraints     ConstraintPreset[]
+  gradeLevels     GradeLevelConfig[]  // 🔧 NEW
 
   @@map("school_timetable_configs")
 }
@@ -342,15 +356,31 @@ model ClassGroup {
   section     String
   label       String?
   
+  // ─── Class Teacher ───
   teacherId   String?
   teacher     Teacher? @relation(fields: [teacherId], references: [id])
   
+  // ─── Default Room ───
   roomId      String?
   room        Room?    @relation(fields: [roomId], references: [id])
   roomNumber  String?
   
+  // ─── 🔧 NEW: Grade-Level Override (optional) ───
+  // If null, use grade-level config. If set, override for this specific class.
+  periodsPerDay     Int?     // 6 for Class 5A, 8 for Class 10A
+  startTime         String?  // Custom start time for this class
+  endTime           String?  // Custom end time
+  breakSchedule     Json?    // Custom breaks: { breakAfterPeriods: [2,5], breakDurations: [15,30] }
+  
+  // ─── 🔧 NEW: Class-Specific Constraints ───
+  maxPeriodsPerDay      Int?  // Per this specific class
+  maxConsecutivePeriods Int?
+  allowDoublePeriods    Boolean?
+  
+  // ─── Students ───
   studentCount Int    @default(0)
   
+  // ─── Status ───
   isActive    Boolean @default(true)
 
   createdAt   DateTime @default(now())
@@ -720,4 +750,44 @@ model BulkUpload {
   @@index([schoolId, uploadType])
   @@index([schoolId, status])
   @@map("bulk_uploads")
+}
+
+model GradeLevelConfig {
+  id            String   @id @default(cuid())
+  configId      String
+  config        SchoolTimetableConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  
+  // ─── Grade Range ───
+  gradeFrom     Int      // 1
+  gradeTo       Int      // 5
+  label         String   // "Primary (Class 1-5)"
+  level         GradeLevel @default(PRIMARY)
+  
+  // ─── Schedule for this grade level ───
+  periodsPerDay Int      @default(6)
+  startTime     String?  // "08:00" - Can be different per grade level
+  endTime       String?  // "12:30" - Primary leaves early
+  
+  // ─── Break Schedule ───
+  breakAfterPeriods Int[]  @default([2, 4])
+  breakDurations    Int[]  @default([15, 30])  // Minutes
+  lunchAfterPeriod  Int?   // null = no lunch in school (primary)
+  lunchDuration     Int    @default(30)
+  
+  // ─── Constraints for this grade level ───
+  maxPeriodsPerDay      Int?  // Per class
+  maxConsecutivePeriods Int?
+  allowDoublePeriods    Boolean @default(true)
+  heavySubjectsMorning  Boolean @default(true)
+  maxSameSubjectPerDay  Int?
+  
+  // ─── Status ───
+  isActive    Boolean @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([configId, gradeFrom, gradeTo])
+  @@index([configId])
+  @@map("grade_level_configs")
 }

@@ -1,270 +1,385 @@
+/**
+ * scorer.js
+ * Combines medium + soft constraint penalties into a single score.
+ * Lower = better. Used by heuristics to pick best valid assignment.
+ *
+ * Supports weighted scoring, detailed breakdowns, and multi-factor ranking.
+ */
+
+import * as medium from '../constraints/medium.js';
+import * as soft from '../constraints/soft.js';
+
 // =============================================================================
-// modules/m1-timetable/solver/scorer.js — RESQID
-// Rates solution quality 0-100 across multiple dimensions.
+// SCORING
 // =============================================================================
 
 /**
- * Score a timetable solution across multiple dimensions.
- * Returns { total, breakdown }
+ * Score a candidate assignment.
+ * Combines medium + soft penalties.
+ *
+ * @param {Object} assignment - proposed assignment
+ * @param {Array} existing - already placed assignments
+ * @param {Object} ctx - Complete context
+ * @returns {number} total penalty score
  */
-export const scoreSolution = (periods, teachers, config, preferences = {}) => {
-  const scores = {
-    workloadBalance: scoreWorkloadBalance(periods, teachers),
-    subjectDistribution: scoreSubjectDistribution(periods, config),
-    consecutivePenalty: scoreConsecutivePenalty(periods, teachers),
-    morningCoreBonus: preferences.preferMorningCore ? scoreMorningCore(periods, config) : 25,
-    gapPenalty: scoreGapPenalty(periods, teachers),
-    teacherPreference: scoreTeacherPreferences(periods, teachers),
-  };
+export function score(assignment, existing, ctx) {
+  const {
+    subjectConfig = {},
+    schoolConfig = {},
+    roomConfig = null,
+    teacherWellness = null,
+    teacherConfig = {},
+    classConfig = null,
+  } = ctx;
 
-  // Weighted total
-  const weights = {
-    workloadBalance: 25,
-    subjectDistribution: 20,
-    consecutivePenalty: 15,
-    morningCoreBonus: 15,
-    gapPenalty: 15,
-    teacherPreference: 10,
-  };
+  const mediumScore = medium.scoreAll(
+    assignment,
+    existing,
+    subjectConfig,
+    schoolConfig,
+    roomConfig,
+    classConfig,
+    teacherConfig,
+    teacherWellness
+  );
 
-  const total = Math.round(
-    Object.entries(scores).reduce((sum, [key, score]) => sum + score * (weights[key] / 100), 0)
+  const softScore = soft.scoreAll(
+    assignment,
+    existing,
+    teacherWellness,
+    teacherConfig,
+    roomConfig,
+    schoolConfig,
+    classConfig,
+    subjectConfig
+  );
+
+  return mediumScore + softScore;
+}
+
+/**
+ * Score with detailed breakdown.
+ * Returns total + individual component scores.
+ */
+export function scoreDetailed(assignment, existing, ctx) {
+  const {
+    subjectConfig = {},
+    schoolConfig = {},
+    roomConfig = null,
+    teacherWellness = null,
+    teacherConfig = {},
+    classConfig = null,
+  } = ctx;
+
+  const mediumDetailed = medium.scoreAllDetailed(
+    assignment,
+    existing,
+    subjectConfig,
+    schoolConfig,
+    roomConfig,
+    classConfig,
+    teacherConfig,
+    teacherWellness
+  );
+
+  const softDetailed = soft.scoreAllDetailed(
+    assignment,
+    existing,
+    teacherWellness,
+    teacherConfig,
+    roomConfig,
+    schoolConfig,
+    classConfig,
+    subjectConfig
   );
 
   return {
-    total: Math.min(100, Math.max(0, total)),
-    breakdown: scores,
+    total: mediumDetailed.total + softDetailed.total,
+    medium: mediumDetailed,
+    soft: softDetailed,
+    breakdown: {
+      ...mediumDetailed,
+      ...softDetailed,
+    },
   };
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// WORKLOAD BALANCE (0-25 points)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function scoreWorkloadBalance(periods, teachers) {
-  const loads = {};
-  for (const period of periods) {
-    loads[period.teacherId] = (loads[period.teacherId] || 0) + 1;
-  }
-
-  const values = Object.values(loads);
-  if (values.length === 0) return 25;
-
-  const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const range = max - min;
-
-  // Perfect balance = range 0-2
-  if (range <= 2) return 25;
-  if (range <= 4) return 20;
-  if (range <= 6) return 15;
-  if (range <= 8) return 10;
-  return 5;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBJECT DISTRIBUTION (0-20 points)
-// ═══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
+// RANKING
+// =============================================================================
 
-function scoreSubjectDistribution(periods, config) {
-  const periodsPerDay = config?.periodsPerDay || 8;
-  let score = 20;
-  let penalties = 0;
+/**
+ * Score all candidates for a slot and return sorted (best first).
+ *
+ * @param {Array} candidates - list of { teacherId, roomId, day, period }
+ * @param {Object} slot - the slot being filled
+ * @param {Array} existing - already placed assignments
+ * @param {Function} getCtx - (teacherId) => context object
+ * @returns {Array} sorted candidates (best first)
+ */
+export function rankCandidates(candidates, slot, existing, getCtx) {
+  const scored = candidates.map((candidate) => {
+    const assignment = { ...slot, ...candidate };
+    const ctx = getCtx(candidate.teacherId);
 
-  // Group periods by class + day + subject
-  const grouped = {};
-  for (const period of periods) {
-    const key = `${period.classId}_${period.dayOfWeek}_${period.subjectId}`;
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(period.periodNumber);
-  }
-
-  // Penalize if same subject appears 3+ times in one day for same class
-  for (const [key, periodNums] of Object.entries(grouped)) {
-    if (periodNums.length >= 3) {
-      penalties += (periodNums.length - 2) * 2;
+    // Add room-specific context if room is assigned
+    if (candidate.roomId && !ctx.roomConfig) {
+      ctx.roomConfig = getCtx.roomConfig?.(candidate.roomId) || null;
     }
 
-    // Penalize if same subject in consecutive periods (should be spread out)
-    const sorted = periodNums.sort((a, b) => a - b);
-    for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i] - sorted[i - 1] === 1) {
-        penalties += 1;
-      }
-    }
-  }
+    return {
+      candidate,
+      penalty: score(assignment, existing, ctx),
+      details: null, // Can compute if needed
+    };
+  });
 
-  return Math.max(0, score - penalties);
+  // Sort by penalty (ascending = best first)
+  scored.sort((a, b) => {
+    const penaltyDiff = a.penalty - b.penalty;
+
+    // If penalties are close (within 5), apply tiebreakers
+    if (Math.abs(penaltyDiff) <= 5) {
+      return applyTiebreakers(a, b, slot, existing);
+    }
+
+    return penaltyDiff;
+  });
+
+  return scored.map((s) => s.candidate);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CONSECUTIVE PENALTY (0-15 points)
-// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Rank candidates with detailed scoring for debugging/validation.
+ */
+export function rankCandidatesDetailed(candidates, slot, existing, getCtx) {
+  const scored = candidates.map((candidate) => {
+    const assignment = { ...slot, ...candidate };
+    const ctx = getCtx(candidate.teacherId);
 
-function scoreConsecutivePenalty(periods, teachers) {
-  let score = 15;
-  let penalties = 0;
-
-  const teacherMap = new Map(teachers.map((t) => [t.id, t]));
-
-  // Group by teacher + day
-  const teacherDays = {};
-  for (const period of periods) {
-    const key = `${period.teacherId}_${period.dayOfWeek}`;
-    if (!teacherDays[key]) teacherDays[key] = [];
-    teacherDays[key].push(period.periodNumber);
-  }
-
-  for (const [key, periodNums] of Object.entries(teacherDays)) {
-    const teacherId = key.split('_')[0];
-    const teacher = teacherMap.get(teacherId);
-    const maxConsecutive = teacher?.maxConsecutive || 4;
-    const consecutive = getConsecutiveGroups(periodNums);
-
-    for (const group of consecutive) {
-      if (group.length > maxConsecutive) {
-        penalties += (group.length - maxConsecutive) * 2;
-      }
-
-      // Bonus: short consecutive blocks are fine
-      if (group.length === 2) {
-        penalties -= 1; // Double periods are okay (lab, tests)
-      }
+    if (candidate.roomId && !ctx.roomConfig) {
+      ctx.roomConfig = getCtx.roomConfig?.(candidate.roomId) || null;
     }
-  }
 
-  return Math.max(0, score - penalties);
+    const details = scoreDetailed(assignment, existing, ctx);
+
+    return {
+      candidate,
+      ...details,
+    };
+  });
+
+  scored.sort((a, b) => {
+    const diff = a.total - b.total;
+    if (Math.abs(diff) <= 5) {
+      return applyTiebreakers(a, b, slot, existing);
+    }
+    return diff;
+  });
+
+  return scored;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MORNING CORE BONUS (0-15 points)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function scoreMorningCore(periods, config) {
-  const periodsPerDay = config?.periodsPerDay || 8;
-  const morningSlots = Math.floor(periodsPerDay / 2); // First half = morning
-  let score = 0;
-
-  const coreSubjects = ['CORE', 'LAB'];
-
-  for (const period of periods) {
-    if (period.periodNumber <= morningSlots && coreSubjects.includes(period.type || 'REGULAR')) {
-      score += 0.5;
-    }
-    // Penalize core subjects in last 2 periods
-    if (
-      period.periodNumber >= periodsPerDay - 1 &&
-      coreSubjects.includes(period.type || 'REGULAR')
-    ) {
-      score -= 0.5;
-    }
-  }
-
-  return Math.min(15, Math.max(0, Math.round(score)));
+/**
+ * Get the top N candidates (best ones).
+ */
+export function topCandidates(candidates, slot, existing, getCtx, n = 3) {
+  const ranked = rankCandidates(candidates, slot, existing, getCtx);
+  return ranked.slice(0, n);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// GAP PENALTY (0-15 points)
-// ═══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
+// TIEBREAKERS
+// =============================================================================
 
-function scoreGapPenalty(periods, teachers) {
-  let score = 15;
-  let penalties = 0;
+/**
+ * Apply tiebreaker rules when candidates have similar scores.
+ *
+ * Priority order:
+ * 1. Prefer teacher with lighter current load
+ * 2. Prefer morning slots for heavy subjects
+ * 3. Prefer balanced day distribution
+ * 4. Prefer teacher's preferred slots
+ */
+function applyTiebreakers(a, b, slot, existing) {
+  // 1. Teacher with lighter current daily load wins
+  const aLoad = countTeacherDayLoad(a.candidate.teacherId, a.candidate.day || slot.day, existing);
+  const bLoad = countTeacherDayLoad(b.candidate.teacherId, b.candidate.day || slot.day, existing);
+  if (aLoad !== bLoad) return aLoad - bLoad;
 
-  const teacherDays = {};
-  for (const period of periods) {
-    const key = `${period.teacherId}_${period.dayOfWeek}`;
-    if (!teacherDays[key]) teacherDays[key] = [];
-    teacherDays[key].push(period.periodNumber);
+  // 2. Morning period preference for heavy subjects
+  const isHeavy = slot.subjectConfig?.isHeavy;
+  if (isHeavy) {
+    const aPeriod = a.candidate.period || slot.period;
+    const bPeriod = b.candidate.period || slot.period;
+    if (aPeriod !== bPeriod) return aPeriod - bPeriod; // Earlier = better
   }
 
-  for (const periodNums of Object.values(teacherDays)) {
-    const sorted = periodNums.sort((a, b) => a - b);
+  // 3. Balanced day distribution for class
+  const aDay = a.candidate.day || slot.day;
+  const bDay = b.candidate.day || slot.day;
+  const aDayCount = countClassDayAssignments(slot.classId, aDay, existing);
+  const bDayCount = countClassDayAssignments(slot.classId, bDay, existing);
+  if (aDayCount !== bDayCount) return aDayCount - bDayCount;
 
-    // Count gaps between periods
-    for (let i = 1; i < sorted.length; i++) {
-      const gap = sorted[i] - sorted[i - 1] - 1;
-      if (gap >= 2) {
-        penalties += gap; // Big gaps are bad
-      }
-    }
-  }
+  // 4. Teacher's preferred slot
+  const aPref = isTeacherPreferredSlot(
+    a.candidate.teacherId,
+    aDay,
+    a.candidate.period || slot.period
+  );
+  const bPref = isTeacherPreferredSlot(
+    b.candidate.teacherId,
+    bDay,
+    b.candidate.period || slot.period
+  );
+  if (aPref !== bPref) return aPref ? -1 : 1;
 
-  return Math.max(0, score - Math.floor(penalties / 3));
+  return 0;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TEACHER PREFERENCES (0-10 points)
-// ═══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
+// BATCH SCORING
+// =============================================================================
 
-function scoreTeacherPreferences(periods, teachers) {
-  let score = 0;
-  const maxScore = periods.length; // 1 point per slot if preference met
-  const teacherMap = new Map(teachers.map((t) => [t.id, t]));
+/**
+ * Score an entire timetable.
+ * Returns overall quality metrics.
+ */
+export function scoreTimetable(timetable, template, schoolConfig, resolvers) {
+  let totalPenalty = 0;
+  const slotScores = [];
 
-  for (const period of periods) {
-    const teacher = teacherMap.get(period.teacherId);
-    if (!teacher) continue;
+  // Score each slot against the rest
+  for (const assignment of timetable) {
+    const existing = timetable.filter((a) => a.id !== assignment.id);
 
-    // Morning preference
-    if (teacher.preferredSlots === 'MORNING' && period.periodNumber <= 4) {
-      score += 1;
-    }
-    // Afternoon preference
-    if (teacher.preferredSlots === 'AFTERNOON' && period.periodNumber > 4) {
-      score += 1;
-    }
-    // No preference = neutral (0.5 points)
-    if (!teacher.preferredSlots || teacher.preferredSlots === 'ANY') {
-      score += 0.5;
-    }
+    const ctx = {
+      subjectConfig: resolvers.getSubjectConfig(assignment.subjectId) || {},
+      schoolConfig,
+      roomConfig: assignment.roomId ? resolvers.getRoomConfig(assignment.roomId) : null,
+      teacherWellness: resolvers.getTeacherWellness(assignment.teacherId) || null,
+      teacherConfig: resolvers.getTeacherConfig(assignment.teacherId) || {},
+      classConfig: resolvers.getClassConfig(assignment.classId) || {},
+    };
+
+    const penalty = score(assignment, existing, ctx);
+    totalPenalty += penalty;
+
+    slotScores.push({
+      slotId: assignment.id,
+      classId: assignment.classId,
+      subjectId: assignment.subjectId,
+      teacherId: assignment.teacherId,
+      day: assignment.dayOfWeek || assignment.day,
+      period: assignment.periodNumber || assignment.period,
+      penalty,
+    });
   }
 
-  return Math.min(10, Math.round((score / Math.max(1, maxScore)) * 10));
+  const avgPenalty = timetable.length > 0 ? totalPenalty / timetable.length : 0;
+
+  return {
+    totalPenalty,
+    avgPenalty,
+    bestSlots: slotScores.filter((s) => s.penalty === 0),
+    worstSlots: slotScores.sort((a, b) => b.penalty - a.penalty).slice(0, 10),
+    slotScores,
+  };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * Compare two timetables and return the better one.
+ */
+export function compareTimetables(timetableA, timetableB, template, schoolConfig, resolvers) {
+  const scoreA = scoreTimetable(timetableA, template, schoolConfig, resolvers);
+  const scoreB = scoreTimetable(timetableB, template, schoolConfig, resolvers);
+
+  return {
+    better: scoreA.totalPenalty < scoreB.totalPenalty ? 'A' : 'B',
+    scoreA: scoreA.totalPenalty,
+    scoreB: scoreB.totalPenalty,
+    difference: Math.abs(scoreA.totalPenalty - scoreB.totalPenalty),
+    winner: scoreA.totalPenalty < scoreB.totalPenalty ? timetableA : timetableB,
+  };
+}
+
+// =============================================================================
+// WEIGHTED SCORING
+// =============================================================================
+
+/**
+ * Score with custom weights for different constraint categories.
+ * Allows schools to prioritize what matters most to them.
+ */
+export function scoreWeighted(assignment, existing, ctx, weights = {}) {
+  const {
+    subjectTiming = 1.0,
+    teacherWorkload = 1.0,
+    classBalance = 1.0,
+    roomAssignment = 1.0,
+    subjectDistribution = 1.0,
+    teacherPreferences = 0.5,
+    wellness = 2.0, // Wellness weighted higher by default
+    gradeLevel = 1.0,
+  } = weights;
+
+  const detailed = scoreDetailed(assignment, existing, ctx);
+
+  // Apply weights to different categories
+  const weightedScore =
+    (detailed.breakdown.heavySubjectTiming || 0) * subjectTiming +
+    (detailed.breakdown.noConsecutiveOverload || 0) * teacherWorkload +
+    (detailed.breakdown.balancedDailyLoad || 0) * classBalance +
+    (detailed.breakdown.roomTypeMatch || 0) * roomAssignment +
+    (detailed.breakdown.subjectDailyCapOk || 0) * subjectDistribution +
+    (detailed.breakdown.preferredSlotHonoured || 0) * teacherPreferences +
+    (detailed.breakdown.pregnancyFloorPreference || 0) * wellness +
+    (detailed.breakdown.disabilityAccessibility || 0) * wellness +
+    (detailed.breakdown.gradePeriodLimitOk || 0) * gradeLevel;
+
+  return weightedScore;
+}
+
+// =============================================================================
 // HELPERS
-// ═══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 /**
- * Group consecutive period numbers into arrays.
- * [1,2,3,5,6,8] → [[1,2,3], [5,6], [8]]
+ * Count how many periods a teacher has on a specific day.
  */
-function getConsecutiveGroups(numbers) {
-  if (!numbers.length) return [];
-  const sorted = [...numbers].sort((a, b) => a - b);
-  const groups = [];
-  let current = [sorted[0]];
-
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] - sorted[i - 1] === 1) {
-      current.push(sorted[i]);
-    } else {
-      groups.push(current);
-      current = [sorted[i]];
-    }
-  }
-  groups.push(current);
-  return groups;
+function countTeacherDayLoad(teacherId, day, existing) {
+  return existing.filter((e) => e.teacherId === teacherId && (e.day === day || e.dayOfWeek === day))
+    .length;
 }
 
 /**
- * Get count of consecutive periods for a teacher on a specific day.
+ * Count how many periods a class has on a specific day.
  */
-function getConsecutiveCount(periods, teacherId, dayOfWeek, periodNumber) {
-  const dayPeriods = periods
-    .filter((p) => p.teacherId === teacherId && p.dayOfWeek === dayOfWeek)
-    .map((p) => p.periodNumber)
-    .sort((a, b) => a - b);
-
-  let count = 1;
-
-  // Count forward
-  for (let i = periodNumber + 1; dayPeriods.includes(i); i++) count++;
-  // Count backward
-  for (let i = periodNumber - 1; dayPeriods.includes(i); i--) count++;
-
-  return count;
+function countClassDayAssignments(classId, day, existing) {
+  return existing.filter((e) => e.classId === classId && (e.day === day || e.dayOfWeek === day))
+    .length;
 }
+
+/**
+ * Check if a slot matches teacher's preferred times.
+ */
+function isTeacherPreferredSlot(teacherId, day, period) {
+  // This would need teacher wellness data
+  return false; // Simplified
+}
+
+// =============================================================================
+// EXPORT DEFAULTS
+// =============================================================================
+
+export default {
+  score,
+  scoreDetailed,
+  scoreWeighted,
+  rankCandidates,
+  rankCandidatesDetailed,
+  topCandidates,
+  scoreTimetable,
+  compareTimetables,
+};

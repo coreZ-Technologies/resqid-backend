@@ -1,233 +1,134 @@
-// src/modules/parents/parent.repository.js
+// src/modules/m5-parents/parent.repository.js
 import { prisma } from '#config/prisma.js';
-import { generateParentId } from '#services/IdGenerator.service.js';
-import { logger } from '#config/logger.js';
 
 export class ParentRepository {
-  // ─── Create ─────────────────────────────────────────────────────────────
-  async create(data) {
-    const { childIds, passwordHash, ...rest } = data;
-    const parentId = generateParentId();
-
-    return prisma.$transaction(async (tx) => {
-      // Create parent
-      const parent = await tx.parentUser.create({
-        data: {
-          id: parentId,
-          ...rest,
-          passwordHash,
-          isPhoneVerified: true, // since admin creates, phone is trusted
-          metadata: {
-            notifyAttendance: rest.notifyAttendance,
-            notifyAbsent: rest.notifyAbsent,
-            notifyLate: rest.notifyLate,
-            notifyEmergency: rest.notifyEmergency,
-            weeklyReport: rest.weeklyReport,
-            notifChannel: rest.notifChannel,
-            relation: rest.relation,
-            address: rest.address,
-          },
-        },
-      });
-
-      // Link children
-      if (childIds?.length) {
-        await tx.parentStudent.createMany({
-          data: childIds.map(studentId => ({
-            parentId: parent.id,
-            studentId,
-            relation: rest.relation,
-            isPrimary: false,
-            isEmergency: true,
-          })),
-          skipDuplicates: true,
-        });
-      }
-
-      return parent;
-    });
+  // ─── Parent CRUD ──────────────────────────────────────────────
+  async createParent(data) {
+    return prisma.parentUser.create({ data });
   }
 
-  // ─── Find by ID (with children and preferences) ─────────────────────────
-  async findById(id, schoolId = null) {
+  async updateParent(id, data) {
+    return prisma.parentUser.update({ where: { id }, data });
+  }
+
+  async deleteParent(id) {
+    return prisma.parentUser.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+  }
+
+  async findParentById(id, schoolId = null) {
     const where = { id };
     if (schoolId) {
-      // For school admins, ensure parent belongs to their school (via children)
       where.students = { some: { student: { schoolId } } };
     }
-    return prisma.parentUser.findUnique({
+    return prisma.parentUser.findFirst({
       where,
       include: {
         students: {
           include: { student: true },
         },
-        preferences: true,
+        devices: true,
       },
     });
   }
 
-  // ─── List with filters, search, pagination ──────────────────────────────
-  async list({ page, limit, search, engagement, dateRange, sortBy, sortOrder, schoolId }) {
-    const skip = (page - 1) * limit;
-    const where = this._buildListWhereClause({ search, engagement, dateRange, schoolId });
+  async findParentByPhone(phone) {
+    return prisma.parentUser.findUnique({ where: { phone } });
+  }
 
-    const [parents, total] = await Promise.all([
+  async findParentByEmail(email) {
+    return prisma.parentUser.findUnique({ where: { email } });
+  }
+
+  async listParents(where, skip, take, orderBy = { createdAt: 'desc' }) {
+    const [items, total] = await Promise.all([
       prisma.parentUser.findMany({
         where,
         skip,
-        take: limit,
-        orderBy: this._getOrderBy(sortBy, sortOrder),
+        take,
+        orderBy,
         include: {
           students: { include: { student: true } },
-          sessions: { orderBy: { createdAt: 'desc' }, take: 1 },
+          _count: { select: { students: true, notifications: true } },
         },
       }),
       prisma.parentUser.count({ where }),
     ]);
-
-    return { parents, total };
+    return { items, total };
   }
 
-  // ─── Update ─────────────────────────────────────────────────────────────
-  async update(id, data, schoolId = null) {
-    const { childIds, ...rest } = data;
-
-    return prisma.$transaction(async (tx) => {
-      // Update parent metadata
-      if (Object.keys(rest).length) {
-        const current = await tx.parentUser.findUnique({ where: { id } });
-        await tx.parentUser.update({
-          where: { id },
-          data: {
-            ...rest,
-            metadata: {
-              ...(current.metadata || {}),
-              ...rest,
-            },
-          },
-        });
-      }
-
-      // Update child links if provided
-      if (childIds !== undefined) {
-        await tx.parentStudent.deleteMany({ where: { parentId: id } });
-        if (childIds.length) {
-          await tx.parentStudent.createMany({
-            data: childIds.map(studentId => ({
-              parentId: id,
-              studentId,
-              relation: rest.relation || 'GUARDIAN',
-              isPrimary: false,
-              isEmergency: true,
-            })),
-          });
-        }
-      }
-
-      return tx.parentUser.findUnique({ where: { id } });
+  // ─── Parent-Student Links ────────────────────────────────────
+  async linkStudent(parentId, studentId, relation, isPrimary = false, priority = 1) {
+    return prisma.parentStudent.create({
+      data: { parentId, studentId, relation, isPrimary, priority },
     });
   }
 
-  // ─── Delete (soft delete) ───────────────────────────────────────────────
-  async delete(id) {
-    return prisma.parentUser.update({
-      where: { id },
-      data: { deletedAt: new Date(), isActive: false },
+  async unlinkStudent(parentId, studentId) {
+    return prisma.parentStudent.deleteMany({ where: { parentId, studentId } });
+  }
+
+  async getLinkedStudents(parentId) {
+    return prisma.parentStudent.findMany({
+      where: { parentId, isActive: true },
+      include: { student: true },
     });
   }
 
-  // ─── Stats for dashboard ────────────────────────────────────────────────
+  // ─── Notification Preferences ─────────────────────────────────
+  async getPreferences(parentId) {
+    let prefs = await prisma.notificationPreference.findUnique({ where: { parentId } });
+    if (!prefs) {
+      prefs = await prisma.notificationPreference.create({
+        data: {
+          parentId,
+          smsEnabled: true,
+          emailEnabled: false,
+          pushEnabled: true,
+          inAppEnabled: true,
+          onAttendance: true,
+          onEmergency: true,
+          onAnnouncement: true,
+        },
+      });
+    }
+    return prefs;
+  }
+
+  async updatePreferences(parentId, data) {
+    return prisma.notificationPreference.update({
+      where: { parentId },
+      data,
+    });
+  }
+
+  // ─── Stats ────────────────────────────────────────────────────
   async getStats(schoolId) {
-    const where = schoolId ? { students: { some: { student: { schoolId } } } } : {};
-
-    const [
-      totalParents,
-      totalChildrenLinked,
-      highEngagementCount,
-      pendingNotificationsSum,
-    ] = await Promise.all([
-      prisma.parentUser.count({ where }),
-      prisma.parentStudent.count({ where: { parent: where } }),
-      prisma.parentUser.count({
-        where: { ...where, lastLoginAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-      }),
-      prisma.notification.count({ where: { recipientId: { not: null }, readAt: null } }),
-    ]);
-
-    return { totalParents, totalChildrenLinked, highEngagementCount, pendingNotificationsSum };
-  }
-
-  // ─── Export raw data (for export endpoints) ─────────────────────────────
-  async exportData({ engagement, dateRange, schoolId }) {
-    const where = this._buildListWhereClause({ engagement, dateRange, schoolId });
-    return prisma.parentUser.findMany({
-      where,
-      include: {
-        students: { include: { student: true } },
-        sessions: true,
-      },
+    const parents = await prisma.parentUser.findMany({
+      where: { students: { some: { student: { schoolId } } }, isActive: true },
+      include: { students: true },
     });
+    const total = parents.length;
+    const totalChildren = parents.reduce((acc, p) => acc + p.students.length, 0);
+    // Engagement is calculated in service based on last login, notification reads, etc.
+    // For now, return raw data; service will compute.
+    return { total, totalChildren, parents };
   }
 
-  // ─── Private helpers ────────────────────────────────────────────────────
-  _buildListWhereClause({ search, engagement, dateRange, schoolId }) {
-    const where = { deletedAt: null };
-
-    if (schoolId) {
-      where.students = { some: { student: { schoolId } } };
-    }
-
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } },
-        { students: { some: { student: { firstName: { contains: search, mode: 'insensitive' } } } } },
-      ];
-    }
-
-    if (engagement === 'high') {
-      where.lastLoginAt = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
-    } else if (engagement === 'medium') {
-      where.lastLoginAt = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
-    } else if (engagement === 'low') {
-      where.OR = [
-        { lastLoginAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
-        { lastLoginAt: null },
-      ];
-    }
-
-    if (dateRange !== 'all') {
-      const now = new Date();
-      let startDate;
-      switch (dateRange) {
-        case 'this_month':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        case 'last_month':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          break;
-        case 'this_year':
-          startDate = new Date(now.getFullYear(), 0, 1);
-          break;
-        case 'last_quarter':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-          break;
-      }
-      if (startDate) where.createdAt = { gte: startDate };
-    }
-
-    return where;
-  }
-
-  _getOrderBy(sortBy, sortOrder) {
-    const map = {
-      name: { firstName: sortOrder, lastName: sortOrder },
-      joinedDate: { createdAt: sortOrder },
-      engagement: { lastLoginAt: sortOrder },
-      notifications: {}, // Notifications count not sortable directly – handled in service
-    };
-    return map[sortBy] || { createdAt: 'desc' };
+  // ─── Available Students (not yet linked to any parent) ────────
+  async getAvailableStudents(schoolId, excludeParentId = null) {
+    const linkedStudentIds = excludeParentId
+      ? await prisma.parentStudent.findMany({
+          where: { parentId: excludeParentId },
+          select: { studentId: true },
+        }).then(links => links.map(l => l.studentId))
+      : [];
+    return prisma.student.findMany({
+      where: {
+        schoolId,
+        isActive: true,
+        id: { notIn: linkedStudentIds },
+      },
+      select: { id: true, firstName: true, lastName: true, grade: true, section: true, rfidTagNumber: true },
+    });
   }
 }

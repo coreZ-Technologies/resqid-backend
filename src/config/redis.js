@@ -22,7 +22,7 @@ import Redis, { Cluster } from 'ioredis';
 import { ENV } from './env.js';
 import { logger } from './logger.js';
 
-// ─── Base Options (shared across all profiles) ────────────────────────────────
+// Base Options (shared across all profiles)
 
 function buildBaseOptions() {
   return {
@@ -65,8 +65,7 @@ function buildBaseOptions() {
   };
 }
 
-// ─── Profile: HTTP request path ───────────────────────────────────────────────
-//
+// Profile: HTTP request path//
 // enableOfflineQueue: false
 //   If Redis is reconnecting, commands throw immediately so state.service.js
 //   catches and falls back to DB. Without this, commands queue silently and
@@ -89,7 +88,7 @@ function buildHttpOptions() {
   };
 }
 
-// ─── Profile: Middleware (rate-limiter, session, blacklist, health checks) ─────
+// Profile: Middleware (rate-limiter, session, blacklist, health checks)
 //
 // enableOfflineQueue: true
 //   rate-limit-redis runs EVAL to load a Lua script inside its constructor,
@@ -116,8 +115,7 @@ function buildMiddlewareOptions() {
   };
 }
 
-// ─── Profile: BullMQ workers and queues ──────────────────────────────────────
-//
+// Profile: BullMQ workers and queues//
 // enableOfflineQueue: true
 //   Workers must survive Redis reconnects — jobs must not be dropped.
 //
@@ -146,8 +144,7 @@ function buildWorkerOptions() {
   };
 }
 
-// ─── Client Factory ───────────────────────────────────────────────────────────
-
+// Client Factory
 function createRedisClient(name, options) {
   let client;
 
@@ -174,7 +171,7 @@ function createRedisClient(name, options) {
     logger.info({ type: 'redis_single', client: name }, `Redis [${name}]: using single node mode`);
   }
 
-  // ─── Event Handlers ──────────────────────────────────────────────────────────
+  // Event Handlers
   client.on('connect', () =>
     logger.info({ type: 'redis_connect', client: name }, `Redis [${name}]: connected`)
   );
@@ -206,7 +203,7 @@ function createRedisClient(name, options) {
   return client;
 }
 
-// ─── Singletons ───────────────────────────────────────────────────────────────
+// Singletons
 
 const g = globalThis;
 
@@ -236,7 +233,7 @@ export const middlewareRedis =
 export const workerRedis =
   g.__workerRedis ?? (g.__workerRedis = createRedisClient('worker', buildWorkerOptions()));
 
-// ─── Pub/Sub Client Factory ───────────────────────────────────────────────────
+// Pub/Sub Client Factory
 
 /**
  * Create a fresh pub/sub client.
@@ -255,7 +252,7 @@ export function createWorkerRedisClient(name = 'worker') {
   return createRedisClient(name, buildWorkerOptions());
 }
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
+// Health Check
 
 export async function checkRedisHealth() {
   const start = Date.now();
@@ -276,7 +273,7 @@ export async function checkRedisHealth() {
   }
 }
 
-// ─── Connection Pool Stats ────────────────────────────────────────────────────
+// Connection Pool Stats
 
 export async function getRedisStats() {
   try {
@@ -302,7 +299,7 @@ export async function getRedisStats() {
   }
 }
 
-// ─── Graceful Disconnect ──────────────────────────────────────────────────────
+// Graceful Disconnect
 
 export async function disconnectRedis() {
   try {
@@ -316,7 +313,7 @@ export async function disconnectRedis() {
   }
 }
 
-// ─── Middleware-Specific Helpers ──────────────────────────────────────────────
+// Middleware-Specific Helpers
 
 /**
  * Increment a rate limit counter and return the new count.

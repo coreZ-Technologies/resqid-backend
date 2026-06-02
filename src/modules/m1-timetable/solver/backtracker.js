@@ -1,214 +1,504 @@
-// =============================================================================
-// modules/m1-timetable/solver/backtracker.js — RESQID
-// Backtracking search with constraint propagation.
-// =============================================================================
+/**
+ * backtracker.js
+ * CSP backtracking solver with forward checking.
+ * Generates a valid timetable satisfying all hard constraints,
+ * minimising medium + soft penalty scores.
+ *
+ * Supports grade-level flexibility, room assignment, and wellness awareness.
+ */
 
-import { propagateAfterAssignment } from './propagator.js';
-import { orderTeachersByLCV } from './heuristic.js';
+import * as hard from '../constraints/hard.js';
+import { forwardCheck, restoreDomains, initialArcConsistency, slotKey } from './propagator.js';
+import { rankCandidates } from './scorer.js';
+import { orderSlots, mrvOrder } from './heuristic.js';
+
+// =============================================================================
+// SLOT BUILDING
+// =============================================================================
 
 /**
- * Backtracking search to assign teachers to all slots.
- * Returns first valid solution found, or failure.
+ * Build the list of all slots that need to be filled.
+ * One slot per (class × subject × occurrence).
+ * Now respects grade-level period limits.
  */
-export const backtrackSearch = ({
-  slots,
-  domains,
-  teachers,
-  config,
-  strictMode = true,
-  preferMorningCore = true,
-  balanceTeacherLoad = true,
-  timeoutMs = 60000,
-  onProgress = null,
-}) => {
-  const startTime = Date.now();
-  const solution = [];
-  const assignments = [];
-  let progressCount = 0;
+export function buildSlots(template, schoolConfig, gradeConfigs = []) {
+  const workingDays = schoolConfig.workingDays || [1, 2, 3, 4, 5, 6];
+  const days = workingDays; // Already 1-6 format
 
-  // Convert domains to mutable state
-  const slotDomains = slots.map((slot) => {
-    const domain = domains.find((d) => d._index === slot._index);
-    return {
-      ...slot,
-      _domain: domain?.teachers || [],
-      _domainIndex: 0,
-    };
-  });
+  const slots = [];
 
-  const result = recursiveBacktrack(
-    slotDomains,
-    0,
-    assignments,
-    teachers,
-    config,
-    solution,
-    startTime,
-    timeoutMs,
-    strictMode,
-    balanceTeacherLoad,
-    (pct) => {
-      progressCount++;
-      if (onProgress && progressCount % 5 === 0) {
-        const overall = Math.floor((assignments.length / slotDomains.length) * 100);
-        onProgress(Math.min(99, overall));
+  for (const cls of template.classes) {
+    // 🔧 Get grade-specific config
+    const gradeLevel = getGradeConfig(cls.grade, gradeConfigs);
+    const periodsPerDay =
+      cls.periodsPerDay || gradeLevel?.periodsPerDay || schoolConfig.periodsPerDay || 8;
+    const breakPeriods = new Set(
+      cls.breakSchedule?.breakAfterPeriods ||
+        gradeLevel?.breakAfterPeriods ||
+        schoolConfig.breakAfterPeriods ||
+        []
+    );
+
+    // Only generate valid periods for this class
+    const validPeriods = Array.from({ length: periodsPerDay }, (_, i) => i + 1).filter(
+      (p) => !breakPeriods.has(p)
+    );
+
+    for (const subject of cls.subjects) {
+      for (let occ = 0; occ < subject.weeklyPeriods; occ++) {
+        slots.push({
+          id: `${cls.id}:${subject.id}:${occ}`,
+          classId: cls.id,
+          subjectId: subject.id,
+          grade: cls.grade,
+          section: cls.section,
+          eligibleTeachers: template.teachers.filter(
+            (t) => t.eligibleSubjects?.includes(subject.id) || t.subjects?.includes(subject.id)
+          ),
+          validPeriods,
+          validDays: days,
+          periodsPerDay,
+          classConfig: cls, // Store full class config for constraint checking
+        });
       }
     }
+  }
+
+  return slots;
+}
+
+/**
+ * Build slots for a single class (class-by-class generation).
+ */
+export function buildSlotsForClass(cls, template, schoolConfig, gradeConfigs = []) {
+  const workingDays = schoolConfig.workingDays || [1, 2, 3, 4, 5, 6];
+  const days = workingDays;
+
+  const gradeLevel = getGradeConfig(cls.grade, gradeConfigs);
+  const periodsPerDay =
+    cls.periodsPerDay || gradeLevel?.periodsPerDay || schoolConfig.periodsPerDay || 8;
+  const breakPeriods = new Set(
+    cls.breakSchedule?.breakAfterPeriods ||
+      gradeLevel?.breakAfterPeriods ||
+      schoolConfig.breakAfterPeriods ||
+      []
   );
 
-  return {
-    solution: result
-      ? slotDomains.map((s) => ({
-          classId: s.classId,
-          subjectId: s.subjectId,
-          teacherId: s._assignment?.teacherId,
-          dayOfWeek: s.dayOfWeek,
-          periodNumber: s.periodNumber,
-          type: s.type,
-        }))
-      : null,
-    assignmentsMade: assignments.length,
-    totalSlots: slotDomains.length,
-    timeMs: Date.now() - startTime,
-  };
-};
+  const validPeriods = Array.from({ length: periodsPerDay }, (_, i) => i + 1).filter(
+    (p) => !breakPeriods.has(p)
+  );
 
-function recursiveBacktrack(
-  slots,
-  index,
-  assignments,
-  teachers,
-  config,
-  solution,
-  startTime,
-  timeoutMs,
-  strictMode,
-  balanceTeacherLoad,
-  onSlotProcessed
-) {
-  // Timeout check
-  if (Date.now() - startTime > timeoutMs) {
-    return false;
-  }
-
-  // All slots assigned — success!
-  if (index >= slots.length) {
-    return true;
-  }
-
-  const slot = slots[index];
-  onSlotProcessed();
-
-  // Get available teachers for this slot
-  let availableTeachers = getAvailableTeachers(slot, teachers, assignments, config);
-
-  // Order by LCV heuristic
-  availableTeachers = orderTeachersByLCV(availableTeachers, slot, slots, assignments);
-
-  for (const teacher of availableTeachers) {
-    // Assign teacher
-    slot._assignment = { teacherId: teacher.id, teacherName: teacher.name };
-    assignments.push({ slotIndex: index, teacherId: teacher.id });
-
-    // Propagate constraints to remaining slots
-    const originalDomains = slots.slice(index + 1).map((s) => [...(s._domain || [])]);
-
-    propagateToRemaining(slots, index, teacher.id, teachers, config);
-
-    // Check if any remaining slot has empty domain
-    const hasEmptyDomain = slots.slice(index + 1).some((s) => {
-      const available = getAvailableTeachers(s, teachers, assignments, config);
-      return available.length === 0;
-    });
-
-    if (!hasEmptyDomain) {
-      // Recurse to next slot
-      if (
-        recursiveBacktrack(
-          slots,
-          index + 1,
-          assignments,
-          teachers,
-          config,
-          solution,
-          startTime,
-          timeoutMs,
-          strictMode,
-          balanceTeacherLoad,
-          onSlotProcessed
-        )
-      ) {
-        return true;
-      }
+  const slots = [];
+  for (const subject of cls.subjects) {
+    for (let occ = 0; occ < subject.weeklyPeriods; occ++) {
+      slots.push({
+        id: `${cls.id}:${subject.id}:${occ}`,
+        classId: cls.id,
+        subjectId: subject.id,
+        grade: cls.grade,
+        section: cls.section,
+        eligibleTeachers: template.teachers.filter(
+          (t) => t.eligibleSubjects?.includes(subject.id) || t.subjects?.includes(subject.id)
+        ),
+        validPeriods,
+        validDays: days,
+        periodsPerDay,
+        classConfig: cls,
+      });
     }
-
-    // Backtrack — undo assignment
-    slot._assignment = null;
-    assignments.pop();
-
-    // Restore domains
-    slots.slice(index + 1).forEach((s, i) => {
-      s._domain = originalDomains[i];
-    });
   }
-
-  return false; // No valid teacher found
+  return slots;
 }
 
-function getAvailableTeachers(slot, teachers, assignments, config) {
-  return teachers.filter((teacher) => {
-    // Must be qualified for this subject
-    if (!teacher.subjects.includes(slot.subjectId)) return false;
+// =============================================================================
+// CANDIDATE GENERATION
+// =============================================================================
 
-    // Grade range check
-    const grade = parseInt(slot.className.split('-')[0]);
-    if (teacher.gradeMin && grade < teacher.gradeMin) return false;
-    if (teacher.gradeMax && grade > teacher.gradeMax) return false;
+/**
+ * Build initial candidate list for a slot: all (day, period, teacherId, roomId) combos.
+ * Now includes room assignment.
+ */
+function buildCandidates(slot, rooms = []) {
+  const candidates = [];
 
-    // Lab duty
-    if (slot.type === 'LAB' && teacher.noLabDuty) return false;
-
-    // Already assigned to another slot same day+period?
-    const sameTimeAssignment = assignments.find((a) => {
-      const assignedSlot =
-        slot._index !== undefined
-          ? null // We're inside backtrack, use the slots array
-          : null;
-      return false; // Simplified — checked by propagation
-    });
-
-    // Daily max check
-    const todayAssignments = assignments.filter((a) => {
-      const aSlot = null; // Would need slot reference
-      return false;
-    }).length;
-
-    if (todayAssignments >= (teacher.maxPeriodsPerDay || 6)) return false;
-
-    // Weekly max check
-    if (
-      assignments.filter((a) => a.teacherId === teacher.id).length >=
-      (teacher.maxPeriodsPerWeek || 30)
-    ) {
-      return false;
+  for (const day of slot.validDays) {
+    for (const period of slot.validPeriods) {
+      for (const teacher of slot.eligibleTeachers) {
+        // If rooms available, generate room combos too
+        if (rooms.length > 0) {
+          const suitableRooms = getSuitableRooms(slot, rooms);
+          for (const room of suitableRooms) {
+            candidates.push({
+              day,
+              period,
+              teacherId: teacher.id,
+              roomId: room.id,
+            });
+          }
+        } else {
+          candidates.push({
+            day,
+            period,
+            teacherId: teacher.id,
+            roomId: null,
+          });
+        }
+      }
     }
+  }
 
+  return candidates;
+}
+
+/**
+ * Filter rooms suitable for a slot.
+ */
+function getSuitableRooms(slot, rooms) {
+  return rooms.filter((room) => {
+    // Check floor accessibility for known wellness needs
+    // (Detailed check happens in constraints)
+    if (!room.isActive || room.status !== 'AVAILABLE') return false;
     return true;
   });
 }
 
-function propagateToRemaining(slots, currentIndex, assignedTeacher, teachers, config) {
-  const assignedSlot = slots[currentIndex];
+// =============================================================================
+// BACKTRACKING SOLVER
+// =============================================================================
 
-  for (let i = currentIndex + 1; i < slots.length; i++) {
-    const slot = slots[i];
+/**
+ * Main backtracking search with forward checking.
+ *
+ * @param {Array} slots - ordered list of slots to fill
+ * @param {Array} assigned - assignments so far
+ * @param {Object} params - { template, schoolConfig, getTeacherConfig, getTeacherWellness, getSubjectConfig, getRoomConfig, getClassConfig }
+ * @param {Object} opts - { timeoutMs, maxBacktracks, onProgress }
+ * @param {Object} state - { startTime, backtracks, domains }
+ * @returns {Array|null} complete assignment list or null if no solution
+ */
+function backtrack(slots, assigned, params, opts = {}, state = {}) {
+  // Initialize state
+  if (!state.startTime) state.startTime = Date.now();
+  if (!state.backtracks) state.backtracks = 0;
+  if (!state.domains) state.domains = new Map();
 
-    // Remove assigned teacher from same day+period
-    if (
-      slot.dayOfWeek === assignedSlot.dayOfWeek &&
-      slot.periodNumber === assignedSlot.periodNumber
-    ) {
-      slot._domain = (slot._domain || []).filter((id) => id !== assignedTeacher);
+  // ─── Timeout check ───
+  if (opts.timeoutMs && Date.now() - state.startTime > opts.timeoutMs) {
+    const error = new Error('SOLVER_TIMEOUT');
+    error.code = 'SOLVER_TIMEOUT';
+    error.partial = assigned;
+    error.progress = assigned.length / (assigned.length + slots.length);
+    throw error;
+  }
+
+  // ─── Max backtrack limit ───
+  if (opts.maxBacktracks && state.backtracks > opts.maxBacktracks) {
+    const error = new Error('MAX_BACKTRACKS_EXCEEDED');
+    error.code = 'MAX_BACKTRACKS';
+    error.backtracks = state.backtracks;
+    error.partial = assigned;
+    throw error;
+  }
+
+  // ─── Base case: all slots assigned ───
+  if (slots.length === 0) return assigned;
+
+  // ─── Progress callback ───
+  if (opts.onProgress) {
+    const progress = assigned.length / (assigned.length + slots.length);
+    opts.onProgress({
+      progress,
+      assigned: assigned.length,
+      remaining: slots.length,
+      backtracks: state.backtracks,
+    });
+  }
+
+  const [slot, ...rest] = slots;
+  const {
+    template,
+    schoolConfig,
+    getTeacherConfig,
+    getTeacherWellness,
+    getSubjectConfig,
+    getRoomConfig,
+    getClassConfig,
+  } = params;
+
+  // ─── Domain management ───
+  let domain = state.domains.get(slot.id);
+  if (!domain) {
+    // Build domain for this slot
+    const rawCandidates = buildCandidates(slot, template.rooms || []);
+
+    // Filter by hard constraints
+    const validCandidates = rawCandidates.filter((c) => {
+      const assignment = {
+        id: slot.id,
+        classId: slot.classId,
+        subjectId: slot.subjectId,
+        grade: slot.grade,
+        ...c,
+      };
+
+      const teacherConfig = getTeacherConfig(c.teacherId) || {};
+      const roomConfig = c.roomId ? getRoomConfig(c.roomId) : null;
+      const classConfig = getClassConfig(slot.classId) || slot.classConfig || {};
+      const subjectConfig = getSubjectConfig(slot.subjectId) || {};
+      const teacherWellness = getTeacherWellness(c.teacherId) || null;
+
+      const result = hard.checkAll(assignment, assigned, schoolConfig, teacherConfig, {
+        roomConfig,
+        classConfig,
+        subjectConfig,
+        teacherWellness,
+      });
+
+      return result.ok;
+    });
+
+    if (validCandidates.length === 0) {
+      state.backtracks++;
+      return null; // Dead end
+    }
+
+    domain = validCandidates;
+    state.domains.set(slot.id, domain);
+  }
+
+  if (domain.length === 0) {
+    state.backtracks++;
+    return null;
+  }
+
+  // ─── Rank candidates by score ───
+  const ranked = rankCandidates(domain, slot, assigned, (teacherId) => ({
+    subjectConfig: getSubjectConfig(slot.subjectId) || {},
+    schoolConfig,
+    roomConfig: null, // Will be scored per candidate
+    teacherWellness: getTeacherWellness(teacherId) || null,
+    teacherConfig: getTeacherConfig(teacherId) || {},
+    classConfig: getClassConfig(slot.classId) || slot.classConfig || {},
+  }));
+
+  // ─── Order remaining slots ───
+  const teacherMap = Object.fromEntries(template.teachers.map((t) => [t.id, t]));
+  const orderedRest = orderSlots(rest, teacherMap, (s) => s.eligibleTeachers?.length || 1);
+
+  // ─── Try each candidate ───
+  for (const candidate of ranked) {
+    const assignment = {
+      id: slot.id,
+      classId: slot.classId,
+      subjectId: slot.subjectId,
+      grade: slot.grade,
+      section: slot.section,
+      ...candidate,
+    };
+
+    // Forward checking
+    const fcResult = forwardCheck(assignment, state.domains, orderedRest);
+
+    if (!fcResult.ok) {
+      restoreDomains(state.domains, fcResult.pruned);
+      state.backtracks++;
+      continue;
+    }
+
+    const newAssigned = [...assigned, assignment];
+    const result = backtrack(orderedRest, newAssigned, params, opts, state);
+
+    if (result !== null) return result;
+
+    // Restore domains on backtrack
+    restoreDomains(state.domains, fcResult.pruned);
+    state.backtracks++;
+  }
+
+  return null;
+}
+
+// =============================================================================
+// CLASS-BY-CLASS GENERATION
+// =============================================================================
+
+/**
+ * Generate timetable class by class (recommended approach).
+ * Each class is solved independently with existing assignments as constraints.
+ */
+export function solveByClass(template, schoolConfig, resolvers, opts = {}) {
+  const { timeoutMs = 30000, onProgress } = opts;
+  const startTime = Date.now();
+
+  // Sort classes by "hardness" (most constrained first)
+  const orderedClasses = prioritizeClasses(template.classes, template);
+
+  const allAssignments = [];
+  const results = [];
+  const gradeConfigs = schoolConfig.gradeLevels || [];
+
+  for (let i = 0; i < orderedClasses.length; i++) {
+    const cls = orderedClasses[i];
+
+    // Check timeout
+    if (timeoutMs && Date.now() - startTime > timeoutMs) {
+      return {
+        success: false,
+        error: 'PARTIAL_TIMEOUT',
+        completedClasses: results.length,
+        totalClasses: orderedClasses.length,
+        partialTimetable: allAssignments,
+        message: `Timed out after completing ${results.length}/${orderedClasses.length} classes`,
+      };
+    }
+
+    if (onProgress) {
+      onProgress({
+        phase: 'class',
+        current: i + 1,
+        total: orderedClasses.length,
+        className: `${cls.grade}-${cls.section}`,
+        progress: i / orderedClasses.length,
+      });
+    }
+
+    // Build slots for this class only
+    const classSlots = buildSlotsForClass(cls, template, schoolConfig, gradeConfigs);
+
+    // Solve with existing assignments as blockers
+    try {
+      const classAssignments = solve(
+        { ...template, classes: [cls] },
+        schoolConfig,
+        {
+          ...resolvers,
+          existingAssignments: allAssignments, // Block already scheduled slots
+        },
+        {
+          timeoutMs: (timeoutMs - (Date.now() - startTime)) / (orderedClasses.length - i),
+          maxBacktracks: 10000,
+        }
+      );
+
+      if (!classAssignments) {
+        return {
+          success: false,
+          error: 'CLASS_UNSOLVABLE',
+          failedClass: { grade: cls.grade, section: cls.section, id: cls.id },
+          completedClasses: results,
+          partialTimetable: allAssignments,
+          message: `Cannot schedule ${cls.grade}-${cls.section}. Try relaxing constraints.`,
+        };
+      }
+
+      allAssignments.push(...classAssignments);
+      results.push({
+        classId: cls.id,
+        grade: cls.grade,
+        section: cls.section,
+        assignments: classAssignments,
+      });
+    } catch (err) {
+      if (err.code === 'SOLVER_TIMEOUT') {
+        return {
+          success: false,
+          error: 'CLASS_TIMEOUT',
+          failedClass: { grade: cls.grade, section: cls.section, id: cls.id },
+          completedClasses: results,
+          partialTimetable: allAssignments,
+          message: `Timed out while scheduling ${cls.grade}-${cls.section}`,
+        };
+      }
+      throw err;
     }
   }
+
+  return {
+    success: true,
+    timetable: allAssignments,
+    classBreakdown: results,
+    totalSlots: allAssignments.length,
+    totalClasses: orderedClasses.length,
+    processingTimeMs: Date.now() - startTime,
+  };
+}
+
+// =============================================================================
+// ENTRY POINTS
+// =============================================================================
+
+/**
+ * Solve entire timetable at once (all classes together).
+ */
+export function solve(template, schoolConfig, resolvers, opts = {}) {
+  const { timeoutMs = 30000, existingAssignments = [] } = opts;
+
+  const gradeConfigs = schoolConfig.gradeLevels || [];
+  const slots = buildSlots(template, schoolConfig, gradeConfigs);
+  const teacherMap = Object.fromEntries(template.teachers.map((t) => [t.id, t]));
+
+  // Order slots: part-time first, then by MRV
+  const ordered = orderSlots(slots, teacherMap, (s) => s.eligibleTeachers?.length || 1);
+
+  try {
+    const result = backtrack(
+      ordered,
+      existingAssignments,
+      { template, schoolConfig, ...resolvers },
+      { timeoutMs, maxBacktracks: 50000 },
+      { domains: new Map() }
+    );
+    return result;
+  } catch (err) {
+    if (err.code === 'SOLVER_TIMEOUT' || err.code === 'MAX_BACKTRACKS') {
+      return null; // Return null instead of throwing
+    }
+    throw err;
+  }
+}
+
+// =============================================================================
+// HELPERS
+// =============================================================================
+
+/**
+ * Prioritize classes for ordering (most constrained first).
+ */
+function prioritizeClasses(classes, template) {
+  return [...classes].sort((a, b) => {
+    // 1. Classes with fewer eligible teachers first
+    const aMinTeachers = Math.min(
+      ...a.subjects.map((s) => getEligibleTeacherCount(s.id, template))
+    );
+    const bMinTeachers = Math.min(
+      ...b.subjects.map((s) => getEligibleTeacherCount(s.id, template))
+    );
+    if (aMinTeachers !== bMinTeachers) return aMinTeachers - bMinTeachers;
+
+    // 2. Classes with more subjects first
+    if (a.subjects.length !== b.subjects.length) return b.subjects.length - a.subjects.length;
+
+    // 3. Higher grades first
+    const aGrade = parseInt(a.grade) || 0;
+    const bGrade = parseInt(b.grade) || 0;
+    return bGrade - aGrade;
+  });
+}
+
+/**
+ * Get count of eligible teachers for a subject.
+ */
+function getEligibleTeacherCount(subjectId, template) {
+  return template.teachers.filter(
+    (t) => t.eligibleSubjects?.includes(subjectId) || t.subjects?.includes(subjectId)
+  ).length;
+}
+
+/**
+ * Get grade-level configuration for a specific grade.
+ */
+function getGradeConfig(grade, gradeConfigs) {
+  if (!gradeConfigs || gradeConfigs.length === 0) return null;
+  const gradeNum = parseInt(grade) || 0;
+  return gradeConfigs.find((gc) => gradeNum >= gc.gradeFrom && gradeNum <= gc.gradeTo);
 }

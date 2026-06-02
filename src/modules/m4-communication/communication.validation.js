@@ -1,72 +1,51 @@
-// src/modules/communication/communication.validation.js
-import { z } from 'zod';
+// src/modules/m4-communication/communication.routes.js
+import { Router } from 'express';
+import { authenticate } from '#middleware/auth/authenticate.middleware.js';
+import { authorize, ROLES } from '#middleware/auth/authorize.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { rateLimit } from 'express-rate-limit';
 import {
-  ANNOUNCEMENT_CATEGORIES,
-  ANNOUNCEMENT_AUDIENCES,
-  ANNOUNCEMENT_STATUS,
-  DELIVERY_CHANNELS,
-  DELIVERY_STATUS,
-  DELIVERY_TYPES,
-} from './communication.constants.js';
+  createAnnouncementSchema,
+  updateAnnouncementSchema,
+  listAnnouncementsQuerySchema,
+  sendMessageSchema,
+  listMessagesQuerySchema,
+  deliveryLogQuerySchema,
+  retryDeliverySchema,
+  markThreadReadSchema,
+} from './communication.validation.js';
+import * as controller from './communication.controller.js';
 
-// ─── Announcement ───────────────────────────────────────────
-export const createAnnouncementSchema = z.object({
-  title: z.string().min(1).max(100),
-  body: z.string().min(1).max(2000),
-  category: z.enum(ANNOUNCEMENT_CATEGORIES).default('General'),
-  audience: z.enum(ANNOUNCEMENT_AUDIENCES).default('All Students'),
-  specificClass: z.string().optional(),
-  status: z.enum(ANNOUNCEMENT_STATUS).default('Draft'),
-  pinned: z.boolean().default(false),
-  scheduledFor: z.string().datetime().optional(),
+const router = Router();
+
+// All routes require authentication and school admin role
+router.use(authenticate);
+router.use(authorize(ROLES.SCHOOL_ADMIN));
+
+// Rate limiting for sending (prevent spam)
+const sendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
-export const updateAnnouncementSchema = createAnnouncementSchema.partial();
+// ─── Announcements ────────────────────────────────────────────────
+router.get('/announcements', validate(listAnnouncementsQuerySchema, 'query'), controller.listAnnouncements);
+router.get('/announcements/stats', controller.getAnnouncementStats);
+router.post('/announcements', sendLimiter, validate(createAnnouncementSchema), controller.createAnnouncement);
+router.put('/announcements/:id', validate(updateAnnouncementSchema), controller.updateAnnouncement);
+router.delete('/announcements/:id', controller.deleteAnnouncement);
 
-export const listAnnouncementsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(12),
-  search: z.string().optional(),
-  category: z.enum(ANNOUNCEMENT_CATEGORIES).optional(),
-  status: z.enum(ANNOUNCEMENT_STATUS).optional(),
-  audience: z.enum(ANNOUNCEMENT_AUDIENCES).optional(),
-});
+// ─── Delivery Logs ────────────────────────────────────────────────
+router.get('/delivery-logs', validate(deliveryLogQuerySchema, 'query'), controller.getDeliveryLogs);
+router.get('/delivery-logs/stats', controller.getDeliveryStats);
+router.post('/delivery-logs/:deliveryId/retry', validate(retryDeliverySchema, 'params'), controller.retryDelivery);
 
-export const scheduleAnnouncementSchema = z.object({
-  scheduledFor: z.string().datetime(),
-});
+// ─── Messages ─────────────────────────────────────────────────────
+router.get('/messages/threads', validate(listMessagesQuerySchema, 'query'), controller.getThreads);
+router.get('/messages', validate(listMessagesQuerySchema, 'query'), controller.getMessages);
+router.post('/messages', sendLimiter, validate(sendMessageSchema), controller.sendMessage);
+router.patch('/messages/threads/:parentId/read', validate(markThreadReadSchema, 'params'), controller.markThreadRead);
 
-// ─── Delivery Log ──────────────────────────────────────────
-export const listDeliveryLogsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(15),
-  channel: z.enum(DELIVERY_CHANNELS).optional(),
-  status: z.enum(DELIVERY_STATUS).optional(),
-  type: z.enum(DELIVERY_TYPES).optional(),
-  search: z.string().optional(),
-});
-
-// ─── Messages ───────────────────────────────────────────────
-export const createThreadSchema = z.object({
-  parentId: z.string().min(1),
-  studentName: z.string().optional(),
-  studentClass: z.string().optional(),
-});
-
-export const sendMessageSchema = z.object({
-  threadId: z.string().optional(),
-  parentId: z.string().optional(),
-  text: z.string().min(1).max(2000),
-  attachments: z.array(z.string().url()).optional(),
-}).refine(data => data.threadId || data.parentId, {
-  message: 'Either threadId or parentId is required',
-});
-
-export const listThreadsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-  search: z.string().optional(),
-});
-
-// ─── Stats & Unread ────────────────────────────────────────
-export const unreadCountQuerySchema = z.object({}).optional();
+export default router;

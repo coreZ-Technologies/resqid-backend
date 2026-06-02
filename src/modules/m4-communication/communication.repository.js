@@ -1,234 +1,164 @@
-// src/modules/communication/communication.repository.js
+// src/modules/m4-communication/communication.repository.js
 import { prisma } from '#config/prisma.js';
 
 export class CommunicationRepository {
-  // ─── Announcements ─────────────────────────────────────────
+  // ─── Announcements ──────────────────────────────────────────────
   async createAnnouncement(data) {
     return prisma.announcement.create({ data });
   }
 
+  async updateAnnouncement(id, data) {
+    return prisma.announcement.update({ where: { id }, data });
+  }
+
+  async deleteAnnouncement(id) {
+    return prisma.announcement.update({ where: { id }, data: { isArchived: true } });
+  }
+
   async findAnnouncementById(id, schoolId) {
-    return prisma.announcement.findFirst({
-      where: { id, schoolId },
-      include: { deliveries: true },
-    });
+    return prisma.announcement.findFirst({ where: { id, schoolId } });
   }
 
-  async updateAnnouncement(id, schoolId, data) {
-    return prisma.announcement.updateMany({
-      where: { id, schoolId },
-      data,
-    });
-  }
-
-  async deleteAnnouncement(id, schoolId) {
-    return prisma.announcement.deleteMany({
-      where: { id, schoolId },
-    });
-  }
-
-  async listAnnouncements({ page, limit, search, category, status, audience, schoolId }) {
-    const skip = (page - 1) * limit;
-    const where = { schoolId };
-
-    if (search) {
-      where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { body: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-    if (category) where.category = category;
-    if (status) where.status = status;
-    if (audience) where.audience = audience;
-
-    const [announcements, total] = await Promise.all([
-      prisma.announcement.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
-        include: { deliveries: true },
-      }),
+  async listAnnouncements(where, skip, take, orderBy = { createdAt: 'desc' }) {
+    const [items, total] = await Promise.all([
+      prisma.announcement.findMany({ where, skip, take, orderBy }),
       prisma.announcement.count({ where }),
     ]);
-    return { announcements, total };
+    return { items, total };
   }
 
-  async getAnnouncementStats(schoolId) {
-    const [total, published, pinned, viewsSum] = await Promise.all([
-      prisma.announcement.count({ where: { schoolId } }),
-      prisma.announcement.count({ where: { schoolId, status: 'Published' } }),
-      prisma.announcement.count({ where: { schoolId, pinned: true } }),
-      prisma.announcement.aggregate({
-        where: { schoolId },
-        _sum: { views: true },
-      }),
-    ]);
-    return { total, published, pinned, totalViews: viewsSum._sum.views || 0 };
+  // ─── Announcement Deliveries ────────────────────────────────────
+  async createDelivery(data) {
+    return prisma.announcementDelivery.create({ data });
   }
 
-  async incrementAnnouncementViews(id) {
-    return prisma.announcement.update({
+  async updateDelivery(id, data) {
+    return prisma.announcementDelivery.update({ where: { id }, data });
+  }
+
+  async findDeliveryById(id) {
+    return prisma.announcementDelivery.findUnique({
       where: { id },
-      data: { views: { increment: 1 } },
+      include: { announcement: true, parent: true },
     });
   }
 
-  // ─── Delivery Logs ─────────────────────────────────────────
-  async createDeliveryLog(data) {
-    return prisma.deliveryLog.create({ data });
-  }
-
-  async listDeliveryLogs({ page, limit, channel, status, type, search, schoolId }) {
-    const skip = (page - 1) * limit;
-    const where = { schoolId };
-
-    if (channel) where.channel = channel;
-    if (status) where.status = status;
-    if (type) where.type = type;
-    if (search) {
-      where.OR = [
-        { recipientName: { contains: search, mode: 'insensitive' } },
-        { message: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } },
-      ];
-    }
-
-    const [logs, total] = await Promise.all([
-      prisma.deliveryLog.findMany({
+  async listDeliveries(where, skip, take) {
+    const [items, total] = await Promise.all([
+      prisma.announcementDelivery.findMany({
         where,
         skip,
-        take: limit,
-        orderBy: { sentAt: 'desc' },
-      }),
-      prisma.deliveryLog.count({ where }),
-    ]);
-    return { logs, total };
-  }
-
-  async getDeliveryStats(schoolId) {
-    const [total, delivered, failed, pending] = await Promise.all([
-      prisma.deliveryLog.count({ where: { schoolId } }),
-      prisma.deliveryLog.count({ where: { schoolId, status: 'Delivered' } }),
-      prisma.deliveryLog.count({ where: { schoolId, status: 'Failed' } }),
-      prisma.deliveryLog.count({ where: { schoolId, status: 'Pending' } }),
-    ]);
-    const rate = total ? Math.round((delivered / total) * 100) : 0;
-    return { total, delivered, failed, pending, rate };
-  }
-
-  async findDeliveryLogById(id, schoolId) {
-    return prisma.deliveryLog.findFirst({
-      where: { id, schoolId },
-    });
-  }
-
-  async updateDeliveryLogStatus(id, status, errorDetails = null) {
-    return prisma.deliveryLog.update({
-      where: { id },
-      data: {
-        status,
-        deliveredAt: status === 'Delivered' ? new Date() : undefined,
-        errorDetails,
-        retries: { increment: 1 },
-      },
-    });
-  }
-
-  // ─── Message Threads ──────────────────────────────────────
-  async createThread(data) {
-    return prisma.messageThread.create({ data });
-  }
-
-  async findOrCreateThread(parentId, schoolAdminId, schoolId, studentName, studentClass) {
-    let thread = await prisma.messageThread.findFirst({
-      where: { parentId, schoolAdminId, schoolId, isActive: true },
-    });
-    if (!thread) {
-      thread = await prisma.messageThread.create({
-        data: {
-          parentId,
-          schoolAdminId,
-          schoolId,
-          studentName,
-          studentClass,
-        },
-      });
-    }
-    return thread;
-  }
-
-  async listThreads({ page, limit, search, schoolAdminId, schoolId }) {
-    const skip = (page - 1) * limit;
-    const where = { schoolId, schoolAdminId, isActive: true };
-
-    if (search) {
-      where.OR = [
-        { studentName: { contains: search, mode: 'insensitive' } },
-        { parent: { firstName: { contains: search, mode: 'insensitive' } } },
-        { parent: { lastName: { contains: search, mode: 'insensitive' } } },
-      ];
-    }
-
-    const [threads, total] = await Promise.all([
-      prisma.messageThread.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { updatedAt: 'desc' },
+        take,
         include: {
-          messages: { orderBy: { createdAt: 'desc' }, take: 1 },
-          parent: { select: { firstName: true, lastName: true, phone: true } },
+          announcement: { select: { title: true, type: true, category: true } },
+          parent: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }
         },
+        orderBy: { createdAt: 'desc' },
       }),
-      prisma.messageThread.count({ where }),
+      prisma.announcementDelivery.count({ where }),
     ]);
-    return { threads, total };
+    return { items, total };
   }
 
-  async findThreadById(id, schoolId) {
-    return prisma.messageThread.findFirst({
-      where: { id, schoolId, isActive: true },
-      include: {
-        messages: { orderBy: { createdAt: 'asc' } },
-        parent: true,
-      },
-    });
+  // ─── Messages ───────────────────────────────────────────────────
+  async createMessage(data) {
+    return prisma.message.create({ data });
   }
 
-  async updateThreadLastMessage(threadId, lastMessage, senderRole) {
-    const unreadDelta = senderRole === 'parent' ? 1 : 0; // if parent sends, admin unread increases
-    return prisma.messageThread.update({
-      where: { id: threadId },
-      data: {
-        lastMessage,
-        lastMessageAt: new Date(),
-        unreadCount: { increment: unreadDelta },
-      },
-    });
+  async findMessageById(id, schoolId) {
+    return prisma.message.findFirst({ where: { id, schoolId } });
   }
 
-  async markThreadAsRead(threadId) {
-    await prisma.messageThread.update({
-      where: { id: threadId },
-      data: { unreadCount: 0 },
-    });
-    await prisma.message.updateMany({
-      where: { threadId, isRead: false, senderRole: 'parent' },
+  async listMessages(where, skip, take) {
+    const [items, total] = await Promise.all([
+      prisma.message.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: { parent: true, student: true },
+      }),
+      prisma.message.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  // Mark a single message as read (used internally)
+  async markMessageRead(messageId, parentId) {
+    return prisma.message.updateMany({
+      where: { id: messageId, parentId, isRead: false },
       data: { isRead: true, readAt: new Date() },
     });
   }
 
-  async getTotalUnreadCount(schoolAdminId, schoolId) {
-    const result = await prisma.messageThread.aggregate({
-      where: { schoolAdminId, schoolId, isActive: true },
-      _sum: { unreadCount: true },
+  // Mark all messages in a thread (from a specific parent) as read
+  async markThreadRead(parentId, schoolId) {
+    return prisma.message.updateMany({
+      where: {
+        schoolId,
+        parentId,
+        direction: 'PARENT_TO_SCHOOL',
+        isRead: false
+      },
+      data: { isRead: true, readAt: new Date() }
     });
-    return result._sum.unreadCount || 0;
   }
 
-  // ─── Messages ─────────────────────────────────────────────
-  async createMessage(data) {
-    return prisma.message.create({ data });
+  // ─── Threads (group messages by parent) ─────────────────────────
+  async getThreads(schoolId, skip, take, search) {
+    // Simplified: group by parentId, get last message
+    const threads = await prisma.message.groupBy({
+      by: ['parentId'],
+      where: { schoolId },
+      _count: { id: true },
+      _max: { createdAt: true, id: true },
+      orderBy: { _max: { createdAt: 'desc' } },
+      skip,
+      take,
+    });
+    
+    const parentIds = threads.map(t => t.parentId).filter(Boolean);
+    const parents = await prisma.parentUser.findMany({
+      where: { id: { in: parentIds } },
+      select: { id: true, firstName: true, lastName: true, phone: true },
+    });
+    
+    const unreadCounts = await prisma.message.groupBy({
+      by: ['parentId'],
+      where: { schoolId, isRead: false, direction: 'PARENT_TO_SCHOOL' },
+      _count: { id: true },
+    });
+    const unreadMap = Object.fromEntries(unreadCounts.map(u => [u.parentId, u._count.id]));
+    
+    return threads.map(t => ({
+      parentId: t.parentId,
+      parent: parents.find(p => p.id === t.parentId),
+      lastMessageAt: t._max.createdAt,
+      lastMessageId: t._max.id,
+      totalMessages: t._count.id,
+      unreadCount: unreadMap[t.parentId] || 0,
+    }));
+  }
+
+  // ─── Stats ──────────────────────────────────────────────────────
+  async getAnnouncementStats(schoolId) {
+    const [total, published, pinned, totalViews] = await Promise.all([
+      prisma.announcement.count({ where: { schoolId, isArchived: false } }),
+      prisma.announcement.count({ where: { schoolId, status: 'SENT', isArchived: false } }),
+      prisma.announcement.count({ where: { schoolId, pinned: true, isArchived: false } }),
+      prisma.announcement.aggregate({ where: { schoolId, isArchived: false }, _sum: { views: true } }),
+    ]);
+    return { total, published, pinned, totalViews: totalViews._sum.views || 0 };
+  }
+
+  async getDeliveryStats(schoolId) {
+    const where = { announcement: { schoolId, isArchived: false } };
+    const [total, delivered, failed] = await Promise.all([
+      prisma.announcementDelivery.count({ where }),
+      prisma.announcementDelivery.count({ where: { ...where, status: 'DELIVERED' } }),
+      prisma.announcementDelivery.count({ where: { ...where, status: 'FAILED' } })
+    ]);
+    const rate = total ? Math.round((delivered / total) * 100) : 0;
+    return { total, delivered, failed, rate };
   }
 }

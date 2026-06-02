@@ -19,7 +19,7 @@ if (process.env.NODE_ENV !== 'production') {
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+//  Helpers
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 const errors = [];
@@ -74,19 +74,30 @@ function optionalList(key, defaultValue = []) {
     .filter(Boolean);
 }
 
-// ─── Parse All Variables ──────────────────────────────────────────────────────
+function optionalFloat(key, defaultValue) {
+  const raw = process.env[key];
+  if (!raw) return defaultValue;
+  const parsed = parseFloat(raw.trim());
+  if (isNaN(parsed)) {
+    errors.push(`  ✗ ${key} — must be a number`);
+    return defaultValue;
+  }
+  return parsed;
+}
+
+//  Parse All Variables
 
 const _env = {
-  // ─── Server ────────────────────────────────────────────────────────────────
+  //  Server─
   NODE_ENV: optional('NODE_ENV', 'development'),
   PORT: optionalInt('PORT', 3000),
   API_URL: optional('API_URL', 'http://localhost:3000'),
   TRUST_PROXY: optionalInt('TRUST_PROXY', 1),
 
-  // ─── Database ──────────────────────────────────────────────────────────────
+  //  Database
   DATABASE_URL: required('DATABASE_URL', { minLength: 20 }),
 
-  // ─── Redis ─────────────────────────────────────────────────────────────────
+  //  Redis
   REDIS_URL: required('REDIS_URL', { minLength: 10 }),
   REDIS_PASSWORD: optional('REDIS_PASSWORD'),
   REDIS_TLS: optionalBool('REDIS_TLS', false),
@@ -96,7 +107,7 @@ const _env = {
   REDIS_COMMAND_TIMEOUT: optionalInt('REDIS_COMMAND_TIMEOUT', 5000),
   REDIS_KEEP_ALIVE: optionalInt('REDIS_KEEP_ALIVE', 30000),
 
-  // ─── JWT ───────────────────────────────────────────────────────────────────
+  //  JWT─
   JWT_ACCESS_SECRET: required('JWT_ACCESS_SECRET', { minLength: 32 }),
   JWT_ACCESS_EXPIRY: optional('JWT_ACCESS_EXPIRY', '15m'),
   JWT_REFRESH_SECRET: required('JWT_REFRESH_SECRET', { minLength: 32 }),
@@ -106,7 +117,7 @@ const _env = {
   JWT_SCAN_SECRET: optional('JWT_SCAN_SECRET', process.env.JWT_ACCESS_SECRET || ''),
   JWT_SCAN_EXPIRY: optional('JWT_SCAN_EXPIRY', '5m'),
 
-  // ─── CSRF ──────────────────────────────────────────────────────────────────
+  //  CSRF
   CSRF_SECRET: required('CSRF_SECRET', { minLength: 32 }),
   CSRF_ENABLED: optionalBool('CSRF_ENABLED', true),
   CSRF_COOKIE_NAME: optional('CSRF_COOKIE_NAME', 'csrf_token'),
@@ -114,13 +125,13 @@ const _env = {
   CSRF_COOKIE_HTTP_ONLY: optionalBool('CSRF_COOKIE_HTTP_ONLY', false),
   CSRF_COOKIE_SAME_SITE: optional('CSRF_COOKIE_SAME_SITE', 'strict'),
 
-  // ─── URLs ──────────────────────────────────────────────────────────────────
+  //  URLs
   SUPER_ADMIN_URL: required('SUPER_ADMIN_URL'),
   SCHOOL_ADMIN_URL: required('SCHOOL_ADMIN_URL'),
   SCAN_BASE_URL: optional('SCAN_BASE_URL', 'http://localhost:3000/s'),
   COOKIE_DOMAIN: optional('COOKIE_DOMAIN'),
 
-  // ─── Storage (Cloudflare R2 / S3) ──────────────────────────────────────────
+  //  Storage (Cloudflare R2 / S3)
   AWS_ACCESS_KEY_ID: required('AWS_ACCESS_KEY_ID', { prodOnly: true }),
   AWS_SECRET_ACCESS_KEY: required('AWS_SECRET_ACCESS_KEY', { prodOnly: true, minLength: 20 }),
   AWS_REGION: optional('AWS_REGION', 'auto'),
@@ -128,19 +139,19 @@ const _env = {
   AWS_S3_ENDPOINT: required('AWS_S3_ENDPOINT', { prodOnly: true }),
   AWS_CDN_DOMAIN: optional('AWS_CDN_DOMAIN'),
 
-  // ─── SMS (MSG91) ───────────────────────────────────────────────────────────
+  //  SMS (MSG91)
   MSG91_AUTH_KEY: required('MSG91_AUTH_KEY', { prodOnly: true }),
   MSG91_OTP_TEMPLATE_ID: required('MSG91_OTP_TEMPLATE_ID', { prodOnly: true }),
   MSG91_SENDER_ID: optional('MSG91_SENDER_ID', 'RESQID'),
 
-  // ─── Email (Resend) ────────────────────────────────────────────────────────
+  //  Email (Resend)
   RESEND_API_KEY: required('RESEND_API_KEY', { prodOnly: true }),
   RESEND_FROM_EMAIL: optional('RESEND_FROM_EMAIL', 'noreply@mail.getresqid.in'),
 
-  // ─── Push Notifications (Expo) ─────────────────────────────────────────────
+  //  Push Notifications (Expo)
   EXPO_ACCESS_TOKEN: optional('EXPO_ACCESS_TOKEN'),
 
-  // ─── Encryption ────────────────────────────────────────────────────────────
+  //  Encryption
   ENCRYPTION_KEY: required('ENCRYPTION_KEY', { minLength: 64 }),
   LOOKUP_HASH_SECRET: required('LOOKUP_HASH_SECRET', { minLength: 32 }),
   TOKEN_HASH_SECRET: required('TOKEN_HASH_SECRET', { minLength: 32 }),
@@ -148,22 +159,22 @@ const _env = {
   QR_ENCRYPTION_ALGORITHM: optional('QR_ENCRYPTION_ALGORITHM', 'aes-256-gcm'),
   QR_DATA_EXPIRY_SECONDS: optionalInt('QR_DATA_EXPIRY_SECONDS', 300),
 
-  // ─── Logging ───────────────────────────────────────────────────────────────
+  //  Logging
   LOG_LEVEL: optional('LOG_LEVEL', IS_PROD ? 'info' : 'debug'),
   LOG_FORMAT: optional('LOG_FORMAT', IS_PROD ? 'json' : 'pretty'),
   LOG_FILE_PATH: optional('LOG_FILE_PATH'),
 
-  // ─── Sentry ────────────────────────────────────────────────────────────────
+  //  Sentry─
   SENTRY_DSN: optional('SENTRY_DSN'),
   SENTRY_ENVIRONMENT: optional('SENTRY_ENVIRONMENT', 'development'),
-  SENTRY_TRACES_SAMPLE_RATE: parseFloat(optional('SENTRY_TRACES_SAMPLE_RATE', '0.1')),
+  SENTRY_TRACES_SAMPLE_RATE: optionalFloat('SENTRY_TRACES_SAMPLE_RATE', 0.1),
 
-  // ─── Rate Limiting (Global) ────────────────────────────────────────────────
+  //  Rate Limiting (Global)
   ENABLE_RATE_LIMIT: optionalBool('ENABLE_RATE_LIMIT', true),
   RATE_LIMIT_WINDOW_MS: optionalInt('RATE_LIMIT_WINDOW_MS', 60000),
   RATE_LIMIT_MAX_REQUESTS: optionalInt('RATE_LIMIT_MAX_REQUESTS', 100),
 
-  // ─── Rate Limiting (Module-Specific) ───────────────────────────────────────
+  //  Rate Limiting (Module-Specific)
   SCAN_RATE_LIMIT_WINDOW_MS: optionalInt('SCAN_RATE_LIMIT_WINDOW_MS', 60000),
   SCAN_RATE_LIMIT_MAX: optionalInt('SCAN_RATE_LIMIT_MAX', 30),
   ATTENDANCE_RATE_LIMIT_WINDOW_MS: optionalInt('ATTENDANCE_RATE_LIMIT_WINDOW_MS', 1000),
@@ -173,61 +184,61 @@ const _env = {
   OTP_RATE_LIMIT_WINDOW_MS: optionalInt('OTP_RATE_LIMIT_WINDOW_MS', 600000),
   OTP_RATE_LIMIT_MAX: optionalInt('OTP_RATE_LIMIT_MAX', 5),
 
-  // ─── Slow Down ─────────────────────────────────────────────────────────────
+  //  Slow Down─
   SLOW_DOWN_ENABLED: optionalBool('SLOW_DOWN_ENABLED', true),
   SLOW_DOWN_WINDOW_MS: optionalInt('SLOW_DOWN_WINDOW_MS', 900000),
   SLOW_DOWN_DELAY_AFTER: optionalInt('SLOW_DOWN_DELAY_AFTER', 50),
   SLOW_DOWN_DELAY_MS: optionalInt('SLOW_DOWN_DELAY_MS', 500),
 
-  // ─── Device Fingerprinting ─────────────────────────────────────────────────
+  //  Device Fingerprinting ─
   DEVICE_FINGERPRINT_SECRET: optional('DEVICE_FINGERPRINT_SECRET', process.env.CSRF_SECRET || ''),
   DEVICE_TRUST_THRESHOLD_DAYS: optionalInt('DEVICE_TRUST_THRESHOLD_DAYS', 30),
   MAX_DEVICES_PER_USER: optionalInt('MAX_DEVICES_PER_USER', 5),
   DEVICE_FINGERPRINT_ENABLED: optionalBool('DEVICE_FINGERPRINT_ENABLED', true),
 
-  // ─── IP Reputation ─────────────────────────────────────────────────────────
+  //  IP Reputation
   IP_REPUTATION_ENABLED: optionalBool('IP_REPUTATION_ENABLED', true),
   IP_REPUTATION_THRESHOLD: optionalInt('IP_REPUTATION_THRESHOLD', -50),
   IP_BLOCK_DURATION_HOURS: optionalInt('IP_BLOCK_DURATION_HOURS', 24),
   IP_FAILURE_WINDOW_MINUTES: optionalInt('IP_FAILURE_WINDOW_MINUTES', 15),
   IP_MAX_FAILURES: optionalInt('IP_MAX_FAILURES', 10),
 
-  // ─── Geo Blocking ──────────────────────────────────────────────────────────
+  //  Geo Blocking ─
   GEO_BLOCK_ENABLED: optionalBool('GEO_BLOCK_ENABLED', false),
   GEO_BLOCK_MODE: optional('GEO_BLOCK_MODE', 'blocklist'),
   GEO_BLOCKED_COUNTRIES: optionalList('GEO_BLOCKED_COUNTRIES'),
   GEO_ALLOWED_COUNTRIES: optionalList('GEO_ALLOWED_COUNTRIES', ['IN']),
 
-  // ─── Behavioral Security ───────────────────────────────────────────────────
+  //  Behavioral Security
   BEHAVIORAL_ANALYSIS_ENABLED: optionalBool('BEHAVIORAL_ANALYSIS_ENABLED', true),
   IMPOSSIBLE_TRAVEL_THRESHOLD_KM: optionalInt('IMPOSSIBLE_TRAVEL_THRESHOLD_KM', 500),
   RAPID_SCAN_THRESHOLD: optionalInt('RAPID_SCAN_THRESHOLD', 10),
   UNUSUAL_HOURS_START: optionalInt('UNUSUAL_HOURS_START', 22),
   UNUSUAL_HOURS_END: optionalInt('UNUSUAL_HOURS_END', 6),
 
-  // ─── Attack Detection ──────────────────────────────────────────────────────
+  //  Attack Detection
   ATTACK_DETECTION_ENABLED: optionalBool('ATTACK_DETECTION_ENABLED', true),
   ATTACK_WINDOW_SECONDS: optionalInt('ATTACK_WINDOW_SECONDS', 300),
   ATTACK_THRESHOLD: optionalInt('ATTACK_THRESHOLD', 50),
   BRUTE_FORCE_THRESHOLD: optionalInt('BRUTE_FORCE_THRESHOLD', 10),
 
-  // ─── Cloudflare ────────────────────────────────────────────────────────────
+  //  Cloudflare
   BEHIND_CLOUDFLARE: optionalBool('BEHIND_CLOUDFLARE', false),
   CLOUDFLARE_IP_HEADER: optional('CLOUDFLARE_IP_HEADER', 'cf-connecting-ip'),
   CLOUDFLARE_COUNTRY_HEADER: optional('CLOUDFLARE_COUNTRY_HEADER', 'cf-ipcountry'),
 
-  // ─── API Versioning ────────────────────────────────────────────────────────
+  //  API Versioning
   API_VERSION_HEADER: optional('API_VERSION_HEADER', 'x-api-version'),
   API_DEFAULT_VERSION: optional('API_DEFAULT_VERSION', '1'),
   API_DEPRECATED_VERSIONS: optionalList('API_DEPRECATED_VERSIONS'),
 
-  // ─── Maintenance Mode ──────────────────────────────────────────────────────
+  //  Maintenance Mode
   MAINTENANCE_MODE_ENABLED: optionalBool('MAINTENANCE_MODE_ENABLED', false),
   MAINTENANCE_BYPASS_SECRET: required('MAINTENANCE_BYPASS_SECRET', { minLength: 16 }),
   MAINTENANCE_WHITELIST_IPS: optionalList('MAINTENANCE_WHITELIST_IPS'),
   MAINTENANCE_WHITELIST_ROLES: optionalList('MAINTENANCE_WHITELIST_ROLES', ['SUPER_ADMIN']),
 
-  // ─── CORS ──────────────────────────────────────────────────────────────────
+  //  CORS
   CORS_ORIGINS: optional('CORS_ORIGINS', 'http://localhost:3000'),
   CORS_METHODS: optional('CORS_METHODS', 'GET,POST,PUT,PATCH,DELETE,OPTIONS'),
   CORS_ALLOWED_HEADERS: optional(
@@ -237,31 +248,154 @@ const _env = {
   CORS_CREDENTIALS: optionalBool('CORS_CREDENTIALS', true),
   CORS_MAX_AGE: optionalInt('CORS_MAX_AGE', 86400),
 
-  // ─── Request Size Limits ───────────────────────────────────────────────────
+  //  Request Size Limits
   MAX_REQUEST_SIZE: optional('MAX_REQUEST_SIZE', '10mb'),
   MAX_FILE_SIZE: optional('MAX_FILE_SIZE', '5mb'),
 
-  // ─── Content Security ──────────────────────────────────────────────────────
+  //  Content Security
   XSS_PROTECTION_ENABLED: optionalBool('XSS_PROTECTION_ENABLED', true),
   NOSQL_INJECTION_PROTECTION_ENABLED: optionalBool('NOSQL_INJECTION_PROTECTION_ENABLED', true),
   HPP_PROTECTION_ENABLED: optionalBool('HPP_PROTECTION_ENABLED', true),
 
-  // ─── Worker Configuration ──────────────────────────────────────────────────
+  //  Worker Configuration
   WORKER_ROLE: optional('WORKER_ROLE', 'all'),
   ENABLE_PIPELINE_QUEUE: optionalBool('ENABLE_PIPELINE_QUEUE', false),
   SLACK_ALERTS_WEBHOOK: optional('SLACK_ALERTS_WEBHOOK'),
   ENABLE_STEP_METRICS: optionalBool('ENABLE_STEP_METRICS', false),
 
-  // ─── Token / QR ────────────────────────────────────────────────────────────
+  //  Token / QR
   TOKEN_VALIDITY_MONTHS: optionalInt('TOKEN_VALIDITY_MONTHS', 12),
+
+  // ===========================================================================
+  // School Defaults
+  // ===========================================================================
+  SCHOOL_DEFAULT_TIMEZONE: optional('SCHOOL_DEFAULT_TIMEZONE', 'Asia/Kolkata'),
+  SCHOOL_DEFAULT_PERIODS: optionalInt('SCHOOL_DEFAULT_PERIODS', 8),
+  SCHOOL_DEFAULT_WORKING_DAYS: optionalList('SCHOOL_DEFAULT_WORKING_DAYS', [
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+  ]),
+  SCHOOL_DEFAULT_START_TIME: optional('SCHOOL_DEFAULT_START_TIME', '08:00'),
+  SCHOOL_DEFAULT_END_TIME: optional('SCHOOL_DEFAULT_END_TIME', '15:00'),
+  SCHOOL_TRIAL_DAYS: optionalInt('SCHOOL_TRIAL_DAYS', 14),
+  SCHOOL_MAX_STUDENTS_DEFAULT: optionalInt('SCHOOL_MAX_STUDENTS_DEFAULT', 500),
+  SCHOOL_MAX_TEACHERS_DEFAULT: optionalInt('SCHOOL_MAX_TEACHERS_DEFAULT', 50),
+
+  // ===========================================================================
+  // Teacher Defaults
+  // ===========================================================================
+  TEACHER_DEFAULT_MAX_PERIODS_DAY: optionalInt('TEACHER_DEFAULT_MAX_PERIODS_DAY', 6),
+  TEACHER_DEFAULT_MAX_PERIODS_WEEK: optionalInt('TEACHER_DEFAULT_MAX_PERIODS_WEEK', 30),
+  TEACHER_DEFAULT_MAX_CONSECUTIVE: optionalInt('TEACHER_DEFAULT_MAX_CONSECUTIVE', 3),
+  TEACHER_AUTO_SUBSTITUTE: optionalBool('TEACHER_AUTO_SUBSTITUTE', true),
+  TEACHER_SUBSTITUTE_NOTICE_MINUTES: optionalInt('TEACHER_SUBSTITUTE_NOTICE_MINUTES', 30),
+
+  // ===========================================================================
+  // Timetable Solver
+  // ===========================================================================
+  TIMETABLE_SOLVER_TIMEOUT_MS: optionalInt('TIMETABLE_SOLVER_TIMEOUT_MS', 300000),
+  TIMETABLE_SOLVER_MAX_BACKTRACKS: optionalInt('TIMETABLE_SOLVER_MAX_BACKTRACKS', 50000),
+  TIMETABLE_SOLVER_MODE: optional('TIMETABLE_SOLVER_MODE', 'class-by-class'),
+  TIMETABLE_GENERATE_CONCURRENCY: optionalInt('TIMETABLE_GENERATE_CONCURRENCY', 2),
+  TIMETABLE_CRISIS_CONCURRENCY: optionalInt('TIMETABLE_CRISIS_CONCURRENCY', 5),
+  TIMETABLE_VALIDATE_CONCURRENCY: optionalInt('TIMETABLE_VALIDATE_CONCURRENCY', 3),
+  TIMETABLE_SWAP_CONCURRENCY: optionalInt('TIMETABLE_SWAP_CONCURRENCY', 3),
+  TIMETABLE_BULK_CONCURRENCY: optionalInt('TIMETABLE_BULK_CONCURRENCY', 2),
+
+  // ===========================================================================
+  // Wellness
+  // ===========================================================================
+  WELLNESS_BURNOUT_THRESHOLD: optionalInt('WELLNESS_BURNOUT_THRESHOLD', 80),
+  WELLNESS_CONSECUTIVE_DAYS_THRESHOLD: optionalInt('WELLNESS_CONSECUTIVE_DAYS_THRESHOLD', 6),
+  WELLNESS_SENIOR_AGE: optionalInt('WELLNESS_SENIOR_AGE', 55),
+  WELLNESS_CHECK_INTERVAL_DAYS: optionalInt('WELLNESS_CHECK_INTERVAL_DAYS', 30),
+
+  // ===========================================================================
+  // Emergency
+  // ===========================================================================
+  EMERGENCY_ALERT_TIMEOUT_SECONDS: optionalInt('EMERGENCY_ALERT_TIMEOUT_SECONDS', 30),
+  EMERGENCY_ESCALATION_DELAY_MINUTES: optionalInt('EMERGENCY_ESCALATION_DELAY_MINUTES', 5),
+  EMERGENCY_MAX_CONTACTS_PER_STUDENT: optionalInt('EMERGENCY_MAX_CONTACTS_PER_STUDENT', 5),
+  EMERGENCY_DRILL_REMINDER_DAYS: optionalInt('EMERGENCY_DRILL_REMINDER_DAYS', 90),
+
+  // ===========================================================================
+  // Attendance Device
+  // ===========================================================================
+  ATTENDANCE_DEVICE_HEARTBEAT_INTERVAL: optionalInt('ATTENDANCE_DEVICE_HEARTBEAT_INTERVAL', 30),
+  ATTENDANCE_SCAN_BATCH_SIZE: optionalInt('ATTENDANCE_SCAN_BATCH_SIZE', 100),
+  ATTENDANCE_SCAN_FLUSH_INTERVAL: optionalInt('ATTENDANCE_SCAN_FLUSH_INTERVAL', 60),
+  ATTENDANCE_MAX_DEVICES_PER_SCHOOL: optionalInt('ATTENDANCE_MAX_DEVICES_PER_SCHOOL', 50),
+
+  // ===========================================================================
+  // Feature Flags
+  // ===========================================================================
+  FEATURE_TIMETABLE_ENABLED: optionalBool('FEATURE_TIMETABLE_ENABLED', true),
+  FEATURE_ATTENDANCE_ENABLED: optionalBool('FEATURE_ATTENDANCE_ENABLED', true),
+  FEATURE_EMERGENCY_ENABLED: optionalBool('FEATURE_EMERGENCY_ENABLED', true),
+  FEATURE_WELLNESS_ENABLED: optionalBool('FEATURE_WELLNESS_ENABLED', true),
+  FEATURE_BULK_UPLOAD_ENABLED: optionalBool('FEATURE_BULK_UPLOAD_ENABLED', true),
+  FEATURE_CRISIS_AUTO_RESOLVE: optionalBool('FEATURE_CRISIS_AUTO_RESOLVE', true),
+  FEATURE_NOTIFICATIONS_ENABLED: optionalBool('FEATURE_NOTIFICATIONS_ENABLED', true),
+
+  // ===========================================================================
+  // File Upload
+  // ===========================================================================
+  UPLOAD_MAX_FILE_SIZE_MB: optionalInt('UPLOAD_MAX_FILE_SIZE_MB', 10),
+  UPLOAD_ALLOWED_TYPES: optionalList('UPLOAD_ALLOWED_TYPES', ['xlsx', 'csv', 'xls']),
+  UPLOAD_MAX_ROWS_PER_BATCH: optionalInt('UPLOAD_MAX_ROWS_PER_BATCH', 500),
+
+  // ===========================================================================
+  // Cache TTL
+  // ===========================================================================
+  CACHE_SCHOOL_CONFIG_TTL: optionalInt('CACHE_SCHOOL_CONFIG_TTL', 3600),
+  CACHE_TEACHER_LIST_TTL: optionalInt('CACHE_TEACHER_LIST_TTL', 1800),
+  CACHE_STUDENT_LIST_TTL: optionalInt('CACHE_STUDENT_LIST_TTL', 1800),
+  CACHE_TIMETABLE_TTL: optionalInt('CACHE_TIMETABLE_TTL', 86400),
+
+  // ===========================================================================
+  // Pagination
+  // ===========================================================================
+  PAGINATION_DEFAULT_LIMIT: optionalInt('PAGINATION_DEFAULT_LIMIT', 20),
+  PAGINATION_MAX_LIMIT: optionalInt('PAGINATION_MAX_LIMIT', 100),
+
+  // ===========================================================================
+  // Monitoring
+  // ===========================================================================
+  HEALTH_CHECK_INTERVAL: optionalInt('HEALTH_CHECK_INTERVAL', 30),
+  METRICS_ENABLED: optionalBool('METRICS_ENABLED', false),
+  SLOW_QUERY_THRESHOLD_MS: optionalInt('SLOW_QUERY_THRESHOLD_MS', 1000),
+
+  // ===========================================================================
+  // Worker Concurrency
+  // ===========================================================================
+  WORKER_CONCURRENCY_EMERGENCY: optionalInt('WORKER_CONCURRENCY_EMERGENCY', 10),
+  WORKER_CONCURRENCY_NOTIFICATION: optionalInt('WORKER_CONCURRENCY_NOTIFICATION', 5),
+  WORKER_CONCURRENCY_ATTENDANCE: optionalInt('WORKER_CONCURRENCY_ATTENDANCE', 3),
+  WORKER_CONCURRENCY_GENERATE: optionalInt('WORKER_CONCURRENCY_GENERATE', 2),
+  WORKER_CONCURRENCY_CRISIS: optionalInt('WORKER_CONCURRENCY_CRISIS', 5),
+  WORKER_CONCURRENCY_VALIDATE: optionalInt('WORKER_CONCURRENCY_VALIDATE', 3),
+  WORKER_CONCURRENCY_SWAP: optionalInt('WORKER_CONCURRENCY_SWAP', 3),
+  WORKER_CONCURRENCY_BULK: optionalInt('WORKER_CONCURRENCY_BULK', 2),
+
+  // ===========================================================================
+  // Notification Channels
+  // ===========================================================================
+  NOTIFICATION_SMS_ENABLED: optionalBool('NOTIFICATION_SMS_ENABLED', true),
+  NOTIFICATION_EMAIL_ENABLED: optionalBool('NOTIFICATION_EMAIL_ENABLED', true),
+  NOTIFICATION_PUSH_ENABLED: optionalBool('NOTIFICATION_PUSH_ENABLED', true),
+  NOTIFICATION_WHATSAPP_ENABLED: optionalBool('NOTIFICATION_WHATSAPP_ENABLED', false),
 };
 
-// ─── Derived Values ───────────────────────────────────────────────────────────
+//  Derived Values
 
 _env.IS_PROD = _env.NODE_ENV === 'production';
 _env.IS_DEV = _env.NODE_ENV === 'development';
 
-// ─── Validation ───────────────────────────────────────────────────────────────
+//  Validation
 
 // JWT secrets must be different
 if (_env.JWT_ACCESS_SECRET && _env.JWT_ACCESS_SECRET === _env.JWT_REFRESH_SECRET) {
@@ -283,7 +417,15 @@ if (!process.env.DEVICE_FINGERPRINT_SECRET && IS_PROD) {
   console.warn('  ⚠ DEVICE_FINGERPRINT_SECRET not set — falling back to CSRF_SECRET');
 }
 
-// ─── Report & Exit ────────────────────────────────────────────────────────────
+// Solver mode validation
+if (
+  _env.TIMETABLE_SOLVER_MODE &&
+  !['full', 'class-by-class', 'incremental'].includes(_env.TIMETABLE_SOLVER_MODE)
+) {
+  errors.push("  ✗ TIMETABLE_SOLVER_MODE must be 'full', 'class-by-class', or 'incremental'");
+}
+
+//  Report & Exit
 
 if (errors.length > 0) {
   console.error('\n╔══════════════════════════════════════════════════╗');

@@ -2,19 +2,15 @@
 
 import { ENV } from './env.js';
 
-// ─── Cookie Name Constants ────────────────────────────────────────────────────
-
+// COOKIE NAME
 export const COOKIE_NAMES = {
   ACCESS_TOKEN: 'accessToken',
   REFRESH_TOKEN: 'refreshToken',
   CSRF_TOKEN: '__Host-csrf',
 };
 
-// ─── Base domain config ───────────────────────────────────────────────────────
-
+// COOKIE DOMAIN
 const COOKIE_DOMAIN = ENV.COOKIE_DOMAIN || undefined;
-
-// ─── Cookie Configs ───────────────────────────────────────────────────────────
 
 export const cookieConfig = {
   accessToken: {
@@ -44,8 +40,6 @@ export const cookieConfig = {
     // domain intentionally omitted — __Host- prefix forbids it
   },
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export const setAuthCookies = (res, accessToken, refreshToken) => {
   res.cookie(COOKIE_NAMES.ACCESS_TOKEN, accessToken, cookieConfig.accessToken);

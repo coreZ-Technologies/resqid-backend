@@ -1,260 +1,183 @@
-// =============================================================================
-// modules/m1-timetable/timetable.service.js — RESQID
-// Business logic + constraint validation + solver integration.
-// =============================================================================
+/**
+ * Timetable service — business logic & orchestration.
+ */
 
+import { nanoid } from 'nanoid';
+import { enqueueGenerate, enqueueValidate } from '#orchestrator/queues/queue.config.js';
+import { timetableRepository } from './timetable.repository.js';
+import { templateService } from '../templates/template.service.js';
 import { ApiError } from '#shared/response/ApiError.js';
-import { logger } from '#config/logger.js';
-import * as repo from './timetable.repository.js';
-import { generateTimetable as solveTimetable } from './solver/index.js';
-import { validateTimetable as validateSlots } from './solver/validator.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CONFIG
-// ═══════════════════════════════════════════════════════════════════════════════
+export const timetableService = {
+  /**
+   * Start a generate job. Returns jobId immediately.
+   */
+  async startGenerate(schoolId, templateId, opts = {}) {
+    // Verify template exists
+    const template = await templateService.getTemplate(templateId, schoolId);
+    if (!template) throw new ApiError(404, 'Template not found');
 
-export const getConfig = (schoolId) => repo.getTimetableConfig(schoolId);
+    const jobId = nanoid();
+    await timetableRepository.createJobRecord(jobId, 'GENERATE_TIMETABLE', schoolId);
+    await enqueueGenerate({ jobId, templateId, schoolId, opts });
 
-export const updateConfig = (schoolId, data) => repo.upsertTimetableConfig(schoolId, data);
+    return {
+      jobId,
+      message: 'Timetable generation queued',
+      estimatedTime: '30-120 seconds depending on school size',
+    };
+  },
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TEACHER
-// ═══════════════════════════════════════════════════════════════════════════════
+  /**
+   * Start a validate job on an existing timetable.
+   */
+  async startValidate(schoolId, timetableId) {
+    const timetable = await timetableRepository.findById(timetableId, schoolId);
+    if (!timetable) throw new ApiError(404, 'Timetable not found');
 
-export const createTeacher = (schoolId, data) => repo.createTeacher({ ...data, schoolId });
+    const jobId = nanoid();
+    await timetableRepository.createJobRecord(jobId, 'VALIDATE_TIMETABLE', schoolId);
+    await enqueueValidate({ jobId, timetableId, schoolId });
 
-export const listTeachers = (schoolId) => repo.listTeachers(schoolId);
+    return {
+      jobId,
+      message: 'Validation queued',
+      estimatedTime: '10-30 seconds',
+    };
+  },
 
-export const getTeacher = (id, schoolId) => repo.findTeacher(id, schoolId);
+  /**
+   * Upload an existing timetable for validation.
+   */
+  async uploadExisting(schoolId, templateId, assignments) {
+    const template = await templateService.getTemplate(templateId, schoolId);
+    if (!template) throw new ApiError(404, 'Template not found');
 
-export const updateTeacher = (id, data) => repo.updateTeacher(id, data);
-
-export const removeTeacher = (id) => repo.deleteTeacher(id);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBJECT
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createSubject = (schoolId, data) => repo.createSubject({ ...data, schoolId });
-
-export const listSubjects = (schoolId) => repo.listSubjects(schoolId);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CLASS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const createClass = (schoolId, data) => repo.createClassGroup({ ...data, schoolId });
-
-export const listClasses = (schoolId) => repo.listClassGroups(schoolId);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PERIOD — Manual CRUD with constraint validation
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const addPeriod = async (schoolId, data) => {
-  // Validate constraints
-  const violations = await validatePeriodConstraints(schoolId, data);
-  const hardViolations = violations.filter((v) => v.type === 'HARD');
-
-  if (hardViolations.length > 0) {
-    throw ApiError.conflict(
-      `Cannot add period: ${hardViolations.map((v) => v.message).join('. ')}`
-    );
-  }
-
-  return repo.createPeriod({ ...data, schoolId });
-};
-
-export const addBulkPeriods = async (schoolId, classId, periods) => {
-  const enriched = periods.map((p) => ({ ...p, schoolId, classId }));
-  await repo.bulkCreatePeriods(enriched);
-  return { count: periods.length };
-};
-
-export const getClassTimetable = (classId, schoolId) => repo.getClassTimetable(classId, schoolId);
-
-export const getTeacherTimetable = (teacherId, schoolId) =>
-  repo.getTeacherTimetable(teacherId, schoolId);
-
-export const removePeriod = (id) => repo.deletePeriod(id);
-
-export const clearTimetable = (classId) => repo.clearClassTimetable(classId);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CONSTRAINT VALIDATION (Single Period)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-async function validatePeriodConstraints(schoolId, data, excludePeriodId = null) {
-  const violations = [];
-  const config = await repo.getTimetableConfig(schoolId);
-  const teachers = await repo.getTeachersWithConstraints(schoolId);
-  const teacher = teachers.find((t) => t.id === data.teacherId);
-
-  if (!teacher) {
-    violations.push({ type: 'HARD', message: 'Teacher not found' });
-    return violations;
-  }
-
-  // ── HARD: Teacher double-booking ──────────────────────────────────────────
-  const teacherBooked = await repo.findTeacherPeriodAtSlot(
-    data.teacherId,
-    data.dayOfWeek,
-    data.periodNumber,
-    excludePeriodId
-  );
-
-  if (teacherBooked) {
-    violations.push({
-      type: 'HARD',
-      message: `${teacher.name} is already assigned at Day ${data.dayOfWeek}, Period ${data.periodNumber}`,
+    // Save as draft timetable
+    const timetable = await timetableRepository.saveTimetable({
+      schoolId,
+      templateId,
+      assignments: assignments.map((a) => ({
+        day: a.day,
+        period: a.period,
+        classId: a.classId,
+        subjectId: a.subjectId,
+        teacherId: a.teacherId,
+        roomId: a.roomId,
+        periodType: a.periodType || 'REGULAR',
+        notes: a.notes,
+      })),
+      generationType: 'MANUAL',
+      meta: { source: 'upload' },
     });
-  }
 
-  // ── HARD: Class double-booking ────────────────────────────────────────────
-  const classBooked = await repo.findClassPeriodAtSlot(
-    data.classId,
-    data.dayOfWeek,
-    data.periodNumber,
-    excludePeriodId
-  );
+    // Auto-validate the uploaded timetable
+    const jobId = nanoid();
+    await timetableRepository.createJobRecord(jobId, 'VALIDATE_TIMETABLE', schoolId);
+    await enqueueValidate({ jobId, timetableId: timetable.id, schoolId });
 
-  if (classBooked) {
-    violations.push({
-      type: 'HARD',
-      message: `Class already has a period at Day ${data.dayOfWeek}, Period ${data.periodNumber}`,
-    });
-  }
+    return {
+      timetableId: timetable.id,
+      jobId,
+      message: 'Timetable uploaded and validation queued',
+    };
+  },
 
-  // ── HARD: Subject qualification ───────────────────────────────────────────
-  if (!teacher.subjects.includes(data.subjectId)) {
-    violations.push({
-      type: 'HARD',
-      message: `${teacher.name} is not qualified to teach this subject`,
-    });
-  }
-
-  // ── HARD: Daily max ──────────────────────────────────────────────────────
-  const dayCount = await repo.countTeacherPeriodsOnDay(data.teacherId, data.dayOfWeek);
-  if (dayCount >= (teacher.maxPeriodsPerDay || 6)) {
-    violations.push({
-      type: 'HARD',
-      message: `${teacher.name} has reached daily max (${teacher.maxPeriodsPerDay})`,
-    });
-  }
-
-  // ── MEDIUM: Weekly max ───────────────────────────────────────────────────
-  const weekCount = await repo.countTeacherPeriodsInWeek(data.teacherId);
-  if (weekCount >= (teacher.maxPeriodsPerWeek || 30)) {
-    violations.push({
-      type: 'MEDIUM',
-      message: `${teacher.name} has reached weekly max (${teacher.maxPeriodsPerWeek})`,
-    });
-  }
-
-  // ── MEDIUM: Consecutive limit ────────────────────────────────────────────
-  const dayPeriods = await repo.getTeacherPeriodsOnDay(data.teacherId, data.dayOfWeek);
-  const consecutiveCount = getConsecutiveCount(
-    dayPeriods.map((p) => p.periodNumber),
-    data.periodNumber
-  );
-
-  if (consecutiveCount >= (teacher.maxConsecutive || 4)) {
-    violations.push({
-      type: 'MEDIUM',
-      message: `${teacher.name} would exceed consecutive limit (${teacher.maxConsecutive})`,
-    });
-  }
-
-  return violations;
-}
-
-function getConsecutiveCount(periodNumbers, target) {
-  const all = [...periodNumbers, target].sort((a, b) => a - b);
-  let maxConsecutive = 1;
-  let current = 1;
-
-  for (let i = 1; i < all.length; i++) {
-    if (all[i] - all[i - 1] === 1) {
-      current++;
-      maxConsecutive = Math.max(maxConsecutive, current);
-    } else {
-      current = 1;
+  /**
+   * Get job status.
+   */
+  async getJobStatus(jobId, queueName, schoolId) {
+    const record = await timetableRepository.getJobRecord(jobId);
+    if (!record || record.schoolId !== schoolId) {
+      throw new ApiError(404, 'Job not found');
     }
-  }
+    return record;
+  },
 
-  return maxConsecutive;
-}
+  /**
+   * Get a timetable by ID.
+   */
+  async getTimetable(timetableId, schoolId) {
+    const timetable = await timetableRepository.findById(timetableId, schoolId);
+    if (!timetable) throw new ApiError(404, 'Timetable not found');
+    return timetable;
+  },
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// AUTO-GENERATE
-// ═══════════════════════════════════════════════════════════════════════════════
+  /**
+   * List timetables for a school.
+   */
+  async listTimetables(schoolId, filters = {}) {
+    return timetableRepository.findAllBySchool(schoolId, filters);
+  },
 
-export const generateTimetable = async (schoolId, options) => {
-  const result = await solveTimetable({
-    schoolId,
-    ...options,
-  });
+  /**
+   * Update timetable status.
+   */
+  async updateTimetableStatus(timetableId, schoolId, status) {
+    await this.getTimetable(timetableId, schoolId);
+    return timetableRepository.updateStatus(timetableId, status);
+  },
 
-  if (result.success && options.autoSave !== false) {
-    await repo.saveGeneratedTimetable(schoolId, options.classIds, result.timetable);
-    logger.info(
-      { schoolId, classCount: options.classIds.length },
-      '[timetable] Auto-saved generated timetable'
-    );
-  }
+  /**
+   * Delete a timetable.
+   */
+  async deleteTimetable(timetableId, schoolId) {
+    await this.getTimetable(timetableId, schoolId);
+    return timetableRepository.remove(timetableId);
+  },
 
-  return result;
-};
+  /**
+   * SSE stream for job progress.
+   */
+  streamJobProgress(jobId, schoolId, res) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// VALIDATE IMPORTED
-// ═══════════════════════════════════════════════════════════════════════════════
+    const send = (event, data) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
 
-export const validateImportedTimetable = async (schoolId, periods) => {
-  const teachers = await repo.getTeachersWithConstraints(schoolId);
-  const config = await repo.getTimetableConfig(schoolId);
+    let interval;
+    let closed = false;
 
-  return validateSlots(periods, teachers, config);
-};
+    const cleanup = () => {
+      if (interval) clearInterval(interval);
+      if (!closed) {
+        closed = true;
+        res.end();
+      }
+    };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SUBSTITUTION
-// ═══════════════════════════════════════════════════════════════════════════════
+    interval = setInterval(async () => {
+      try {
+        const record = await timetableRepository.getJobRecord(jobId);
 
-export const createSubstitution = (schoolId, data) =>
-  repo.createSubstitution({ ...data, schoolId, status: 'PENDING' });
+        if (!record || record.schoolId !== schoolId) {
+          send('error', { message: 'Job not found' });
+          cleanup();
+          return;
+        }
 
-export const listSubstitutions = (schoolId, date) => repo.listSubstitutions(schoolId, date);
+        send('status', {
+          jobId: record.id,
+          status: record.status,
+          progress: record.progressPercent,
+          message: record.statusMessage,
+        });
 
-export const approveSubstitution = (id, schoolId, status, approvedBy) =>
-  repo.updateSubstitutionStatus(id, status, approvedBy);
+        if (record.status === 'COMPLETED' || record.status === 'FAILED') {
+          if (record.output) send('result', record.output);
+          cleanup();
+        }
+      } catch (err) {
+        send('error', { message: err.message });
+        cleanup();
+      }
+    }, 2000);
 
-export const findSubstituteForPeriod = async (schoolId, periodId) => {
-  const period = await prisma.period.findUnique({
-    where: { id: periodId },
-    include: {
-      subject: true,
-      classGroup: true,
-    },
-  });
-
-  if (!period) throw ApiError.notFound('Period not found');
-
-  const teachers = await repo.getTeachersWithConstraints(schoolId);
-  const qualified = teachers.filter(
-    (t) => t.subjects.includes(period.subjectId) && !t.noSubstitutionDuty
-  );
-
-  // Find available at this day+period
-  const available = [];
-  for (const teacher of qualified) {
-    const booked = await repo.findTeacherPeriodAtSlot(
-      teacher.id,
-      period.dayOfWeek,
-      period.periodNumber
-    );
-    if (!booked) available.push(teacher);
-  }
-
-  return available;
+    res.on('close', cleanup);
+    res.on('error', cleanup);
+  },
 };

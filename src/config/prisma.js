@@ -1,15 +1,11 @@
 // src/config/prisma.js
-
 import { PrismaClient } from '@prisma/client';
 import { ENV } from './env.js';
 import { logger } from './logger.js';
 
-const SLOW_QUERY_MS = 1000; // warn if query exceeds 1 second
+const SLOW_QUERY_MS = 1000;
 
-// ─── Log Config ───────────────────────────────────────────────────────────────
-// query events enabled in dev only — too noisy for production
-// warn + error always on
-
+// Log Config
 const LOG_CONFIG = ENV.IS_DEV
   ? [
       { emit: 'event', level: 'query' },
@@ -22,15 +18,14 @@ const LOG_CONFIG = ENV.IS_DEV
       { emit: 'event', level: 'error' },
     ];
 
-// ─── Client Factory ───────────────────────────────────────────────────────────
-
+// Client Factory
 function createPrismaClient() {
   const client = new PrismaClient({
     log: LOG_CONFIG,
     errorFormat: ENV.IS_PROD ? 'minimal' : 'pretty',
   });
 
-  // ── Query logging ────────────────────────────────────────────────────────────
+  //  Query logging
   if (ENV.IS_DEV) {
     client.$on('query', (e) => {
       const duration = e.duration;
@@ -42,7 +37,6 @@ function createPrismaClient() {
             query: e.query,
             durationMs: duration,
             target: e.target,
-            // params intentionally omitted — may contain PII
           },
           `Slow query: ${duration}ms`
         );
@@ -59,11 +53,7 @@ function createPrismaClient() {
     });
   }
 
-  // ── Slow query logging in production — no query text, just duration ─────────
-  // In prod we can't emit query events, but we can use $extends for metrics.
-  // Tracked via external APM (Railway metrics / Sentry perf) — add here if needed.
-
-  // ── Warn + error — all environments ─────────────────────────────────────────
+  //  Warn + error all environments
   client.$on('warn', (e) => {
     logger.warn({ type: 'prisma_warn', message: e.message }, 'Prisma warning');
   });
@@ -75,16 +65,13 @@ function createPrismaClient() {
   return client;
 }
 
-// ─── Singleton ────────────────────────────────────────────────────────────────
-// Symbol key avoids collision with any other global that uses __prisma string key
-
+// Singleton
 const PRISMA_GLOBAL_KEY = Symbol.for('resqid.prisma');
 
 export const prisma =
   globalThis[PRISMA_GLOBAL_KEY] ?? (globalThis[PRISMA_GLOBAL_KEY] = createPrismaClient());
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
-
+// Health Check
 export async function checkPrismaHealth() {
   const start = Date.now();
 
@@ -93,7 +80,6 @@ export async function checkPrismaHealth() {
 
     const latencyMs = Date.now() - start;
 
-    // Warn if health check itself is slow — DB under load
     if (latencyMs > SLOW_QUERY_MS) {
       logger.warn({ type: 'db_health_slow', latencyMs }, `DB health check slow: ${latencyMs}ms`);
     }
@@ -111,8 +97,7 @@ export async function checkPrismaHealth() {
   }
 }
 
-// ─── Graceful Disconnect ──────────────────────────────────────────────────────
-
+// Graceful Disconnect
 export async function disconnectPrisma() {
   try {
     await prisma.$disconnect();
@@ -122,10 +107,7 @@ export async function disconnectPrisma() {
   }
 }
 
-// ─── Startup Connection Check ─────────────────────────────────────────────────
-// Eagerly verify DB is reachable at boot — fail fast instead of silent failure.
-// Call this in your app entry point (server.js) after imports.
-
+// Startup Connection Check
 export async function connectPrisma(retries = 3, delayMs = 2000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     const result = await checkPrismaHealth();
@@ -136,12 +118,11 @@ export async function connectPrisma(retries = 3, delayMs = 2000) {
     }
 
     if (attempt < retries) {
-      logger.warn({ attempt, retries, delayMs }, `DB not ready — retrying in ${delayMs}ms`);
+      logger.warn({ attempt, retries, delayMs }, `DB not ready retrying in ${delayMs}ms`);
       await new Promise((res) => setTimeout(res, delayMs));
     }
   }
 
-  // All retries exhausted — crash fast
-  logger.fatal('DB connection failed after all retries — shutting down');
+  logger.fatal('DB connection failed after all retries shutting down');
   process.exit(1);
 }
