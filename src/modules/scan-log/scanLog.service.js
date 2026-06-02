@@ -19,11 +19,11 @@ export class ScanLogService {
         : null,
       student_id: scan.student?.id || null,
       ip_address: scan.ipAddress,
-      ip_city: scan.city,
+      ip_city: scan.city,          // ✅ fixed: matches repository (city field)
       device: scan.device,
       scan_purpose: scan.scanPurpose || 'UNKNOWN',
-      response_time_ms: scan.response_time_ms,
-      created_at: scan.created_at,
+      response_time_ms: scan.responseTimeMs,   // ✅ fixed: response_time_ms → responseTimeMs
+      created_at: scan.createdAt,             // ✅ fixed: created_at → createdAt
     }));
 
     const totalPages = Math.ceil(total / query.limit);
@@ -69,8 +69,8 @@ export class ScanLogService {
       'City': scan.city,
       'Device': scan.device,
       'Scan Purpose': scan.scanPurpose || 'UNKNOWN',
-      'Response Time (ms)': scan.response_time_ms || 'N/A',
-      'Scanned At': scan.created_at,
+      'Response Time (ms)': scan.responseTimeMs || 'N/A',
+      'Scanned At': scan.createdAt,    // ✅ fixed: created_at → createdAt
     }));
 
     return exportData;

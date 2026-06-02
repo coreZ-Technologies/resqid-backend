@@ -22,7 +22,7 @@ import { formatScanLogForResponse, formatStatsResponse } from './scan.helper.js'
 const service = new ScanService();
 
 // =============================================================================
-// EXISTING SCAN ENDPOINTS
+// EXISTING SCAN ENDPOINTS (Public)
 // =============================================================================
 
 /**
@@ -32,8 +32,7 @@ const service = new ScanService();
 export const handleScan = asyncHandler(async (req, res) => {
   const { code } = scanCodeParamsSchema.parse(req.params);
   const result = await service.processScan(code, req);
-  
-  // Log scan result
+
   logger.info({
     scanId: result.scanId,
     result: result.result,
@@ -41,19 +40,16 @@ export const handleScan = asyncHandler(async (req, res) => {
     responseTimeMs: result.responseTimeMs,
     riskScore: result.riskScore,
   }, 'Scan processed');
-  
-  // Check if client expects JSON (API) or HTML (browser)
+
   const acceptHeader = req.headers.accept || '';
   const expectsHtml = acceptHeader.includes('text/html');
-  
-  // Redirect to emergency profile page on success (for browser requests)
+
   if (expectsHtml && result.success && result.student) {
     return res.redirect(`/emergency/profile/${result.student.id}`);
   }
-  
-  // Return JSON response for API clients
+
   const statusCode = result.result === 'SUCCESS' ? 200 : 400;
-  res.status(statusCode).json(ApiResponse.success('Scan processed', result));
+  return ApiResponse.send(res, statusCode, result, 'Scan processed');
 });
 
 /**
@@ -63,7 +59,7 @@ export const handleScan = asyncHandler(async (req, res) => {
 export const validateScanCode = asyncHandler(async (req, res) => {
   const { code } = validateScanCodeQuerySchema.parse(req.query);
   const result = await service.validateScanCode(code);
-  res.json(ApiResponse.success('Code validation', result));
+  return ApiResponse.ok(res, result, 'Code validation');
 });
 
 // =============================================================================
@@ -77,11 +73,10 @@ export const validateScanCode = asyncHandler(async (req, res) => {
 export const listScanLogs = asyncHandler(async (req, res) => {
   const query = listScanLogsQuerySchema.parse(req.query);
   const result = await service.listScanLogs(query, req.schoolId);
-  
-  // Transform scans for frontend
+
   const transformedData = result.data.map(formatScanLogForResponse);
-  
-  res.json(ApiResponse.paginated(
+
+  return ApiResponse.paginated(
     res,
     transformedData,
     {
@@ -90,17 +85,7 @@ export const listScanLogs = asyncHandler(async (req, res) => {
       total: result.pagination.total,
     },
     'Scan logs fetched'
-  ));
-});
-
-/**
- * GET /api/scan/logs/stats/today
- * Get today's scan statistics
- */
-export const getTodayStats = asyncHandler(async (req, res) => {
-  const stats = await service.getTodayStats(req.schoolId);
-  const formattedStats = formatStatsResponse(stats);
-  res.json(ApiResponse.success('Today\'s stats', formattedStats));
+  );
 });
 
 /**
@@ -110,13 +95,13 @@ export const getTodayStats = asyncHandler(async (req, res) => {
 export const getScanLogById = asyncHandler(async (req, res) => {
   const { id } = getScanLogParamsSchema.parse(req.params);
   const scan = await service.getScanLogById(id, req.schoolId);
-  
+
   if (!scan) {
     throw ApiError.notFound('Scan log not found');
   }
-  
+
   const formattedScan = formatScanLogForResponse(scan);
-  res.json(ApiResponse.success('Scan log details', formattedScan));
+  return ApiResponse.ok(res, formattedScan, 'Scan log details');
 });
 
 /**
@@ -136,10 +121,9 @@ export const exportScanLogs = asyncHandler(async (req, res) => {
   switch (query.format) {
     case 'csv':
       return exportAsCSV(res, exportData, fileName);
-    case 'json':
-      return exportAsJSON(res, exportData, fileName);
     case 'xlsx':
       return exportAsExcel(res, exportData, fileName);
+    case 'json':
     default:
       return exportAsJSON(res, exportData, fileName);
   }
@@ -150,13 +134,23 @@ export const exportScanLogs = asyncHandler(async (req, res) => {
 // =============================================================================
 
 /**
+ * GET /api/scan/stats/today
+ * Get today's scan statistics
+ */
+export const getTodayStats = asyncHandler(async (req, res) => {
+  const stats = await service.getTodayStats(req.schoolId);
+  const formattedStats = formatStatsResponse(stats);
+  return ApiResponse.ok(res, formattedStats, "Today's stats");
+});
+
+/**
  * GET /api/scan/stats/summary
  * Get comprehensive scan statistics (for dashboard)
  */
 export const getScanSummary = asyncHandler(async (req, res) => {
   const { period, startDate, endDate } = scanSummaryQuerySchema.parse(req.query);
   let start;
-  
+
   if (startDate) {
     start = new Date(startDate);
   } else {
@@ -178,9 +172,9 @@ export const getScanSummary = asyncHandler(async (req, res) => {
         start.setDate(start.getDate() - 7);
     }
   }
-  
+
   const stats = await service.getScanSummary(start, req.schoolId);
-  res.json(ApiResponse.success('Scan summary', stats));
+  return ApiResponse.ok(res, stats, 'Scan summary');
 });
 
 /**
@@ -190,7 +184,7 @@ export const getScanSummary = asyncHandler(async (req, res) => {
 export const getDailyScanStats = asyncHandler(async (req, res) => {
   const { days } = dailyScanStatsQuerySchema.parse(req.query);
   const stats = await service.getDailyScanStats(days, req.schoolId);
-  res.json(ApiResponse.success('Daily scan stats', stats));
+  return ApiResponse.ok(res, stats, 'Daily scan stats');
 });
 
 /**
@@ -199,7 +193,7 @@ export const getDailyScanStats = asyncHandler(async (req, res) => {
  */
 export const getResultDistribution = asyncHandler(async (req, res) => {
   const distribution = await service.getResultDistribution(req.schoolId);
-  res.json(ApiResponse.success('Result distribution', distribution));
+  return ApiResponse.ok(res, distribution, 'Result distribution');
 });
 
 /**
@@ -209,7 +203,7 @@ export const getResultDistribution = asyncHandler(async (req, res) => {
 export const getPeakScanHours = asyncHandler(async (req, res) => {
   const { days } = peakHoursQuerySchema.parse(req.query);
   const stats = await service.getPeakScanHours(req.schoolId, days);
-  res.json(ApiResponse.success('Peak hours', stats));
+  return ApiResponse.ok(res, stats, 'Peak hours');
 });
 
 /**
@@ -219,7 +213,7 @@ export const getPeakScanHours = asyncHandler(async (req, res) => {
 export const getRecentScans = asyncHandler(async (req, res) => {
   const { limit } = recentScansQuerySchema.parse(req.query);
   const scans = await service.getRecentScans(limit, req.schoolId);
-  res.json(ApiResponse.success('Recent scans', scans));
+  return ApiResponse.ok(res, scans, 'Recent scans');
 });
 
 // =============================================================================
@@ -243,7 +237,7 @@ const exportAsCSV = (res, data, fileName) => {
       ],
     });
     const csv = parser.parse(data);
-    
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}.csv"`);
     res.setHeader('Cache-Control', 'no-cache');
@@ -281,13 +275,11 @@ const exportAsExcel = async (res, data, fileName) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Scan Logs');
 
-    // Add metadata rows
     worksheet.addRow(['Export Date:', new Date().toISOString()]);
     worksheet.addRow(['Total Records:', data.length]);
-    worksheet.addRow([]); // Empty row
+    worksheet.addRow([]);
 
     if (data.length > 0) {
-      // Define columns from first row keys
       const columns = Object.keys(data[0]).map(key => ({
         header: key,
         key: key,
@@ -296,7 +288,6 @@ const exportAsExcel = async (res, data, fileName) => {
       }));
       worksheet.columns = columns;
 
-      // Add data rows
       data.forEach(row => {
         const rowData = {};
         columns.forEach(col => {
@@ -308,7 +299,6 @@ const exportAsExcel = async (res, data, fileName) => {
         worksheet.addRow(rowData);
       });
 
-      // Style the header row (row 3 after metadata)
       const headerRow = worksheet.getRow(3);
       headerRow.eachCell((cell) => {
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -325,7 +315,6 @@ const exportAsExcel = async (res, data, fileName) => {
         };
       });
 
-      // Auto-filter
       worksheet.autoFilter = {
         from: { row: 3, column: 1 },
         to: { row: 3, column: columns.length },
@@ -335,7 +324,7 @@ const exportAsExcel = async (res, data, fileName) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}.xlsx"`);
     res.setHeader('Cache-Control', 'no-cache');
-    
+
     await workbook.xlsx.write(res);
     res.end();
   } catch (err) {

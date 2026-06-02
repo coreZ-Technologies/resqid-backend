@@ -272,21 +272,34 @@ export const parseUserAgent = (userAgent) => {
 };
 
 /**
- * Format scan log for API response.
+ * Format scan log for API response (used by list and detail endpoints).
+ * Fields match the frontend expected shape.
  */
 export const formatScanLogForResponse = (scan) => {
+  if (!scan) return null;
+  
+  let studentName = null;
+  let studentId = null;
+  if (scan.student) {
+    studentName = `${scan.student.firstName} ${scan.student.lastName}`.trim();
+    studentId = scan.student.id;
+  } else if (scan.studentName) {
+    studentName = scan.studentName;
+    studentId = scan.studentId;
+  }
+  
   return {
     id: scan.id,
-    token_hash: scan.token?.qrCode || scan.token?.rfidUid || 'Unknown',
+    token_hash: scan.token?.qrCode || scan.token?.rfidUid || scan.tokenId || 'Unknown',
     result: scan.result,
-    student_name: scan.student ? `${scan.student.firstName} ${scan.student.lastName}` : null,
-    student_id: scan.student?.id || null,
-    ip_address: scan.deviceIp,
-    ip_city: scan.metadata?.city || null,
-    device: scan.metadata?.device || 'Unknown',
-    scan_purpose: scan.metadata?.scanPurpose || 'UNKNOWN',
-    response_time_ms: scan.metadata?.responseTimeMs || null,
-    created_at: scan.createdAt,
+    student_name: studentName,
+    student_id: studentId,
+    ip_address: scan.ipAddress,
+    ip_city: scan.city,
+    device: scan.device,
+    scan_purpose: scan.scanPurpose,
+    response_time_ms: scan.responseTimeMs,
+    created_at: scan.scannedAt || scan.createdAt,
   };
 };
 

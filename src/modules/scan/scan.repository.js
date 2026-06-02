@@ -6,10 +6,17 @@ export class ScanRepository {
   // EXISTING SCAN METHODS
   // ===========================================================================
 
+  /**
+   * Create a new scan record
+   */
   async createScan(data) {
     return prisma.scan.create({ data });
   }
 
+  /**
+   * Find token by various codes (scanCode, qrCode, rfidUid)
+   * Includes full emergency profile and parent links (heavy – for emergency page)
+   */
   async findTokenByCode(scanCode) {
     if (!scanCode) return null;
     
@@ -48,6 +55,30 @@ export class ScanRepository {
             email: true,
           },
         },
+      },
+    });
+  }
+
+  /**
+   * Lightweight token lookup (no emergency profile) – for validation only
+   */
+  async findTokenByCodeLight(scanCode) {
+    if (!scanCode) return null;
+    
+    return prisma.token.findFirst({
+      where: {
+        OR: [
+          { scanCode: scanCode },
+          { qrCode: scanCode },
+          { rfidUid: scanCode },
+        ],
+      },
+      select: {
+        id: true,
+        status: true,
+        expiresAt: true,
+        schoolId: true,
+        studentId: true,
       },
     });
   }
@@ -132,15 +163,9 @@ export class ScanRepository {
       createdAt: { gte: today, lt: tomorrow },
     };
 
-    const [total, success, failed, avgResponse] = await Promise.all([
+    const [total, success, avgResponse] = await Promise.all([
       prisma.scan.count({ where }),
       prisma.scan.count({ where: { ...where, result: 'SUCCESS' } }),
-      prisma.scan.count({
-        where: {
-          ...where,
-          result: { notIn: ['SUCCESS'] },
-        },
-      }),
       prisma.scan.aggregate({
         where,
         _avg: { responseTimeMs: true },
@@ -221,10 +246,9 @@ export class ScanRepository {
       createdAt: { gte: startDate },
     };
 
-    const [total, success, failed, uniqueStudents, avgResponseTime] = await Promise.all([
+    const [total, success, uniqueStudents, avgResponseTime] = await Promise.all([
       prisma.scan.count({ where }),
       prisma.scan.count({ where: { ...where, result: 'SUCCESS' } }),
-      prisma.scan.count({ where: { ...where, result: { notIn: ['SUCCESS'] } } }),
       prisma.scan.groupBy({
         by: ['studentId'],
         where,
@@ -281,6 +305,9 @@ export class ScanRepository {
     return results;
   }
 
+  /**
+   * Get result distribution as array of { result, count }
+   */
   async getResultDistribution(schoolId) {
     const results = await prisma.scan.groupBy({
       by: ['result'],
@@ -288,12 +315,10 @@ export class ScanRepository {
       _count: { result: true },
     });
     
-    const distribution = {};
-    results.forEach(r => {
-      distribution[r.result] = r._count.result;
-    });
-    
-    return distribution;
+    return results.map(r => ({
+      result: r.result,
+      count: r._count.result,
+    }));
   }
 
   async getPeakScanHours(schoolId, days = 7) {
@@ -357,6 +382,9 @@ export class ScanRepository {
   // PRIVATE HELPERS
   // ===========================================================================
 
+  /**
+   * Build Prisma `where` clause for scan logs query
+   */
   _buildScanLogsWhereClause({ result, search, startDate, endDate, schoolId }) {
     const where = { schoolId };
 
@@ -378,7 +406,10 @@ export class ScanRepository {
       where.createdAt = { gte: new Date(startDate) };
     }
     if (endDate) {
-      where.createdAt = { ...where.createdAt, lte: new Date(endDate) };
+      // Set to end of day
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      where.createdAt = { ...where.createdAt, lte: end };
     }
 
     return where;

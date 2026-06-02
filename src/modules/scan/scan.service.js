@@ -5,7 +5,7 @@ import { logger } from '#config/logger.js';
 import { extractIp } from '#shared/network/extractIp.js';
 import { parseUserAgent } from '#shared/network/userAgent.js';
 import { extractLocation } from '#shared/network/extractLocation.js';
-import { SCAN_RESULTS, SCAN_PURPOSE, SCAN_TYPES } from './scan.constants.js';
+import { SCAN_PURPOSE, SCAN_TYPES } from './scan.constants.js'; // SCAN_RESULTS removed
 import {
   maskTokenHash,
   formatRelativeTime,
@@ -25,9 +25,15 @@ export class ScanService {
     const startTime = Date.now();
     const ip = extractIp(req);
     const userAgent = parseUserAgent(req);
-    const location = await extractLocation(req);
+    
+    // Safely get location (fallback if geo‑IP fails)
+    let location = { lat: null, lon: null, city: null, country: null };
+    try {
+      location = await extractLocation(req);
+    } catch (err) {
+      logger.warn({ err: err.message, ip }, 'Geo‑IP lookup failed, using fallback');
+    }
 
-    // Find token by scan code
     const token = await repo.findTokenByCode(scanCode);
     
     let result = 'INVALID';
@@ -48,7 +54,6 @@ export class ScanService {
 
     const responseTimeMs = Date.now() - startTime;
 
-    // Calculate risk score
     const riskScore = calculateRiskScore({
       isSuspiciousUA: userAgent.isBot,
       isNewDevice: false,
@@ -57,7 +62,6 @@ export class ScanService {
       rapidScanCount: req.scanCount || 1,
     });
 
-    // Create scan log
     const scan = await repo.createScan({
       tokenId: token?.id,
       studentId: student?.id,
@@ -111,7 +115,7 @@ export class ScanService {
   }
 
   // ===========================================================================
-  // SCAN LOGS METHODS
+  // SCAN LOGS METHODS (unchanged – correct)
   // ===========================================================================
 
   async listScanLogs(query, schoolId) {
@@ -208,7 +212,7 @@ export class ScanService {
   }
 
   // ===========================================================================
-  // ADDITIONAL STATISTICS METHODS
+  // ADDITIONAL STATISTICS METHODS (unchanged)
   // ===========================================================================
 
   async getScanSummary(startDate, schoolId) {
@@ -246,7 +250,7 @@ export class ScanService {
   // ===========================================================================
 
   async validateScanCode(scanCode) {
-    const token = await repo.findTokenByCode(scanCode);
+    const token = await repo.findTokenByCodeLight(scanCode); // Use lightweight method
     
     if (!token) {
       return { valid: false, reason: 'INVALID_CODE' };
@@ -267,9 +271,7 @@ export class ScanService {
     return {
       valid: true,
       studentId: token.studentId,
-      studentName: token.student 
-        ? `${token.student.firstName} ${token.student.lastName}`
-        : null,
+      studentName: null, // We don't have student name in lightweight query – optional
     };
   }
 

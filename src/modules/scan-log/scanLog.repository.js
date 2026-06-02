@@ -14,16 +14,20 @@ export class ScanLogRepository {
       where.OR = [
         { student: { firstName: { contains: search, mode: 'insensitive' } } },
         { student: { lastName: { contains: search, mode: 'insensitive' } } },
-        { ip_city: { contains: search, mode: 'insensitive' } },
+        { city: { contains: search, mode: 'insensitive' } },        // ✅ fixed: ip_city → city
         { token: { qrCode: { contains: search, mode: 'insensitive' } } },
+        { token: { rfidUid: { contains: search, mode: 'insensitive' } } },
       ];
     }
 
     if (startDate) {
-      where.created_at = { gte: new Date(startDate) };
+      where.createdAt = { gte: new Date(startDate) };               // ✅ fixed: created_at → createdAt
     }
     if (endDate) {
-      where.created_at = { ...where.created_at, lte: new Date(endDate) };
+      // Set to end of day
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      where.createdAt = { ...where.createdAt, lte: end };
     }
 
     const [scans, total] = await Promise.all([
@@ -31,7 +35,7 @@ export class ScanLogRepository {
         where,
         skip,
         take: limit,
-        orderBy: { created_at: 'desc' },
+        orderBy: { createdAt: 'desc' },                            // ✅ fixed
         include: {
           student: {
             select: {
@@ -64,29 +68,25 @@ export class ScanLogRepository {
 
     const where = {
       schoolId,
-      created_at: { gte: today, lt: tomorrow },
+      createdAt: { gte: today, lt: tomorrow },                    // ✅ fixed
     };
 
-    const [total, success, failed, avgResponse] = await Promise.all([
+    const [total, success, avgResponse] = await Promise.all([
       prisma.scan.count({ where }),
       prisma.scan.count({ where: { ...where, result: 'SUCCESS' } }),
-      prisma.scan.count({
-        where: {
-          ...where,
-          result: { notIn: ['SUCCESS'] },
-        },
-      }),
       prisma.scan.aggregate({
         where,
-        _avg: { response_time_ms: true },
+        _avg: { responseTimeMs: true },                           // ✅ fixed: response_time_ms → responseTimeMs
       }),
     ]);
+
+    const failed = total - success;
 
     return {
       total,
       success,
-      failed: total - success,
-      avgResponse: `${Math.round(avgResponse._avg.response_time_ms || 0)}ms`,
+      failed,
+      avgResponse: `${Math.round(avgResponse._avg.responseTimeMs || 0)}ms`,
     };
   }
 
@@ -125,15 +125,17 @@ export class ScanLogRepository {
     }
 
     if (startDate) {
-      where.created_at = { gte: new Date(startDate) };
+      where.createdAt = { gte: new Date(startDate) };             // ✅ fixed
     }
     if (endDate) {
-      where.created_at = { ...where.created_at, lte: new Date(endDate) };
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      where.createdAt = { ...where.createdAt, lte: end };
     }
 
     return prisma.scan.findMany({
       where,
-      orderBy: { created_at: 'desc' },
+      orderBy: { createdAt: 'desc' },                            // ✅ fixed
       include: {
         student: {
           select: {

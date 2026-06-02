@@ -15,38 +15,52 @@ const service = new ScanLogService();
 export const listScanLogs = asyncHandler(async (req, res) => {
   const query = listScanLogsQuerySchema.parse(req.query);
   const result = await service.listScanLogs(query, req.schoolId);
-  res.json(ApiResponse.success('Scan logs fetched', result.data, result.pagination));
+  
+  return ApiResponse.paginated(
+    res,
+    result.data,
+    {
+      page: result.pagination.page,
+      limit: result.pagination.limit,
+      total: result.pagination.total,
+    },
+    'Scan logs fetched'
+  );
 });
 
 export const getTodayStats = asyncHandler(async (req, res) => {
   const stats = await service.getTodayStats(req.schoolId);
-  res.json(ApiResponse.success('Today\'s stats', stats));
+  return ApiResponse.ok(res, stats, "Today's stats");
 });
 
 export const getScanLogById = asyncHandler(async (req, res) => {
   const { id } = getScanLogParamsSchema.parse(req.params);
   const scan = await service.getScanLogById(id, req.schoolId);
-  res.json(ApiResponse.success('Scan log details', scan));
+  return ApiResponse.ok(res, scan, 'Scan log details');
 });
 
 export const exportScanLogs = asyncHandler(async (req, res) => {
   const query = exportScanLogsQuerySchema.parse(req.query);
   const exportData = await service.exportScanLogs(query, req.schoolId);
 
+  const fileName = `scan-logs-${Date.now()}`;
+
   switch (query.format) {
-    case 'csv':
+    case 'csv': {
       const parser = new Parser();
       const csv = parser.parse(exportData);
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename=scan-logs-${Date.now()}.csv`);
+      res.setHeader('Content-Disposition', `attachment; filename=${fileName}.csv`);
       return res.send(csv);
+    }
 
-    case 'json':
+    case 'json': {
       res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', `attachment; filename=scan-logs-${Date.now()}.json`);
+      res.setHeader('Content-Disposition', `attachment; filename=${fileName}.json`);
       return res.json(exportData);
+    }
 
-    case 'xlsx':
+    case 'xlsx': {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Scan Logs');
 
@@ -61,12 +75,14 @@ export const exportScanLogs = asyncHandler(async (req, res) => {
       }
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename=scan-logs-${Date.now()}.xlsx`);
+      res.setHeader('Content-Disposition', `attachment; filename=${fileName}.xlsx`);
       await workbook.xlsx.write(res);
       return res.end();
+    }
 
-    default:
+    default: {
       res.setHeader('Content-Type', 'application/json');
       return res.json(exportData);
+    }
   }
 });
