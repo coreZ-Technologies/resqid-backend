@@ -10,8 +10,7 @@ import { prisma } from './prisma.js';
 import { redis, middlewareRedis, workerRedis, disconnectRedis } from './redis.js';
 import { disconnectPrisma } from './prisma.js';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
+//  Constants
 export const CONSTANTS = Object.freeze({
   WEBHOOK: {
     MAX_RETRIES: 3,
@@ -55,8 +54,6 @@ export const CONSTANTS = Object.freeze({
     MAX_AGE: 86400,
   },
 
-  // ─── Middleware-Specific Constants ────────────────────────────────────────
-
   REQUEST_ID: {
     HEADER_NAME: 'x-request-id',
     GENERATE_IF_MISSING: true,
@@ -80,9 +77,27 @@ export const CONSTANTS = Object.freeze({
     RETRY_AFTER_HEADER: 'retry-after',
     DEFAULT_RETRY_SECONDS: 3600,
   },
+
+  //  Timetable Constants
+  TIMETABLE: {
+    VALID_MODES: ['full', 'class-by-class', 'incremental'],
+    MIN_TIMEOUT_MS: 30000,
+    MAX_TIMEOUT_MS: 600000,
+    DEFAULT_CONCURRENCY: 2,
+  },
+
+  //  Wellness Constants
+  WELLNESS: {
+    BURNOUT_THRESHOLD_MIN: 0,
+    BURNOUT_THRESHOLD_MAX: 100,
+    SENIOR_AGE_MIN: 45,
+    SENIOR_AGE_MAX: 75,
+    CHECK_INTERVAL_MIN_DAYS: 7,
+    CHECK_INTERVAL_MAX_DAYS: 90,
+  },
 });
 
-// ─── Anomaly Detection Thresholds ─────────────────────────────────────────────
+//  Anomaly Detection Thresholds
 
 const ANOMALY_THRESHOLDS = {
   REDIS_CONNECTION_SPIKE: 50,
@@ -90,14 +105,18 @@ const ANOMALY_THRESHOLDS = {
   MEMORY_INCREASE_PERCENT: 40,
   MEMORY_INCREASE_MIN_MB: 150,
 
-  // ─── Middleware Anomaly Thresholds ─────────────────────────────────────────
-  RATE_LIMIT_TRIGGER_RATE: 0.8, // 80% of limit — warn
-  IP_BLOCK_RATE: 10, // 10 blocks per minute — alert
-  CSRF_FAILURE_RATE: 5, // 5 failures per minute — alert
-  ATTACK_DETECTION_RATE: 3, // 3 attacks per minute — critical
+  RATE_LIMIT_TRIGGER_RATE: 0.8,
+  IP_BLOCK_RATE: 10,
+  CSRF_FAILURE_RATE: 5,
+  ATTACK_DETECTION_RATE: 3,
+
+  //  Timetable Anomalies
+  GENERATION_TIME_SPIKE_MS: 300000,
+  CRISIS_QUEUE_SPIKE: 50,
+  VALIDATION_FAILURE_RATE: 0.3,
 };
 
-// ─── Runtime Config Validator ─────────────────────────────────────────────────
+//  Runtime Config Validator
 
 export async function validateRuntimeConfig() {
   const errors = [];
@@ -173,7 +192,6 @@ export async function validateRuntimeConfig() {
       );
     }
 
-    // ─── Middleware security checks in production ────────────────────────────
     if (ENV.CSRF_ENABLED && ENV.CSRF_SECRET.length < 32) {
       errors.push('CSRF_SECRET too short in production (min 32 chars)');
     }
@@ -187,7 +205,95 @@ export async function validateRuntimeConfig() {
     }
   }
 
-  // 5. Storage init check
+  // 5. Timetable feature validation
+  if (ENV.FEATURE_TIMETABLE_ENABLED) {
+    const validModes = CONSTANTS.TIMETABLE.VALID_MODES;
+    if (!validModes.includes(ENV.TIMETABLE_SOLVER_MODE)) {
+      warnings.push(
+        `TIMETABLE_SOLVER_MODE '${ENV.TIMETABLE_SOLVER_MODE}' invalid — must be: ${validModes.join(', ')}`
+      );
+    }
+
+    if (ENV.TIMETABLE_SOLVER_TIMEOUT_MS < CONSTANTS.TIMETABLE.MIN_TIMEOUT_MS) {
+      warnings.push(
+        `TIMETABLE_SOLVER_TIMEOUT_MS (${ENV.TIMETABLE_SOLVER_TIMEOUT_MS}ms) is very low — large schools may timeout`
+      );
+    }
+
+    if (ENV.TIMETABLE_SOLVER_MAX_BACKTRACKS < 10000) {
+      warnings.push('TIMETABLE_SOLVER_MAX_BACKTRACKS is low — complex constraints may fail');
+    }
+
+    if (ENV.TIMETABLE_GENERATE_CONCURRENCY > 5) {
+      warnings.push('TIMETABLE_GENERATE_CONCURRENCY is high — may cause memory pressure');
+    }
+  }
+
+  // 6. Wellness feature validation
+  if (ENV.FEATURE_WELLNESS_ENABLED) {
+    if (
+      ENV.WELLNESS_BURNOUT_THRESHOLD < CONSTANTS.WELLNESS.BURNOUT_THRESHOLD_MIN ||
+      ENV.WELLNESS_BURNOUT_THRESHOLD > CONSTANTS.WELLNESS.BURNOUT_THRESHOLD_MAX
+    ) {
+      warnings.push('WELLNESS_BURNOUT_THRESHOLD should be between 0-100');
+    }
+
+    if (ENV.WELLNESS_SENIOR_AGE < CONSTANTS.WELLNESS.SENIOR_AGE_MIN) {
+      warnings.push('WELLNESS_SENIOR_AGE seems too low');
+    }
+  }
+
+  // 7. Attendance feature validation
+  if (ENV.FEATURE_ATTENDANCE_ENABLED) {
+    if (ENV.ATTENDANCE_DEVICE_HEARTBEAT_INTERVAL < 10) {
+      warnings.push('ATTENDANCE_DEVICE_HEARTBEAT_INTERVAL too low — may overload network');
+    }
+
+    if (ENV.ATTENDANCE_MAX_DEVICES_PER_SCHOOL > 200) {
+      warnings.push('ATTENDANCE_MAX_DEVICES_PER_SCHOOL is very high');
+    }
+  }
+
+  // 8. Emergency feature validation
+  if (ENV.FEATURE_EMERGENCY_ENABLED) {
+    if (ENV.EMERGENCY_ALERT_TIMEOUT_SECONDS < 10) {
+      warnings.push('EMERGENCY_ALERT_TIMEOUT_SECONDS too low — may cause false alerts');
+    }
+
+    if (ENV.EMERGENCY_MAX_CONTACTS_PER_STUDENT > 10) {
+      warnings.push('EMERGENCY_MAX_CONTACTS_PER_STUDENT is very high');
+    }
+  }
+
+  // 9. File upload validation
+  if (ENV.FEATURE_BULK_UPLOAD_ENABLED) {
+    if (ENV.UPLOAD_MAX_FILE_SIZE_MB > 50) {
+      warnings.push('UPLOAD_MAX_FILE_SIZE_MB is very large — consider reducing');
+    }
+
+    if (ENV.UPLOAD_MAX_ROWS_PER_BATCH > 2000) {
+      warnings.push('UPLOAD_MAX_ROWS_PER_BATCH is high — may cause memory issues');
+    }
+  }
+
+  // 10. Worker concurrency validation
+  const totalConcurrency =
+    ENV.WORKER_CONCURRENCY_EMERGENCY +
+    ENV.WORKER_CONCURRENCY_NOTIFICATION +
+    ENV.WORKER_CONCURRENCY_ATTENDANCE +
+    ENV.WORKER_CONCURRENCY_GENERATE +
+    ENV.WORKER_CONCURRENCY_CRISIS +
+    ENV.WORKER_CONCURRENCY_VALIDATE +
+    ENV.WORKER_CONCURRENCY_SWAP +
+    ENV.WORKER_CONCURRENCY_BULK;
+
+  if (totalConcurrency > 50) {
+    warnings.push(
+      `Total worker concurrency (${totalConcurrency}) is high — may exhaust Redis connections`
+    );
+  }
+
+  // 11. Storage init check
   try {
     const { getStorage } = await import('#infrastructure/storage/storage.index.js');
     const storage = getStorage();
@@ -196,7 +302,7 @@ export async function validateRuntimeConfig() {
     warnings.push(`Storage module failed to load: ${err.message}`);
   }
 
-  // ── Log results ─────────────────────────────────────────────────────────────
+  // Log results
 
   if (errors.length > 0) {
     logger.error(
@@ -218,7 +324,7 @@ export async function validateRuntimeConfig() {
   return { valid: true, errors: [], warnings };
 }
 
-// ─── Connection Pool Monitor ──────────────────────────────────────────────────
+//  Connection Pool Monitor
 
 let monitoringInterval = null;
 let lastStats = {};
@@ -321,7 +427,7 @@ function detectAnomalies(current) {
   }
 }
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
+//  Health Check
 
 export async function enhancedHealthCheck() {
   const start = Date.now();
@@ -382,7 +488,7 @@ export async function enhancedHealthCheck() {
   };
 }
 
-// ─── Graceful Shutdown ────────────────────────────────────────────────────────
+//  Graceful Shutdown
 
 let isShuttingDown = false;
 
@@ -422,7 +528,7 @@ export async function enhancedGracefulShutdown(signal) {
   }
 }
 
-// ─── Startup Banner ───────────────────────────────────────────────────────────
+//  Startup Banner
 
 export function printStartupBanner() {
   const mode = ENV.IS_PROD ? 'PRODUCTION' : ENV.IS_DEV ? 'DEVELOPMENT' : 'STAGING';
@@ -435,6 +541,7 @@ export function printStartupBanner() {
       node_env: ENV.NODE_ENV,
       log_level: ENV.LOG_LEVEL,
       jwt_expiry: `${ENV.JWT_ACCESS_EXPIRY} / ${ENV.JWT_REFRESH_EXPIRY}`,
+
       security: {
         csrf: ENV.CSRF_ENABLED,
         rate_limit: ENV.ENABLE_RATE_LIMIT,
@@ -443,14 +550,61 @@ export function printStartupBanner() {
         attack_detection: ENV.ATTACK_DETECTION_ENABLED,
         device_fingerprint: ENV.DEVICE_FINGERPRINT_ENABLED,
       },
+
       services: {
         database: ENV.DATABASE_URL ? 'configured' : 'missing',
         redis: ENV.REDIS_URL ? 'configured' : 'missing',
         s3: ENV.AWS_S3_BUCKET ? ENV.AWS_S3_BUCKET : 'missing',
-        smtp: ENV.SMTP_HOST ? ENV.SMTP_HOST : 'not configured',
-        firebase: ENV.FIREBASE_PROJECT_ID ? 'configured' : 'not configured',
-        razorpay: ENV.RAZORPAY_KEY_ID ? 'configured' : 'not configured',
-        sentry: ENV.SENTRY_DSN ? 'configured' : 'not configured',
+      },
+
+      features: {
+        timetable: ENV.FEATURE_TIMETABLE_ENABLED,
+        attendance: ENV.FEATURE_ATTENDANCE_ENABLED,
+        emergency: ENV.FEATURE_EMERGENCY_ENABLED,
+        wellness: ENV.FEATURE_WELLNESS_ENABLED,
+        bulkUpload: ENV.FEATURE_BULK_UPLOAD_ENABLED,
+        crisisAutoResolve: ENV.FEATURE_CRISIS_AUTO_RESOLVE,
+        notifications: ENV.FEATURE_NOTIFICATIONS_ENABLED,
+      },
+
+      timetable: ENV.FEATURE_TIMETABLE_ENABLED
+        ? {
+            solverMode: ENV.TIMETABLE_SOLVER_MODE,
+            timeoutMs: ENV.TIMETABLE_SOLVER_TIMEOUT_MS,
+            maxBacktracks: ENV.TIMETABLE_SOLVER_MAX_BACKTRACKS,
+            generateConcurrency: ENV.TIMETABLE_GENERATE_CONCURRENCY,
+            crisisConcurrency: ENV.TIMETABLE_CRISIS_CONCURRENCY,
+            validateConcurrency: ENV.TIMETABLE_VALIDATE_CONCURRENCY,
+          }
+        : undefined,
+
+      workers: {
+        role: ENV.WORKER_ROLE,
+        concurrency: {
+          emergency: ENV.WORKER_CONCURRENCY_EMERGENCY,
+          notification: ENV.WORKER_CONCURRENCY_NOTIFICATION,
+          attendance: ENV.WORKER_CONCURRENCY_ATTENDANCE,
+          generate: ENV.WORKER_CONCURRENCY_GENERATE,
+          crisis: ENV.WORKER_CONCURRENCY_CRISIS,
+          validate: ENV.WORKER_CONCURRENCY_VALIDATE,
+          swap: ENV.WORKER_CONCURRENCY_SWAP,
+          bulk: ENV.WORKER_CONCURRENCY_BULK,
+        },
+      },
+
+      wellness: ENV.FEATURE_WELLNESS_ENABLED
+        ? {
+            burnoutThreshold: ENV.WELLNESS_BURNOUT_THRESHOLD,
+            seniorAge: ENV.WELLNESS_SENIOR_AGE,
+            consecutiveDaysThreshold: ENV.WELLNESS_CONSECUTIVE_DAYS_THRESHOLD,
+          }
+        : undefined,
+
+      school: {
+        defaultPeriods: ENV.SCHOOL_DEFAULT_PERIODS,
+        trialDays: ENV.SCHOOL_TRIAL_DAYS,
+        maxStudents: ENV.SCHOOL_MAX_STUDENTS_DEFAULT,
+        maxTeachers: ENV.SCHOOL_MAX_TEACHERS_DEFAULT,
       },
     },
     `RESQID API — ${mode}`
