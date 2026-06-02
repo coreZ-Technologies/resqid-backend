@@ -1,13 +1,12 @@
-// =============================================================================
 // orchestrator/workers/swap.worker.js — RESQID
 // Handles manual slot swaps and reassignments.
-// =============================================================================
 
 import { Worker } from 'bullmq';
 import { getQueueConnection } from '../queues/queue.connection.js';
 import { QUEUE_NAMES } from '../queues/queue.names.js';
 import { timetableRepository } from '#modules/m1-timetable-main/timetable.repository.js';
 import * as hardConstraints from '#modules/m1-timetable-main/constraints/hard.js';
+import { ENV } from '#config/env.js';
 import { logger } from '#config/logger.js';
 
 /**
@@ -20,7 +19,7 @@ export const startSwapWorker = () => {
       const { schoolId, timetableId, swaps } = job.data;
       const jobId = job.id;
 
-      logger.info({ jobId, swaps: swaps?.length }, '[swap.worker] Processing swaps');
+      logger.info({ jobId, swapCount: swaps?.length }, '[swap.worker] Processing swaps');
 
       await timetableRepository.updateJobStatus(jobId, 'PROCESSING', {
         statusMessage: `Processing ${swaps?.length || 0} swap(s)...`,
@@ -34,7 +33,7 @@ export const startSwapWorker = () => {
         for (let i = 0; i < swaps.length; i++) {
           const swap = swaps[i];
 
-          // Validate the swap
+          // Validate the swap against hard constraints
           const validation = await validateSwap(swap, timetableId, schoolId);
 
           if (!validation.ok) {
@@ -45,7 +44,14 @@ export const startSwapWorker = () => {
           // Apply the swap
           await timetableRepository.moveSlot(swap.slotId, swap.newDay, swap.newPeriod);
 
-          results.push({ slotId: swap.slotId, moved: true });
+          results.push({
+            slotId: swap.slotId,
+            oldDay: validation.oldDay,
+            oldPeriod: validation.oldPeriod,
+            newDay: swap.newDay,
+            newPeriod: swap.newPeriod,
+            moved: true,
+          });
 
           // Update progress
           await timetableRepository.updateJobStatus(jobId, 'PROCESSING', {
@@ -68,11 +74,20 @@ export const startSwapWorker = () => {
           output: summary,
         });
 
+        logger.info(
+          { jobId, succeeded: results.length, failed: errors.length },
+          '[swap.worker] Swaps processed'
+        );
+
         return summary;
       } catch (error) {
-        logger.error({ jobId, error: error.message }, '[swap.worker] Swap failed');
+        logger.error(
+          { jobId, error: error.message, stack: error.stack },
+          '[swap.worker] Swap failed'
+        );
 
         await timetableRepository.updateJobStatus(jobId, 'FAILED', {
+          statusMessage: `Swap failed: ${error.message}`,
           error: error.message,
         });
 
@@ -81,12 +96,32 @@ export const startSwapWorker = () => {
     },
     {
       connection: getQueueConnection(),
-      concurrency: 3,
+      concurrency: ENV.TIMETABLE_SWAP_CONCURRENCY || 3,
       lockDuration: 30000,
+      stalledInterval: 15000,
     }
   );
 
+  worker.on('completed', (job) => {
+    logger.info({ jobId: job.id }, '[swap.worker] Job completed');
+  });
+
+  worker.on('failed', (job, err) => {
+    logger.error({ jobId: job?.id, error: err.message }, '[swap.worker] Job failed');
+  });
+
+  logger.info('[swap.worker] Worker started');
   return worker;
+};
+
+/**
+ * Stop the swap worker.
+ */
+export const stopSwapWorker = async (worker) => {
+  if (worker) {
+    await worker.close();
+    logger.info('[swap.worker] Worker stopped');
+  }
 };
 
 /**
@@ -112,5 +147,11 @@ async function validateSwap(swap, timetableId, schoolId) {
 
   const teacherConfig = context.resolvers.getTeacherConfig(proposed.teacherId) || {};
 
-  return hardConstraints.checkAll(proposed, existing, context.schoolConfig, teacherConfig);
+  const result = hardConstraints.checkAll(proposed, existing, context.schoolConfig, teacherConfig);
+
+  return {
+    ...result,
+    oldDay: assignment.dayOfWeek || assignment.day,
+    oldPeriod: assignment.periodNumber || assignment.period,
+  };
 }

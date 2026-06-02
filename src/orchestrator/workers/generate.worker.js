@@ -1,7 +1,5 @@
-// =============================================================================
 // orchestrator/workers/generate.worker.js — RESQID
 // Handles timetable generation jobs from timetable_generate_queue.
-// =============================================================================
 
 import { Worker } from 'bullmq';
 import { getQueueConnection } from '../queues/queue.connection.js';
@@ -9,6 +7,7 @@ import { QUEUE_NAMES } from '../queues/queue.names.js';
 import { generate } from '#modules/m1-timetable-main/solver/scheduler.js';
 import { timetableRepository } from '#modules/m1-timetable-main/timetable.repository.js';
 import { publishTimetableGenerate } from '../events/event.publisher.js';
+import { ENV } from '#config/env.js';
 import { logger } from '#config/logger.js';
 
 /**
@@ -22,7 +21,7 @@ export const startGenerateWorker = () => {
       const jobId = job.id;
 
       logger.info(
-        { jobId, schoolId, templateId },
+        { jobId, schoolId, templateId, mode: opts.mode },
         '[generate.worker] Starting timetable generation'
       );
 
@@ -54,10 +53,9 @@ export const startGenerateWorker = () => {
         // Generate timetable
         const result = await generate(context.template, context.schoolConfig, context.resolvers, {
           ...opts,
-          mode: opts.mode || 'class-by-class',
-          timeoutMs: opts.timeoutMs || 300000,
+          mode: opts.mode || ENV.TIMETABLE_SOLVER_MODE || 'class-by-class',
+          timeoutMs: opts.timeoutMs || ENV.TIMETABLE_SOLVER_TIMEOUT_MS || 300000,
           onProgress: async (progress) => {
-            // Update progress
             const percent = Math.round(progress.progress * 100);
             await timetableRepository.updateJobStatus(jobId, 'PROCESSING', {
               statusMessage: progress.phase || `Generating... ${percent}%`,
@@ -74,7 +72,7 @@ export const startGenerateWorker = () => {
         });
 
         if (!result.success) {
-          throw new Error(result.error || 'Generation failed');
+          throw new Error(result.error || result.message || 'Generation failed');
         }
 
         // Save timetable to database
@@ -93,7 +91,7 @@ export const startGenerateWorker = () => {
           progressPercent: 100,
           output: {
             timetableId: timetable.id,
-            totalSlots: result.timetable.length,
+            totalSlots: result.timetable?.length || 0,
             qualityScore: result.meta?.qualityScore,
             wellnessScore: result.meta?.wellnessScore,
             durationMs: result.meta?.durationMs,
@@ -109,7 +107,12 @@ export const startGenerateWorker = () => {
         });
 
         logger.info(
-          { jobId, timetableId: timetable.id, slots: result.timetable.length },
+          {
+            jobId,
+            timetableId: timetable.id,
+            slots: result.timetable?.length || 0,
+            durationMs: result.meta?.durationMs,
+          },
           '[generate.worker] Timetable generated successfully'
         );
 
@@ -138,8 +141,8 @@ export const startGenerateWorker = () => {
     },
     {
       connection: getQueueConnection(),
-      concurrency: 2, // Max 2 concurrent generations
-      lockDuration: 300000, // 5 minutes
+      concurrency: ENV.TIMETABLE_GENERATE_CONCURRENCY || 2,
+      lockDuration: ENV.TIMETABLE_SOLVER_TIMEOUT_MS || 300000,
       stalledInterval: 30000,
     }
   );
@@ -154,4 +157,14 @@ export const startGenerateWorker = () => {
 
   logger.info('[generate.worker] Worker started');
   return worker;
+};
+
+/**
+ * Stop the generate worker.
+ */
+export const stopGenerateWorker = async (worker) => {
+  if (worker) {
+    await worker.close();
+    logger.info('[generate.worker] Worker stopped');
+  }
 };
