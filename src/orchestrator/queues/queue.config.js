@@ -1,9 +1,7 @@
-// =============================================================================
 // orchestrator/queues/queue.config.js — RESQID
 //
 // RAILWAY (24/7): emergency, notification, attendance, timetable
 // LOCAL ONLY:    pipeline (when ENABLE_PIPELINE_QUEUE=true)
-// =============================================================================
 
 import { Queue } from 'bullmq';
 import { getQueueConnection } from './queue.connection.js';
@@ -11,9 +9,7 @@ import { QUEUE_NAMES } from './queue.names.js';
 import { logger } from '#config/logger.js';
 import { ENV } from '#config/env.js';
 
-// =============================================================================
 // QUEUE FACTORY
-// =============================================================================
 
 const makeQueue = (name, customOptions = {}) => {
   const connection = getQueueConnection();
@@ -41,9 +37,7 @@ const makeQueue = (name, customOptions = {}) => {
   return queue;
 };
 
-// =============================================================================
 // EMERGENCY QUEUE
-// =============================================================================
 
 export const emergencyAlertsQueue = makeQueue(QUEUE_NAMES.EMERGENCY_ALERTS, {
   defaultJobOptions: {
@@ -55,9 +49,7 @@ export const emergencyAlertsQueue = makeQueue(QUEUE_NAMES.EMERGENCY_ALERTS, {
   },
 });
 
-// =============================================================================
 // NOTIFICATION QUEUE
-// =============================================================================
 
 export const notificationsQueue = makeQueue(QUEUE_NAMES.NOTIFICATIONS, {
   defaultJobOptions: {
@@ -69,9 +61,7 @@ export const notificationsQueue = makeQueue(QUEUE_NAMES.NOTIFICATIONS, {
   },
 });
 
-// =============================================================================
 // ATTENDANCE QUEUE
-// =============================================================================
 
 export const attendanceBulkQueue = makeQueue(QUEUE_NAMES.ATTENDANCE_BULK, {
   defaultJobOptions: {
@@ -83,9 +73,7 @@ export const attendanceBulkQueue = makeQueue(QUEUE_NAMES.ATTENDANCE_BULK, {
   },
 });
 
-// =============================================================================
 // TIMETABLE QUEUES
-// =============================================================================
 
 /** Generate — long running, no retry */
 export const generateQueue = makeQueue(QUEUE_NAMES.TIMETABLE_GENERATE, {
@@ -147,9 +135,7 @@ export const bulkUploadQueue = makeQueue(QUEUE_NAMES.TIMETABLE_BULK_UPLOAD, {
   },
 });
 
-// =============================================================================
 // PIPELINE QUEUE (Local only)
-// =============================================================================
 
 export const pipelineJobsQueue =
   ENV.ENABLE_PIPELINE_QUEUE === 'true'
@@ -165,9 +151,7 @@ export const pipelineJobsQueue =
       })
     : null;
 
-// =============================================================================
 // QUEUE REGISTRY
-// =============================================================================
 
 export const allQueues = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: emergencyAlertsQueue,
@@ -181,9 +165,7 @@ export const allQueues = {
   ...(pipelineJobsQueue ? { [QUEUE_NAMES.PIPELINE_JOBS]: pipelineJobsQueue } : {}),
 };
 
-// =============================================================================
 // UTILITY FUNCTIONS
-// =============================================================================
 
 export const getQueueByName = (name) => {
   const queue = allQueues[name];
@@ -217,9 +199,7 @@ export const getAllQueueMetrics = async () => {
   return metrics;
 };
 
-// =============================================================================
 // ENQUEUE HELPERS
-// =============================================================================
 
 export const enqueueGenerate = async (data) => {
   const { jobId, templateId, schoolId, opts = {} } = data;

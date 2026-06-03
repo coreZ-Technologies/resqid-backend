@@ -1,7 +1,5 @@
-// =============================================================================
 // orchestrator/events/event.types.js — RESQID
 // Central registry of all event types across the system.
-// =============================================================================
 
 export const EVENTS = Object.freeze({
   // ── Emergency ────────────────────────────────────────────────────────────
@@ -19,6 +17,8 @@ export const EVENTS = Object.freeze({
   SUBSTITUTION_CREATED: 'SUBSTITUTION_CREATED',
   SUBSTITUTION_APPROVED: 'SUBSTITUTION_APPROVED',
   SUBSTITUTION_REJECTED: 'SUBSTITUTION_REJECTED',
+  MASS_LEAVE_DETECTED: 'MASS_LEAVE_DETECTED', // 🔧 ADDED
+  WEATHER_EVENT_DETECTED: 'WEATHER_EVENT_DETECTED', // 🔧 ADDED
 
   // ── Timetable Generation ─────────────────────────────────────────────────
   TIMETABLE_GENERATE_STARTED: 'TIMETABLE_GENERATE_STARTED',
@@ -47,6 +47,7 @@ export const EVENTS = Object.freeze({
   TEACHER_WELLNESS_UPDATED: 'TEACHER_WELLNESS_UPDATED',
   TEACHER_BURNOUT_RISK_DETECTED: 'TEACHER_BURNOUT_RISK_DETECTED',
   TEACHER_ACCESSIBILITY_VIOLATION: 'TEACHER_ACCESSIBILITY_VIOLATION',
+  TEACHER_LOAD_WARNING: 'TEACHER_LOAD_WARNING', // 🔧 ADDED
 
   // ── Notification ─────────────────────────────────────────────────────────
   NOTIFICATION_SENT: 'NOTIFICATION_SENT',
@@ -131,15 +132,15 @@ export const EVENTS = Object.freeze({
   SYSTEM_HEALTH_DEGRADED: 'SYSTEM_HEALTH_DEGRADED',
 });
 
-// =============================================================================
 // ACTOR TYPES
-// =============================================================================
 
 export const ACTOR_TYPES = Object.freeze([
   'SUPER_ADMIN',
   'SCHOOL_ADMIN',
   'TEACHER',
   'PARENT',
+  'PARENT_USER',
+  'USER',
   'EMERGENCY_RESPONDER',
   'ATTENDANCE_DEVICE',
   'SYSTEM',
@@ -147,9 +148,7 @@ export const ACTOR_TYPES = Object.freeze([
   'CRON',
 ]);
 
-// =============================================================================
 // EVENT GROUPS (for filtering/monitoring)
-// =============================================================================
 
 export const EVENT_GROUPS = {
   EMERGENCY: [
@@ -167,6 +166,8 @@ export const EVENT_GROUPS = {
     EVENTS.SUBSTITUTION_CREATED,
     EVENTS.SUBSTITUTION_APPROVED,
     EVENTS.SUBSTITUTION_REJECTED,
+    EVENTS.MASS_LEAVE_DETECTED,
+    EVENTS.WEATHER_EVENT_DETECTED,
   ],
   TIMETABLE: [
     EVENTS.TIMETABLE_GENERATE_STARTED,
@@ -189,6 +190,7 @@ export const EVENT_GROUPS = {
     EVENTS.TEACHER_WELLNESS_UPDATED,
     EVENTS.TEACHER_BURNOUT_RISK_DETECTED,
     EVENTS.TEACHER_ACCESSIBILITY_VIOLATION,
+    EVENTS.TEACHER_LOAD_WARNING,
   ],
   NOTIFICATION: [
     EVENTS.NOTIFICATION_SENT,

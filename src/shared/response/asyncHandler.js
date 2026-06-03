@@ -2,14 +2,6 @@
 // asyncHandler.js — RESQID Async Error Handler Wrapper
 //
 // Wraps async route handlers to catch errors and forward to error middleware.
-// Express v5 automatically catches async errors, but this wrapper:
-//   1. Ensures Express v4 compatibility
-//   2. Provides utility variants for different patterns
-//   3. Makes intent explicit in route definitions
-//
-// Usage:
-//   router.get('/users', asyncHandler(userController.list));
-//   router.post('/users', validate(schema), asyncHandler(userController.create));
 // =============================================================================
 
 /**
@@ -24,12 +16,6 @@ export const asyncHandler = (fn) => (req, res, next) => {
 
 /**
  * Wraps an entire controller object — all methods become async-safe
- *
- * Usage:
- *   const userController = asyncController({
- *     list: async (req, res) => { ... },
- *     create: async (req, res) => { ... },
- *   });
  *
  * @param {Object} controller - Object with async methods
  * @returns {Object} - Controller with all methods wrapped
@@ -48,7 +34,6 @@ export const asyncController = (controller) => {
 
 /**
  * Wraps middleware that also needs async error handling
- * Identical to asyncHandler but semantically clearer for middleware
  *
  * @param {Function} fn - Async middleware function
  * @returns {Function} - Async-safe middleware
@@ -59,19 +44,29 @@ export const asyncMiddleware = (fn) => asyncHandler(fn);
  * Wraps a request handler with timeout
  *
  * @param {Function} fn - Async route handler
- * @param {number} ms - Timeout in milliseconds
+ * @param {number} ms - Timeout in milliseconds (default 30s)
  * @returns {Function} - Timeout-wrapped handler
  */
 export const withTimeout =
   (fn, ms = 30000) =>
   (req, res, next) => {
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Request timeout after ${ms}ms`));
-      }, ms);
-    });
+    const timer = setTimeout(() => {
+      const err = new Error(`Request timeout after ${ms}ms`);
+      err.statusCode = 408;
+      err.errorCode = 'REQUEST_TIMEOUT';
+      next(err);
+    }, ms);
 
-    Promise.race([Promise.resolve(fn(req, res, next)), timeoutPromise]).catch(next);
+    // Clear timer if request completes before timeout
+    res.on('finish', () => clearTimeout(timer));
+    res.on('close', () => clearTimeout(timer));
+
+    Promise.resolve(fn(req, res, next))
+      .then(() => clearTimeout(timer))
+      .catch((err) => {
+        clearTimeout(timer);
+        next(err);
+      });
   };
 
 /**
@@ -93,19 +88,23 @@ export const withRetry =
       } catch (error) {
         lastError = error;
 
-        // Don't retry on 4xx errors
-        if (error.statusCode && error.statusCode < 500) {
-          throw error;
+        // Don't retry on 4xx errors (client errors)
+        if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+          return next(error);
         }
 
-        if (attempt < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+        // Don't retry on last attempt
+        if (attempt === maxRetries) {
+          return next(error);
         }
+
+        // Wait before retry with exponential backoff
+        await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
       }
     }
 
-    throw lastError;
+    return next(lastError);
   };
 
-// ─── Default Export (Backward Compatible) ────────────────────────────────────
+// ─── Default Export ──────────────────────────────────────────────────────────
 export default asyncHandler;

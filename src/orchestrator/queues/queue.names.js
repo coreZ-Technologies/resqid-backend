@@ -1,4 +1,3 @@
-// =============================================================================
 // orchestrator/queues/queue.names.js — RESQID
 //
 // Production queues:
@@ -13,7 +12,6 @@
 //
 // Local-only:
 //   pipeline_queue               → PipelineWorker
-// =============================================================================
 
 export const QUEUE_NAMES = Object.freeze({
   // Core queues
@@ -32,9 +30,7 @@ export const QUEUE_NAMES = Object.freeze({
   PIPELINE_JOBS: 'pipeline_queue',
 });
 
-// =============================================================================
 // PRIORITY MAPPING (1 = highest)
-// =============================================================================
 
 export const QUEUE_PRIORITIES = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: 1,
@@ -48,9 +44,7 @@ export const QUEUE_PRIORITIES = {
   [QUEUE_NAMES.PIPELINE_JOBS]: 10,
 };
 
-// =============================================================================
 // SLA TARGETS (milliseconds)
-// =============================================================================
 
 export const QUEUE_SLA_MS = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: 8000, // 8 seconds
@@ -64,9 +58,7 @@ export const QUEUE_SLA_MS = {
   [QUEUE_NAMES.PIPELINE_JOBS]: 600000, // 10 minutes
 };
 
-// =============================================================================
 // QUEUE GROUPS (for monitoring)
-// =============================================================================
 
 export const QUEUE_GROUPS = {
   CRITICAL: [QUEUE_NAMES.EMERGENCY_ALERTS, QUEUE_NAMES.CRISIS_HANDLING],
@@ -76,9 +68,7 @@ export const QUEUE_GROUPS = {
   BACKGROUND: [QUEUE_NAMES.PIPELINE_JOBS],
 };
 
-// =============================================================================
 // QUEUE DESCRIPTIONS (for UI/dashboard)
-// =============================================================================
 
 export const QUEUE_DESCRIPTIONS = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: 'Emergency alerts and critical notifications',
@@ -92,9 +82,7 @@ export const QUEUE_DESCRIPTIONS = {
   [QUEUE_NAMES.PIPELINE_JOBS]: 'ID card printing and delivery pipeline',
 };
 
-// =============================================================================
 // QUEUE CONCURRENCY (max parallel jobs)
-// =============================================================================
 
 export const QUEUE_CONCURRENCY = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: 10,

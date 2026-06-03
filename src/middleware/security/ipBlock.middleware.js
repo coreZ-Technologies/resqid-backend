@@ -1,7 +1,7 @@
 // =============================================================================
 // ipBlock.middleware.js — RESQID
 //
-// Two-layer IP blocking: Redis (O(1) fast path) + DB (persistent).
+// Two-layer IP blocking: Redis (O(1) fast path) + AuditLog (persistent).
 // Escalating durations for repeat offenders.
 // =============================================================================
 
@@ -15,10 +15,10 @@ import { ENV } from '#config/env.js';
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const BLOCK_DURATIONS = {
-  1: ENV.IP_BLOCK_DURATION_HOURS ? ENV.IP_BLOCK_DURATION_HOURS * 3600 : 86400, // 24h
-  2: 7 * 24 * 60 * 60, // 7 days
-  3: 30 * 24 * 60 * 60, // 30 days
-  4: 365 * 24 * 60 * 60, // 1 year
+  1: ENV.IP_BLOCK_DURATION_HOURS ? ENV.IP_BLOCK_DURATION_HOURS * 3600 : 86400,
+  2: 7 * 24 * 60 * 60,
+  3: 30 * 24 * 60 * 60,
+  4: 365 * 24 * 60 * 60,
 };
 
 const MAX_BLOCK_DURATION = BLOCK_DURATIONS[4];
@@ -30,8 +30,12 @@ const offenseKey = (ip) => `ipblock:offense:${ip}`;
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function getOffenseCount(ip) {
-  const count = await redis.get(offenseKey(ip));
-  return count ? parseInt(count, 10) : 0;
+  try {
+    const count = await redis.get(offenseKey(ip));
+    return count ? parseInt(count, 10) : 0;
+  } catch {
+    return 0;
+  }
 }
 
 async function incrementOffenseCount(ip) {
@@ -48,7 +52,6 @@ function getBlockDuration(offenseCount) {
 
 export const ipBlockMiddleware = asyncHandler(async (req, _res, next) => {
   const ip = req.ip || 'unknown';
-
   if (ip === 'unknown' || NEVER_BLOCK.has(ip)) return next();
 
   // Fast path — Redis
@@ -64,40 +67,10 @@ export const ipBlockMiddleware = asyncHandler(async (req, _res, next) => {
     logger.error({ err: err.message }, 'Redis block check failed — passing');
   }
 
-  // Slow path — DB
-  try {
-    const record = await prisma.scanRateLimit.findUnique({
-      where: { identifier_identifier_type: { identifier: ip, identifier_type: 'IP' } },
-      select: { block_count: true, blocked_until: true, blocked_reason: true },
-    });
-
-    if (record?.blocked_until && new Date(record.blocked_until) > new Date()) {
-      const offenseCount = (await getOffenseCount(ip)) || record.block_count || 1;
-      const duration = getBlockDuration(offenseCount);
-
-      await redis.set(
-        redisKey(ip),
-        JSON.stringify({
-          offenseCount,
-          blockedAt: new Date().toISOString(),
-          ttl: duration,
-          reason: record.blocked_reason,
-        }),
-        'EX',
-        duration
-      );
-
-      throw ApiError.ipBlocked();
-    }
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
-    // Non-critical
-  }
-
   next();
 });
 
-// ─── Block IP Now ─────────────────────────────────────────────────────────────
+// ─── Block IP ─────────────────────────────────────────────────────────────────
 
 export async function blockIpNow(ip, reason = 'SECURITY_BLOCK') {
   if (!ip || NEVER_BLOCK.has(ip)) return;
@@ -106,45 +79,59 @@ export async function blockIpNow(ip, reason = 'SECURITY_BLOCK') {
   const blockDuration = getBlockDuration(offenseCount);
   const blockedUntil = new Date(Date.now() + blockDuration * 1000);
 
-  await Promise.all([
-    redis.set(
-      redisKey(ip),
-      JSON.stringify({
-        offenseCount,
-        blockedAt: new Date().toISOString(),
-        ttl: blockDuration,
-        reason,
-      }),
-      'EX',
-      blockDuration
-    ),
-
-    prisma.scanRateLimit.upsert({
-      where: { identifier_identifier_type: { identifier: ip, identifier_type: 'IP' } },
-      create: {
-        identifier: ip,
-        identifier_type: 'IP',
-        count: 1,
-        block_count: offenseCount,
-        blocked_until: blockedUntil,
-        blocked_reason: `${reason}_${offenseCount}`,
-        last_hit: new Date(),
-        window_start: new Date(),
-      },
-      update: {
-        block_count: offenseCount,
-        blocked_until: blockedUntil,
-        blocked_reason: `${reason}_${offenseCount}`,
-        last_hit: new Date(),
-      },
+  // Set Redis block
+  await redis.set(
+    redisKey(ip),
+    JSON.stringify({
+      offenseCount,
+      blockedAt: new Date().toISOString(),
+      ttl: blockDuration,
+      reason,
     }),
-  ]);
+    'EX',
+    blockDuration
+  );
+
+  // Log to AuditLog for persistence
+  try {
+    await prisma.auditLog.create({
+      data: {
+        action: 'IP_BLOCKED',
+        severity: 'WARNING',
+        actorId: 'SYSTEM',
+        actorType: 'SYSTEM',
+        entity: 'IP',
+        entityId: ip,
+        ipAddress: ip,
+        metadata: { reason, offenseCount, blockedUntil, blockDuration },
+      },
+    });
+  } catch {
+    // Non-critical — Redis is the primary block
+  }
 
   logger.warn({ ip, reason, offenseCount, blockedUntil }, `IP blocked: ${ip}`);
 }
 
 export async function isIpBlocked(ip) {
   if (NEVER_BLOCK.has(ip)) return false;
-  const cached = await redis.get(redisKey(ip));
-  return cached !== null;
+  try {
+    const cached = await redis.get(redisKey(ip));
+    return cached !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Unblock an IP (admin action).
+ */
+export async function unblockIp(ip) {
+  try {
+    await redis.del(redisKey(ip));
+    await redis.del(offenseKey(ip));
+    logger.info({ ip }, `IP unblocked: ${ip}`);
+  } catch {
+    // Non-critical
+  }
 }

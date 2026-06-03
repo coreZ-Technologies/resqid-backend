@@ -1,10 +1,8 @@
-// =============================================================================
 // orchestrator/queues/queue.connection.js — RESQID
 //
 // Returns a plain ioredis OPTIONS OBJECT, not a shared instance.
 // BullMQ calls .duplicate() internally — passing a shared instance causes
 // connection leaks. Passing a config object lets BullMQ manage its own pool.
-// =============================================================================
 
 import { logger } from '#config/logger.js';
 import { ENV } from '#config/env.js';

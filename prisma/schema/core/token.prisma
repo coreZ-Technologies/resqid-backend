@@ -10,7 +10,7 @@ enum TokenType {
   RFID
   QR
   NFC
-  COMBO       // Both QR + RFID
+  COMBO // Both QR + RFID
 }
 
 enum TokenStatus {
@@ -44,67 +44,67 @@ enum QrFormat {
 // ─── Token Model ──────────────────────────────────────────────────────────────
 
 model Token {
-  id          String      @id @default(cuid())
+  id String @id @default(cuid())
 
   // Student Assignment
-  studentId   String?
-  student     Student?    @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  schoolId    String
-  school      School      @relation(fields: [schoolId], references: [id])
+  studentId String?
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
 
   // Token Type & Physical IDs
-  type        TokenType   @default(QR)
-  rfidUid     String?     @unique     // RFID card UID (for RFID/COMBO tokens)
-  
+  type    TokenType @default(QR)
+  rfidUid String?   @unique // RFID card UID (for RFID/COMBO tokens)
+
   // QR Code Identifiers
-  qrCode      String?     @unique     // Unique QR identifier (e.g., "RESQID-STU-2024-001234")
-  qrCodeHash  String?     @unique     // Hashed version for secure lookup
-  
+  qrCode     String? @unique // Unique QR identifier (e.g., "RESQID-STU-2024-001234")
+  qrCodeHash String? @unique // Hashed version for secure lookup
+
   // Encrypted Scan Code (for QR URL security)
-  scanCode    String?     @unique     // AES-SIV encrypted scan payload
-  scanCodeHash String?    @unique     // Hash of scan code for fast lookup
-  scanCodeEncryptedAt DateTime?       // When scan code was last encrypted
-  
+  scanCode            String?   @unique // AES-SIV encrypted scan payload
+  scanCodeHash        String?   @unique // Hash of scan code for fast lookup
+  scanCodeEncryptedAt DateTime? // When scan code was last encrypted
+
   // QR Asset (Generated QR Image)
-  qrGenerated    Boolean  @default(false)   // Has QR been generated?
-  qrFormat       QrFormat?                 // PNG, SVG, PDF
-  qrWidthPx      Int?                      // QR image width
-  qrHeightPx     Int?                      // QR image height
-  qrFileSizeKb   Float?                    // File size in KB
-  qrAssetUrl     String?                   // Cloud storage URL for QR image
-  qrGeneratedAt  DateTime?                 // When QR was first generated
-  qrRegeneratedAt DateTime?               // Last regeneration time
-  qrRegenerationCount Int @default(0)     // How many times regenerated
-  
+  qrGenerated         Boolean   @default(false) // Has QR been generated?
+  qrFormat            QrFormat? // PNG, SVG, PDF
+  qrWidthPx           Int? // QR image width
+  qrHeightPx          Int? // QR image height
+  qrFileSizeKb        Float? // File size in KB
+  qrAssetUrl          String? // Cloud storage URL for QR image
+  qrGeneratedAt       DateTime? // When QR was first generated
+  qrRegeneratedAt     DateTime? // Last regeneration time
+  qrRegenerationCount Int       @default(0) // How many times regenerated
+
   // QR Background/Logo Customization (Optional)
-  qrForegroundColor String? @default("#000000")  // QR code color
-  qrBackgroundColor String? @default("#FFFFFF")  // Background color
-  qrLogoUrl       String?                        // Center logo URL
-  qrErrorCorrection String? @default("M")        // L, M, Q, H
-  
+  qrForegroundColor String? @default("#000000") // QR code color
+  qrBackgroundColor String? @default("#FFFFFF") // Background color
+  qrLogoUrl         String? // Center logo URL
+  qrErrorCorrection String? @default("M") // L, M, Q, H
+
   // Token Status & Lifecycle
-  status      TokenStatus @default(UNREGISTERED)
-  issuedAt    DateTime?                 // When token was issued
-  activatedAt DateTime?                 // When token was activated
-  expiresAt   DateTime?                 // Token expiry date
-  revokedAt   DateTime?                 // When revoked
-  revokedBy   String?                   // Who revoked it (admin ID)
-  revokeReason String?                  // Reason for revocation
-  
+  status       TokenStatus @default(UNREGISTERED)
+  issuedAt     DateTime? // When token was issued
+  activatedAt  DateTime? // When token was activated
+  expiresAt    DateTime? // Token expiry date
+  revokedAt    DateTime? // When revoked
+  revokedBy    String? // Who revoked it (admin ID)
+  revokeReason String? // Reason for revocation
+
   // Token Label & Notes
-  label       String?                   // Human-readable label
-  notes       String?                   // Internal notes
-  batchId     String?                   // Batch ID for bulk token generation
-  metadata    Json?                     // Flexible metadata
+  label    String? // Human-readable label
+  notes    String? // Internal notes
+  batchId  String? // Batch ID for bulk token generation
+  metadata Json? // Flexible metadata
 
   // Timestamps
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  scans       Scan[]
-  scanLogs    ScanLog[]
-  orderItem   OrderItem?
+  scans     Scan[]
+  scanLogs  ScanLog[]
+  orderItem OrderItem?
 
   @@index([studentId])
   @@index([schoolId, type])
@@ -120,73 +120,74 @@ model Token {
 // ─── Scan Log ─────────────────────────────────────────────────────────────────
 
 model ScanLog {
-  id              String     @id @default(cuid())
-  tokenId         String
-  token           Token      @relation(fields: [tokenId], references: [id])
-  schoolId        String
-  
+  id       String @id @default(cuid())
+  tokenId  String
+  token    Token  @relation(fields: [tokenId], references: [id])
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
   // Scan Result
-  scannedAt       DateTime   @default(now())
-  result          ScanResult
-  scanType        String?    // QR, RFID, NFC
-  scanPurpose     String?    // EMERGENCY, REGISTRATION, UNKNOWN
-  
+  scannedAt   DateTime   @default(now())
+  result      ScanResult
+  scanType    String?
+  scanPurpose String?
+
   // Scanner Info
-  scannerId       String?
-  scannerName     String?
-  
+  scannerId   String?
+  scannerName String?
+
   // Location
-  ipAddress       String?
-  city            String?
-  country         String?
-  latitude        Float?
-  longitude       Float?
-  
+  ipAddress String?
+  city      String?
+  country   String?
+  latitude  Float?
+  longitude Float?
+
   // Device
-  device          String?
-  deviceModel     String?
-  os              String?
-  browser         String?
-  userAgent       String?
-  
+  device      String?
+  deviceModel String?
+  os          String?
+  browser     String?
+  userAgent   String?
+
   // Security
-  isBot           Boolean    @default(false)
-  isSuspicious    Boolean    @default(false)
-  riskScore       Float?
-  
+  isBot        Boolean @default(false)
+  isSuspicious Boolean @default(false)
+  riskScore    Float?
+
   // Performance
-  responseTimeMs  Int?       // Add this field
-  
+  responseTimeMs Int?
+
   // Student Snapshot
-  studentName     String?
-  studentClass    String?
-  studentSection  String?
-  
-  metadata        Json?
+  studentName    String?
+  studentClass   String?
+  studentSection String?
+
+  metadata Json?
 }
 
 // ─── Scan Rate Limit ──────────────────────────────────────────────────────────
 
 model ScanRateLimit {
-  id             String    @id @default(cuid())
-  identifier     String                 // IP address, token ID, or device fingerprint
-  identifierType String                 // IP | TOKEN | DEVICE | USER
-  
+  id             String @id @default(cuid())
+  identifier     String // IP address, token ID, or device fingerprint
+  identifierType String // IP | TOKEN | DEVICE | USER
+
   // Rate Limiting
-  count          Int       @default(0)  // Current window count
-  blockCount     Int       @default(0)  // How many times blocked
-  maxRequests    Int       @default(100) // Max requests per window
-  
+  count       Int @default(0) // Current window count
+  blockCount  Int @default(0) // How many times blocked
+  maxRequests Int @default(100) // Max requests per window
+
   // Block Status
-  blockedUntil   DateTime?              // If blocked, until when
-  blockedReason  String?                // Why blocked
-  
+  blockedUntil  DateTime? // If blocked, until when
+  blockedReason String? // Why blocked
+
   // Window Tracking
-  lastHit        DateTime  @default(now())
-  windowStart    DateTime  @default(now())
-  windowDuration Int       @default(60) // Window in seconds
-  
-  metadata       Json?
+  lastHit        DateTime @default(now())
+  windowStart    DateTime @default(now())
+  windowDuration Int      @default(60) // Window in seconds
+
+  metadata Json?
 
   @@unique([identifier, identifierType])
   @@index([identifier])
@@ -197,36 +198,36 @@ model ScanRateLimit {
 // ─── QR Batch Generation ──────────────────────────────────────────────────────
 
 model QrBatchGeneration {
-  id          String    @id @default(cuid())
-  schoolId    String
-  school      School    @relation(fields: [schoolId], references: [id])
-  
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+
   // Batch Details
-  name        String    // "Batch 2024-2025 - Class 10"
-  batchId     String    @unique
-  totalCount  Int       // Total tokens in batch
-  successCount Int      @default(0)
-  failedCount  Int      @default(0)
-  
+  name         String // "Batch 2024-2025 - Class 10"
+  batchId      String @unique
+  totalCount   Int // Total tokens in batch
+  successCount Int    @default(0)
+  failedCount  Int    @default(0)
+
   // QR Settings Used
-  format      QrFormat  @default(PNG)
-  widthPx     Int       @default(512)
-  heightPx    Int       @default(512)
-  errorCorrection String @default("M")
-  
+  format          QrFormat @default(PNG)
+  widthPx         Int      @default(512)
+  heightPx        Int      @default(512)
+  errorCorrection String   @default("M")
+
   // Status
-  status      String    @default("PROCESSING")  // PENDING, PROCESSING, COMPLETED, FAILED
-  
+  status String @default("PROCESSING") // PENDING, PROCESSING, COMPLETED, FAILED
+
   // Generated by
   createdById String?
   createdBy   SchoolUser? @relation(fields: [createdById], references: [id])
-  
+
   // Results
-  errorLog    Json?     // Array of errors if any
-  
+  errorLog Json? // Array of errors if any
+
   createdAt   DateTime  @default(now())
   completedAt DateTime?
-  
+
   @@index([schoolId])
   @@index([batchId])
   @@index([status])

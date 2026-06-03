@@ -1,7 +1,5 @@
-// =============================================================================
 // orchestrator/cron/daily.cron.js — RESQID
 // Fires 30 min before school starts. Checks absences, triggers REPLACE.
-// =============================================================================
 
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
@@ -25,13 +23,12 @@ export const runDailyCron = async () => {
   let totalJobs = 0;
   let schoolsChecked = 0;
   let schoolsSkipped = 0;
+  let schoolsWithAbsences = 0;
 
   try {
     // 1. Get all active schools with timetable config
     const activeSchools = await prisma.school.findMany({
-      where: {
-        status: 'ACTIVE',
-      },
+      where: { status: 'ACTIVE' },
       select: {
         id: true,
         name: true,
@@ -48,23 +45,19 @@ export const runDailyCron = async () => {
     });
 
     schoolsChecked = activeSchools.length;
+    logger.info({ schoolCount: schoolsChecked }, '[daily.cron] Schools to check');
 
     for (const school of activeSchools) {
       try {
-        // 2. Skip if not a working day for this school
+        // 2. Skip if not a working day
         const workingDays = school.timetableConfig?.workingDays || [1, 2, 3, 4, 5, 6];
         if (!workingDays.includes(dayOfWeek)) {
-          logger.debug(
-            { school: school.name, dayOfWeek },
-            '[daily.cron] Not a working day — skipping'
-          );
           schoolsSkipped++;
           continue;
         }
 
-        // 3. Skip if substitutions are disabled
+        // 3. Skip if substitutions disabled
         if (school.timetableConfig?.allowSubstitution === false) {
-          logger.debug({ school: school.name }, '[daily.cron] Substitutions disabled — skipping');
           schoolsSkipped++;
           continue;
         }
@@ -72,104 +65,38 @@ export const runDailyCron = async () => {
         // 4. Skip if holiday
         const isHoliday = await prisma.schoolCalendar
           ?.findFirst({
-            where: {
-              schoolId: school.id,
-              date: today,
-              type: 'HOLIDAY',
-            },
+            where: { schoolId: school.id, date: today, type: 'HOLIDAY' },
           })
           .catch(() => null);
 
         if (isHoliday) {
-          logger.debug({ school: school.name }, '[daily.cron] Holiday — skipping');
           schoolsSkipped++;
           continue;
         }
 
-        // 5. Get active/published timetable for today
+        // 5. Get active PUBLISHED timetable
         const activeTimetable = await prisma.timetable.findFirst({
-          where: {
-            schoolId: school.id,
-            status: 'PUBLISHED',
-          },
+          where: { schoolId: school.id, status: 'PUBLISHED' },
           orderBy: { publishedAt: 'desc' },
           select: { id: true },
         });
 
         if (!activeTimetable) {
-          logger.debug({ school: school.name }, '[daily.cron] No published timetable — skipping');
           schoolsSkipped++;
           continue;
         }
 
-        // 6. Find teachers marked as absent/on-leave today
-        const absentTeachers = await prisma.teacher.findMany({
-          where: {
-            schoolId: school.id,
-            isActive: true,
-            OR: [
-              // Teachers with leave covering today
-              {
-                isOnLeave: true,
-                leaveStart: { lte: today },
-                leaveEnd: { gte: today },
-              },
-              // Teachers with specific leave days including today
-              {
-                leaveDays: { has: dayOfWeek },
-              },
-              // Teachers marked unavailable today
-              {
-                unavailableDays: { has: dayOfWeek },
-              },
-            ],
-          },
-          select: {
-            id: true,
-            name: true,
-            employeeId: true,
-          },
-        });
-
-        // Also check wellness records for emergency leave
-        const wellnessAbsent = await prisma.teacherWellness.findMany({
-          where: {
-            schoolId: school.id,
-            personalBlocks: {
-              path: ['$'],
-              array_contains: [{ day: dayOfWeek }],
-            },
-          },
-          select: {
-            teacherId: true,
-            teacher: { select: { name: true, employeeId: true } },
-          },
-        });
-
-        // Combine all absent teachers (deduplicate)
-        const allAbsent = new Map();
-        for (const t of absentTeachers) {
-          allAbsent.set(t.id, t);
-        }
-        for (const w of wellnessAbsent) {
-          if (!allAbsent.has(w.teacherId)) {
-            allAbsent.set(w.teacherId, {
-              id: w.teacherId,
-              name: w.teacher?.name || 'Unknown',
-              employeeId: w.teacher?.employeeId,
-            });
-          }
-        }
-
-        const absentList = Array.from(allAbsent.values());
+        // 6. Find absent teachers
+        const absentList = await findAbsentTeachers(school.id, today, dayOfWeek);
 
         if (absentList.length === 0) {
-          logger.debug({ school: school.name }, '[daily.cron] All teachers present — skipping');
           schoolsSkipped++;
           continue;
         }
 
-        // 7. Check max substitutions per day
+        schoolsWithAbsences++;
+
+        // 7. Check max substitutions
         const maxSubs = school.timetableConfig?.maxSubstitutionsPerDay || 3;
 
         if (absentList.length > maxSubs * 3) {
@@ -179,11 +106,11 @@ export const runDailyCron = async () => {
               absentCount: absentList.length,
               maxSubs,
             },
-            '[daily.cron] High absenteeism detected — may need manual intervention'
+            '[daily.cron] High absenteeism — may need manual intervention'
           );
         }
 
-        // 8. Create a MASS_LEAVE crisis event
+        // 8. Create crisis event
         const crisisEvent = await prisma.crisisEvent.create({
           data: {
             schoolId: school.id,
@@ -194,13 +121,13 @@ export const runDailyCron = async () => {
             title: `Daily Absence Check — ${absentList.length} teacher(s) absent`,
             description: `Auto-detected absences for ${todayStr}: ${absentList.map((t) => t.name).join(', ')}`,
             affectedTeacherIds: absentList.map((t) => t.id),
-            totalAffectedSlots: 0, // Will be calculated by worker
+            totalAffectedSlots: 0,
             triggeredBy: 'CRON',
             triggerReason: `Daily cron detected ${absentList.length} absent teachers`,
           },
         });
 
-        // 9. Push to crisis queue for each absent teacher
+        // 9. Push to crisis queue
         for (const teacher of absentList) {
           await crisisQueue.add(
             QUEUE_NAMES.CRISIS_HANDLING,
@@ -222,35 +149,29 @@ export const runDailyCron = async () => {
               },
             },
             {
-              priority: 1, // High priority for daily operations
+              priority: 1,
               attempts: 2,
               backoff: { type: 'fixed', delay: 5000 },
               jobId: `daily-absent-${school.id}-${teacher.id}-${todayStr}`,
               removeOnComplete: true,
-              removeOnFail: false, // Keep failed for debugging
+              removeOnFail: false,
             }
           );
-
           totalJobs++;
         }
 
         logger.info(
           {
             school: school.name,
-            absentTeachers: absentList.map((t) => t.name),
+            absentCount: absentList.length,
             crisisEventId: crisisEvent.id,
             jobsCreated: absentList.length,
           },
           '[daily.cron] Crisis jobs queued'
         );
       } catch (schoolError) {
-        // Don't fail entire cron for one school
         logger.error(
-          {
-            school: school.name,
-            schoolId: school.id,
-            error: schoolError.message,
-          },
+          { school: school.name, schoolId: school.id, error: schoolError.message },
           '[daily.cron] Error processing school'
         );
         schoolsSkipped++;
@@ -259,7 +180,7 @@ export const runDailyCron = async () => {
 
     const summary = {
       schoolsChecked,
-      schoolsWithAbsences: schoolsChecked - schoolsSkipped,
+      schoolsWithAbsences,
       schoolsSkipped,
       totalJobsCreated: totalJobs,
       date: todayStr,
@@ -278,44 +199,28 @@ export const runDailyCron = async () => {
 };
 
 /**
- * Run cron for a specific school (manual trigger or per-school schedule).
+ * Run cron for a specific school (manual trigger).
  */
 export const runSchoolCron = async (schoolId) => {
   logger.info({ schoolId }, '[daily.cron] Running school-specific check');
 
   const school = await prisma.school.findUnique({
     where: { id: schoolId },
-    select: { id: true, name: true, timezone: true },
+    select: { id: true, name: true },
   });
 
   if (!school) {
     throw new Error(`School ${schoolId} not found`);
   }
 
-  // Delegate to main cron logic but filter for this school
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const dayOfWeek = today.getDay() || 7;
 
-  const absentTeachers = await prisma.teacher.findMany({
-    where: {
-      schoolId,
-      isActive: true,
-      OR: [
-        {
-          isOnLeave: true,
-          leaveStart: { lte: today },
-          leaveEnd: { gte: today },
-        },
-        {
-          leaveDays: { has: today.getDay() || 7 },
-        },
-      ],
-    },
-    select: { id: true, name: true },
-  });
+  const absentList = await findAbsentTeachers(schoolId, today, dayOfWeek);
 
   logger.info(
-    { school: school.name, absentCount: absentTeachers.length },
+    { school: school.name, absentCount: absentList.length },
     '[daily.cron] School check complete'
   );
 
@@ -323,7 +228,86 @@ export const runSchoolCron = async (schoolId) => {
     schoolId,
     schoolName: school.name,
     date: today.toISOString().split('T')[0],
-    absentTeachers: absentTeachers.map((t) => ({ id: t.id, name: t.name })),
-    absentCount: absentTeachers.length,
+    absentTeachers: absentList.map((t) => ({ id: t.id, name: t.name })),
+    absentCount: absentList.length,
   };
 };
+
+// HELPERS
+
+/**
+ * Find all absent teachers for a school on a given day.
+ * Checks: leave range, leave days, unavailable days, wellness blocks.
+ */
+async function findAbsentTeachers(schoolId, date, dayOfWeek) {
+  // 1. Teachers with leave range covering today
+  const onLeaveRange = await prisma.teacher.findMany({
+    where: {
+      schoolId,
+      isActive: true,
+      isOnLeave: true,
+      leaveStart: { lte: date },
+      leaveEnd: { gte: date },
+    },
+    select: { id: true, name: true, employeeId: true },
+  });
+
+  // 2. Teachers with specific leave days
+  const onLeaveDay = await prisma.teacher.findMany({
+    where: {
+      schoolId,
+      isActive: true,
+      isOnLeave: false, // Not already caught by range check
+      leaveDays: { has: dayOfWeek },
+    },
+    select: { id: true, name: true, employeeId: true },
+  });
+
+  // 3. Teachers marked unavailable on this day
+  const unavailable = await prisma.teacher.findMany({
+    where: {
+      schoolId,
+      isActive: true,
+      isOnLeave: false,
+      leaveDays: { none: { equals: dayOfWeek } },
+      unavailableDays: { has: dayOfWeek },
+    },
+    select: { id: true, name: true, employeeId: true },
+  });
+
+  // 4. Teachers with wellness personal blocks on this day
+  const wellnessBlocks = await prisma.teacherWellness.findMany({
+    where: {
+      schoolId,
+      teacher: { isActive: true, isOnLeave: false },
+    },
+    select: {
+      teacherId: true,
+      teacher: { select: { name: true, employeeId: true } },
+      personalBlocks: true,
+    },
+  });
+
+  const wellnessAbsent = wellnessBlocks.filter((w) => {
+    if (!w.personalBlocks) return false;
+    return w.personalBlocks.some((block) => block.day === dayOfWeek);
+  });
+
+  // Combine and deduplicate
+  const allAbsent = new Map();
+
+  for (const t of onLeaveRange) allAbsent.set(t.id, t);
+  for (const t of onLeaveDay) allAbsent.set(t.id, t);
+  for (const t of unavailable) allAbsent.set(t.id, t);
+  for (const w of wellnessAbsent) {
+    if (!allAbsent.has(w.teacherId)) {
+      allAbsent.set(w.teacherId, {
+        id: w.teacherId,
+        name: w.teacher?.name || 'Unknown',
+        employeeId: w.teacher?.employeeId,
+      });
+    }
+  }
+
+  return Array.from(allAbsent.values());
+}

@@ -1,4 +1,3 @@
-// =============================================================================
 // orchestrator/workers/index.js — RESQID
 //
 // RAILWAY (always on):
@@ -7,7 +6,6 @@
 //   WORKER_ROLE=attendance    → AttendanceWorker only
 //   WORKER_ROLE=timetable     → Timetable workers (generate, crisis, validate, swap, bulk)
 //   WORKER_ROLE=all           → All workers
-// =============================================================================
 
 process.env.WORKER_PROCESS = 'true';
 
@@ -17,11 +15,11 @@ import { startNotificationWorker, stopNotificationWorker } from './notification.
 import { startScanWorker, stopScanWorker } from './scan.worker.js';
 import { startMaintenanceWorker, stopMaintenanceWorker } from './maintenance.worker.js';
 import { startAttendanceWorker, stopAttendanceWorker } from './attendance.worker.js';
-import { startGenerateWorker, stopGenerateWorker } from './generate.worker.js';
-import { startCrisisWorker, stopCrisisWorker } from './crisis.worker.js';
-import { startValidateWorker, stopValidateWorker } from './validate.worker.js';
-import { startSwapWorker, stopSwapWorker } from './swap.worker.js';
-import { startBulkUploadWorker, stopBulkUploadWorker } from './bulkUpload.worker.js';
+import { startGenerateWorker } from './generate.worker.js';
+import { startCrisisWorker } from './crisis.worker.js';
+import { startValidateWorker } from './validate.worker.js';
+import { startSwapWorker } from './swap.worker.js';
+import { startBulkUploadWorker } from './bulkUpload.worker.js';
 import { closeAllQueues } from '../queues/queue.config.js';
 import { closeQueueConnection } from '../queues/queue.connection.js';
 import { flushDlqSlackBatch } from '../dlq/dlq.handler.js';
@@ -55,9 +53,7 @@ const pad = (s, n) => String(s).padEnd(n);
 
 const ROLE = (process.env.WORKER_ROLE ?? 'all').toLowerCase();
 
-// =============================================================================
 // WORKER REGISTRY
-// =============================================================================
 
 const ALL_WORKERS = [
   // ── Core (Always On) ─────────────────────────────────────────────────────
@@ -101,7 +97,9 @@ const ALL_WORKERS = [
     col: c.teal,
     desc: 'Timetable generation solver (CSP backtracking)',
     start: startGenerateWorker,
-    stop: stopGenerateWorker,
+    stop: async (w) => {
+      if (w) await w.close();
+    },
   },
   {
     name: 'CrisisWorker',
@@ -111,7 +109,9 @@ const ALL_WORKERS = [
     col: c.coral,
     desc: 'Teacher absence · room unavailability · substitutions',
     start: startCrisisWorker,
-    stop: stopCrisisWorker,
+    stop: async (w) => {
+      if (w) await w.close();
+    },
   },
   {
     name: 'ValidateWorker',
@@ -121,7 +121,9 @@ const ALL_WORKERS = [
     col: c.purple,
     desc: 'Timetable validation · scoring · reports',
     start: startValidateWorker,
-    stop: stopValidateWorker,
+    stop: async (w) => {
+      if (w) await w.close();
+    },
   },
   {
     name: 'SwapWorker',
@@ -131,7 +133,9 @@ const ALL_WORKERS = [
     col: c.amber,
     desc: 'Manual slot swaps · reassignments',
     start: startSwapWorker,
-    stop: stopSwapWorker,
+    stop: async (w) => {
+      if (w) await w.close();
+    },
   },
   {
     name: 'BulkUploadWorker',
@@ -141,7 +145,9 @@ const ALL_WORKERS = [
     col: c.rose,
     desc: 'Excel/CSV bulk upload processing',
     start: startBulkUploadWorker,
-    stop: stopBulkUploadWorker,
+    stop: async (w) => {
+      if (w) await w.close();
+    },
   },
 
   // ── Background ───────────────────────────────────────────────────────────
@@ -169,9 +175,10 @@ const ALL_WORKERS = [
 
 const ACTIVE = ALL_WORKERS.filter((w) => w.roles.includes(ROLE));
 
-// =============================================================================
+// Track running worker instances for shutdown
+const _runningWorkers = [];
+
 // BANNER
-// =============================================================================
 
 function printBanner() {
   const W = 64;
@@ -232,9 +239,7 @@ function printTopology() {
   console.log('');
 }
 
-// =============================================================================
 // DLQ FLUSH
-// =============================================================================
 
 let _dlqFlushInterval = null;
 
@@ -259,9 +264,7 @@ const stopDlqFlush = () => {
   }
 };
 
-// =============================================================================
 // GRACEFUL SHUTDOWN
-// =============================================================================
 
 const gracefulShutdown = async (signal) => {
   console.log(`\n  ${c.yellow}⚡ ${signal} — draining workers…${c.reset}`);
@@ -270,7 +273,17 @@ const gracefulShutdown = async (signal) => {
   stopDlqFlush();
 
   try {
-    await Promise.allSettled(ACTIVE.map((w) => w.stop()));
+    // Stop all running workers
+    await Promise.allSettled(
+      _runningWorkers.map(async (w) => {
+        try {
+          await w.stop(w.instance);
+        } catch (err) {
+          logger.error({ worker: w.name, err: err.message }, '[workers] Stop error');
+        }
+      })
+    );
+
     await closeAllQueues();
     await closeQueueConnection();
     console.log(
@@ -295,9 +308,7 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
-// =============================================================================
 // START
-// =============================================================================
 
 export const startWorkers = async () => {
   printBanner();
@@ -321,7 +332,12 @@ export const startWorkers = async () => {
 
   logger.info({ role: ROLE, count: ACTIVE.length }, '[workers] Starting workers');
 
-  ACTIVE.forEach((w) => w.start());
+  // Start workers and track instances
+  for (const w of ACTIVE) {
+    const instance = w.start();
+    _runningWorkers.push({ name: w.name, instance, stop: w.stop });
+  }
+
   startDlqFlush();
 
   logger.info({ workers: ACTIVE.map((w) => w.name) }, '[workers] Workers started');
