@@ -1,8 +1,6 @@
-// =============================================================================
 // orchestrator/events/event.publisher.js — RESQID
 // publish(event) — validates shape, stamps id + createdAt, enqueues to
 // the correct BullMQ queue based on event type.
-// =============================================================================
 
 import { randomUUID } from 'crypto';
 import { EVENTS, ACTOR_TYPES } from './event.types.js';
@@ -17,9 +15,7 @@ import {
 } from '../queues/queue.config.js';
 import { logger } from '#config/logger.js';
 
-// =============================================================================
 // EVENT → QUEUE ROUTING
-// =============================================================================
 
 const EMERGENCY_EVENTS = new Set([
   EVENTS.EMERGENCY_ALERT_TRIGGERED,
@@ -77,9 +73,7 @@ const routeEvent = (type) => {
   return notificationsQueue;
 };
 
-// =============================================================================
 // JOB OPTIONS PER QUEUE TYPE
-// =============================================================================
 
 const getJobOptions = (type, id, meta = {}) => {
   const jobId = `${type}-${id}`;
@@ -147,9 +141,7 @@ const getJobOptions = (type, id, meta = {}) => {
   };
 };
 
-// =============================================================================
 // SHAPE VALIDATION
-// =============================================================================
 
 const validateEvent = (event) => {
   if (!event || typeof event !== 'object') {
@@ -169,9 +161,7 @@ const validateEvent = (event) => {
   }
 };
 
-// =============================================================================
 // PUBLISHER
-// =============================================================================
 
 /**
  * Publish an event to the appropriate queue.
@@ -226,9 +216,7 @@ export const publish = async (event) => {
   }
 };
 
-// =============================================================================
 // CONVENIENCE WRAPPERS
-// =============================================================================
 
 /**
  * Publish an emergency event.

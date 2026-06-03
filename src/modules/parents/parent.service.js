@@ -2,6 +2,7 @@
 import bcrypt from 'bcrypt';
 import { prisma } from '#config/prisma.js';
 import { ApiError } from '#shared/response/ApiError.js';
+<<<<<<< HEAD
 import { getPagination, paginateMeta } from '#shared/response/paginate.js';
 import { getCache, CacheKey, TTL } from '#infrastructure/cache/cache.index.js';
 import { getEmail } from '#infrastructure/email/email.index.js';
@@ -13,6 +14,14 @@ import { generateParentId, generateId } from '#services/IdGenerator.service.js';
 import { normalizePhoneNumber } from '#shared/utils/phoneNormalize.js';
 import { formatDistanceToNow, differenceInDays, format } from 'date-fns';
 import { notificationsQueue } from '#orchestrator/queues/queue.config.js';
+=======
+import { logger } from '#config/logger.js';
+import { middlewareRedis as redis } from '#config/redis.js';
+import * as repo from './parent.repository.js';
+import { publishNotification } from '#orchestrator/notifications/notification.publisher.js';
+import { EVENTS } from '#orchestrator/events/event.types.js';
+import { invalidateScanCache } from '#shared/cache/scan.cache.js';
+>>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 
 const repo = new ParentRepository();
 
@@ -38,8 +47,18 @@ export class ParentService {
       if (existingEmail) throw ApiError.conflict('Email already registered');
     }
 
+<<<<<<< HEAD
     // Hash password
     const hashedPassword = await bcrypt.hash(data.password, 10);
+=======
+export const getParentHome = async (parentId) => {
+  try {
+    const cached = await redis.get(HOME_CACHE_KEY(parentId));
+    if (cached) return JSON.parse(cached);
+  } catch {
+    /* cache miss */
+  }
+>>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 
     // Create parent
     const parent = await repo.createParent({
@@ -79,6 +98,7 @@ export class ParentService {
     const cache = getCache();
     await cache.del(CacheKey.school(schoolId));
 
+<<<<<<< HEAD
     return parent;
   }
 
@@ -104,6 +124,75 @@ export class ParentService {
     const updated = await repo.updateParent(id, data);
     await getCache().del(CacheKey.parentProfile(id));
     return updated;
+=======
+export const updateVisibility = async (parentId, studentId, visibility) => {
+  await repo.verifyStudentOwnership(parentId, studentId);
+  await repo.updateCardVisibility(studentId, visibility);
+  await invalidateScanCache(studentId);
+  await invalidateHomeCache(parentId);
+  return { success: true };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const updateNotifications = async (parentId, prefs) => {
+  await repo.upsertNotificationPrefs(parentId, prefs);
+  await invalidateHomeCache(parentId);
+  return { success: true };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOCK CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const lockCard = async (parentId, studentId) => {
+  await repo.verifyStudentOwnership(parentId, studentId);
+  const result = await repo.lockStudentCard(studentId);
+  await invalidateScanCache(studentId);
+  await invalidateHomeCache(parentId);
+
+  // 🔧 Fixed: Use notification publisher
+  publishNotification
+    .parentCardLocked({
+      actorId: parentId,
+      schoolId: null,
+      payload: { parentName: '', studentName: '', studentId },
+    })
+    .catch(() => {});
+
+  return { locked: result.count > 0 };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEVICE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const registerDeviceToken = (parentId, body) => repo.upsertParentDevice(parentId, body);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LINK CARD (Add Child)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const linkCard = async (parentId, { cardNumber }) => {
+  const card = await repo.findCardByNumber(cardNumber);
+  if (!card) throw ApiError.notFound('Card not found');
+
+  if (card.studentId) {
+    const existingLink = await repo.findParentStudentLink(parentId, card.studentId);
+    if (existingLink) throw ApiError.conflict('Already linked to your account');
+  }
+
+  let studentId = card.studentId;
+  if (!studentId) {
+    // 🔧 Fixed: createStudent instead of createStubStudent
+    const student = await repo.createStudent(card.schoolId);
+    studentId = student.id;
+    // 🔧 Fixed: Added schoolId
+    await repo.createEmergencyProfile(studentId, card.schoolId);
+    await repo.activateCard(card.id, studentId);
+>>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
   }
 
   // ─── Delete Parent ────────────────────────────────────────────
@@ -139,10 +228,19 @@ export class ParentService {
       };
     }));
 
+<<<<<<< HEAD
     const engagement = await this.computeEngagement(parent);
     const unreadNotifications = await prisma.notification.count({
       where: { parentId: id, isRead: false, status: 'DELIVERED' },
     });
+=======
+export const setActiveStudent = async (parentId, studentId) => {
+  await repo.verifyStudentOwnership(parentId, studentId);
+  // 🔧 Note: setActiveStudent updates parentUser.activeStudentId — this field may not exist
+  await invalidateHomeCache(parentId);
+  return { success: true };
+};
+>>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 
     // Get recent notifications (last 5)
     const recentNotifs = await prisma.notification.findMany({

@@ -33,23 +33,57 @@ export const handleScan = asyncHandler(async (req, res) => {
   const { code } = scanCodeParamsSchema.parse(req.params);
   const result = await service.processScan(code, req);
 
-  logger.info({
-    scanId: result.scanId,
-    result: result.result,
-    studentId: result.student?.id,
-    responseTimeMs: result.responseTimeMs,
-    riskScore: result.riskScore,
-  }, 'Scan processed');
+  logger.info({ code: code?.slice(0, 8), ip }, '[scan] Incoming QR scan');
 
-  const acceptHeader = req.headers.accept || '';
-  const expectsHtml = acceptHeader.includes('text/html');
+  // Security headers
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+  });
 
-  if (expectsHtml && result.success && result.student) {
-    return res.redirect(`/emergency/profile/${result.student.id}`);
+  // Resolve the scan
+  const result = await resolveScan({
+    code,
+    ip,
+    userAgent,
+    deviceHash,
+    scanCount,
+    latitude: lat,
+    longitude: lng,
+  });
+
+  // Map result state to HTTP status
+  const statusMap = {
+    ACTIVE: 200,
+    ISSUED: 200,
+    INACTIVE: 200,
+    UNREGISTERED: 200,
+    EXPIRED: 200,
+    REVOKED: 200,
+    VALID: 200,
+    INVALID: 400,
+    ERROR: 500,
+  };
+
+  const statusCode = statusMap[result.state] || 200;
+
+  // Log successful scans
+  if (statusCode === 200) {
+    logger.info(
+      {
+        studentId: result.data?.student?.id,
+        studentName: result.data?.student
+          ? `${result.data.student.firstName} ${result.data.student.lastName}`
+          : null,
+        ip,
+        scanCount,
+      },
+      '[scan] QR scan successful'
+    );
   }
 
-  const statusCode = result.result === 'SUCCESS' ? 200 : 400;
-  return ApiResponse.send(res, statusCode, result, 'Scan processed');
+  return res.status(statusCode).json(result);
 });
 
 /**

@@ -47,6 +47,7 @@ import {
   checkTokenStatus,
   getEmergencyContacts,
 } from './scan.redirect.controller.js';
+<<<<<<< HEAD
 
 const router = Router();
 
@@ -108,6 +109,57 @@ router.get(
   publicScanLimiter,
   callSchool
 );
+=======
+import { validate } from '#middleware/validate.middleware.js';
+import { perTokenScanLimit } from '#middleware/security/rateLimit.middleware.js';
+import {
+  scanCodeParamsSchema,
+  contactRedirectParamsSchema,
+  tokenOnlyParamsSchema,
+} from './scan.validation.js';
+
+const router = Router();
+
+// =============================================================================
+// REDIRECT ROUTES — BEFORE /:code wildcard
+// These handle "Call Contact" and "WhatsApp" links from emergency profile page
+// =============================================================================
+
+/**
+ * GET /s/call/:contactId/:token
+ * Opens phone dialer to call an emergency contact.
+ */
+router.get('/call/:contactId/:token', validate(contactRedirectParamsSchema), callContact);
+
+/**
+ * GET /s/wa/:contactId/:token
+ * Opens WhatsApp chat with emergency contact.
+ */
+router.get('/wa/:contactId/:token', validate(contactRedirectParamsSchema), whatsappContact);
+
+/**
+ * GET /s/school-call/:token
+ * Opens phone dialer to call the school.
+ */
+router.get('/school-call/:token', validate(tokenOnlyParamsSchema), callSchool);
+
+/**
+ * GET /s/doctor-call/:token
+ * Opens phone dialer to call student's doctor.
+ */
+router.get('/doctor-call/:token', validate(tokenOnlyParamsSchema), callDoctor);
+
+// =============================================================================
+// MAIN QR SCAN — AFTER redirect routes (/:code wildcard must be LAST)
+// =============================================================================
+
+/**
+ * GET /s/:code
+ * Main QR code scan endpoint.
+ * Decrypts code, fetches emergency profile, returns to responder.
+ */
+router.get('/:code', validate(scanCodeParamsSchema), perTokenScanLimit, scanQr);
+>>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 
 /**
  * GET /s/call/doctor/:token

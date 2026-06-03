@@ -1,13 +1,12 @@
-// =============================================================================
 // orchestrator/workers/bulkUpload.worker.js — RESQID
-// Processes bulk Excel/CSV uploads for teachers, classes, rooms.
-// =============================================================================
+// Processes bulk Excel/CSV uploads for teachers, classes, rooms, timetable.
 
 import { Worker } from 'bullmq';
 import { getQueueConnection } from '../queues/queue.connection.js';
 import { QUEUE_NAMES } from '../queues/queue.names.js';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
+import { ENV } from '#config/env.js';
 
 /**
  * Start the bulk upload worker.
@@ -25,26 +24,26 @@ export const startBulkUploadWorker = () => {
         // Update upload status
         await prisma.bulkUpload.update({
           where: { id: uploadId },
-          data: { status: 'PROCESSING' },
+          data: { status: 'PROCESSING', processedRows: 0 },
         });
 
         let result;
 
         switch (uploadType) {
           case 'TEACHERS':
-            result = await processTeacherUpload(schoolId, filePath);
+            result = await processTeacherUpload(schoolId, filePath, uploadId);
             break;
           case 'CLASSES':
-            result = await processClassUpload(schoolId, filePath);
+            result = await processClassUpload(schoolId, filePath, uploadId);
             break;
           case 'SUBJECTS':
-            result = await processSubjectUpload(schoolId, filePath);
+            result = await processSubjectUpload(schoolId, filePath, uploadId);
             break;
           case 'ROOMS':
-            result = await processRoomUpload(schoolId, filePath);
+            result = await processRoomUpload(schoolId, filePath, uploadId);
             break;
           case 'TIMETABLE':
-            result = await processTimetableUpload(schoolId, filePath);
+            result = await processTimetableUpload(schoolId, filePath, uploadId);
             break;
           default:
             throw new Error(`Unknown upload type: ${uploadType}`);
@@ -65,10 +64,16 @@ export const startBulkUploadWorker = () => {
           },
         });
 
-        logger.info({ jobId, uploadType, ...result }, '[bulkUpload.worker] Upload processed');
+        logger.info(
+          { jobId, uploadType, created: result.created, errors: result.errors?.length },
+          '[bulkUpload.worker] Upload processed successfully'
+        );
         return result;
       } catch (error) {
-        logger.error({ jobId, error: error.message }, '[bulkUpload.worker] Upload failed');
+        logger.error(
+          { jobId, uploadType, error: error.message, stack: error.stack },
+          '[bulkUpload.worker] Upload failed'
+        );
 
         await prisma.bulkUpload.update({
           where: { id: uploadId },
@@ -83,36 +88,123 @@ export const startBulkUploadWorker = () => {
     },
     {
       connection: getQueueConnection(),
-      concurrency: 2,
+      concurrency: ENV.TIMETABLE_BULK_CONCURRENCY || 2,
       lockDuration: 300000,
+      stalledInterval: 30000,
     }
   );
 
+  worker.on('completed', (job) => {
+    logger.info({ jobId: job.id }, '[bulkUpload.worker] Job completed');
+  });
+
+  worker.on('failed', (job, err) => {
+    logger.error({ jobId: job?.id, error: err.message }, '[bulkUpload.worker] Job failed');
+  });
+
+  logger.info('[bulkUpload.worker] Worker started');
   return worker;
 };
 
-// Placeholder processors — implement with actual Excel parsing
-async function processTeacherUpload(schoolId, filePath) {
+/**
+ * Stop the bulk upload worker.
+ */
+export const stopBulkUploadWorker = async (worker) => {
+  if (worker) {
+    await worker.close();
+    logger.info('[bulkUpload.worker] Worker stopped');
+  }
+};
+
+// UPLOAD PROCESSORS
+
+/**
+ * Process teacher bulk upload.
+ * Expected columns: firstName, lastName, email, phone, subjects, qualification, etc.
+ */
+async function processTeacherUpload(schoolId, filePath, uploadId) {
   logger.info({ schoolId, filePath }, '[bulkUpload] Processing teacher upload');
-  return { processed: 0, created: 0, updated: 0, errors: [] };
+
+  // TODO: Implement Excel parsing
+  // const rows = await parseExcelFile(filePath);
+  const rows = [];
+  const errors = [];
+  const warnings = [];
+  let created = 0;
+  let updated = 0;
+
+  // for (const [index, row] of rows.entries()) {
+  //   try {
+  //     // Validate row
+  //     if (!row.firstName || !row.email) {
+  //       errors.push({ row: index + 1, message: 'Missing required fields' });
+  //       continue;
+  //     }
+  //
+  //     // Upsert teacher
+  //     await prisma.teacher.upsert({
+  //       where: { email: row.email },
+  //       create: {
+  //         schoolId,
+  //         name: `${row.firstName} ${row.lastName || ''}`.trim(),
+  //         email: row.email,
+  //         phone: row.phone,
+  //         subjects: row.subjects?.split(',').map(s => s.trim()) || [],
+  //         qualifications: row.qualification ? [row.qualification] : [],
+  //         maxPeriodsPerDay: row.maxPeriodsPerDay || 6,
+  //         maxPeriodsPerWeek: row.maxPeriodsPerWeek || 30,
+  //         isPartTime: row.isPartTime === 'true',
+  //         employeeId: row.employeeId,
+  //       },
+  //       update: {
+  //         name: `${row.firstName} ${row.lastName || ''}`.trim(),
+  //         phone: row.phone,
+  //         subjects: row.subjects?.split(',').map(s => s.trim()) || [],
+  //       },
+  //     });
+  //     created++;
+  //   } catch (err) {
+  //     errors.push({ row: index + 1, message: err.message });
+  //   }
+  // }
+
+  return {
+    processed: rows.length,
+    created,
+    updated,
+    errors,
+    warnings,
+  };
 }
 
-async function processClassUpload(schoolId, filePath) {
+/**
+ * Process class bulk upload.
+ */
+async function processClassUpload(schoolId, filePath, uploadId) {
   logger.info({ schoolId, filePath }, '[bulkUpload] Processing class upload');
   return { processed: 0, created: 0, updated: 0, errors: [] };
 }
 
-async function processSubjectUpload(schoolId, filePath) {
+/**
+ * Process subject bulk upload.
+ */
+async function processSubjectUpload(schoolId, filePath, uploadId) {
   logger.info({ schoolId, filePath }, '[bulkUpload] Processing subject upload');
   return { processed: 0, created: 0, updated: 0, errors: [] };
 }
 
-async function processRoomUpload(schoolId, filePath) {
+/**
+ * Process room bulk upload.
+ */
+async function processRoomUpload(schoolId, filePath, uploadId) {
   logger.info({ schoolId, filePath }, '[bulkUpload] Processing room upload');
   return { processed: 0, created: 0, updated: 0, errors: [] };
 }
 
-async function processTimetableUpload(schoolId, filePath) {
+/**
+ * Process timetable bulk upload (existing timetable import).
+ */
+async function processTimetableUpload(schoolId, filePath, uploadId) {
   logger.info({ schoolId, filePath }, '[bulkUpload] Processing timetable upload');
   return { processed: 0, created: 0, updated: 0, errors: [] };
 }

@@ -1,9 +1,7 @@
-// =============================================================================
 // orchestrator/queues/queue.manager.js — RESQID
 //
 // Manages all BullMQ queues + QueueEvents for cross-process monitoring.
 // Handles job lifecycle, progress tracking, and admin utilities.
-// =============================================================================
 
 import { QueueEvents } from 'bullmq';
 import { prisma } from '#config/prisma.js';
@@ -25,9 +23,7 @@ import {
   pipelineJobsQueue,
 } from './queue.config.js';
 
-// =============================================================================
 // RE-EXPORT ALL QUEUES
-// =============================================================================
 
 export {
   allQueues,
@@ -44,15 +40,11 @@ export {
   pipelineJobsQueue,
 };
 
-// =============================================================================
 // QUEUE EVENTS REGISTRY
-// =============================================================================
 
 const _queueEvents = [];
 
-// =============================================================================
 // PUBLIC API
-// =============================================================================
 
 /**
  * Get a queue by name.
@@ -95,9 +87,7 @@ export async function closeAllQueues() {
   await _closeAllQueues();
 }
 
-// =============================================================================
 // EVENT HANDLERS
-// =============================================================================
 
 function setupQueueEventHandlers(queue, queueName) {
   // ─── Queue-level events ───
@@ -247,9 +237,7 @@ function setupQueueEventHandlers(queue, queueName) {
   return qe;
 }
 
-// =============================================================================
 // ADMIN UTILITIES
-// =============================================================================
 
 /**
  * Drain (remove) a dead/failed job.

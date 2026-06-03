@@ -1,466 +1,311 @@
-// =============================================================================
 // orchestrator/notifications/notification.publisher.js — RESQID
 //
-// Single entry point for all application code that triggers a notification.
-// Typed facade over event.publisher.publish().
-//
-// FIXES:
-//   - parentFcmTokens renamed to parentExpoTokens everywhere.
-//   - studentQrScanned uses parentExpoTokens (not fcmTokens).
-// =============================================================================
+// Data-driven notification publisher.
+// Event definitions in JSON-like structure — no repetitive code.
 
 import { publish } from '../events/event.publisher.js';
 import { EVENTS } from '../events/event.types.js';
 
-const _publish = (
-  type,
-  { schoolId = null, actorId, actorType = 'SYSTEM', payload = {}, meta = {} }
-) => publish({ type, schoolId, actorId, actorType, payload, meta });
+// EVENT DEFINITIONS (Data, not Code)
 
-export const publishNotification = {
-  // ── Emergency ──────────────────────────────────────────────────────────────
+const EVENT_DEFS = {
+  // ── Emergency ──────────────────────────────────────────────────────────
+  emergencyAlertTriggered: {
+    type: EVENTS.EMERGENCY_ALERT_TRIGGERED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['studentName', 'schoolName', 'scannedAt', 'parentContacts', 'parentExpoTokens'],
+    metaKeys: ['alertId', 'studentId'],
+  },
 
-  emergencyAlertTriggered: ({ schoolId, actorId, actorType = 'SYSTEM', payload, meta = {} }) =>
-    _publish(EVENTS.EMERGENCY_ALERT_TRIGGERED, {
-      schoolId,
-      actorId,
-      actorType,
-      payload: {
-        studentName: payload.studentName,
-        schoolName: payload.schoolName,
-        scannedAt: payload.scannedAt,
-        parentContacts: payload.parentContacts, // string[] — phone numbers
-        parentExpoTokens: payload.parentExpoTokens ?? [], // string[] — Expo tokens
-      },
-      meta: { alertId: meta.alertId, studentId: meta.studentId, ...meta },
-    }),
+  emergencyAlertEscalated: {
+    type: EVENTS.EMERGENCY_ALERT_ESCALATED,
+    actorType: 'SYSTEM',
+  },
 
-  emergencyAlertEscalated: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.EMERGENCY_ALERT_ESCALATED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload,
-      meta,
-    }),
+  // ── OTP ────────────────────────────────────────────────────────────────
+  otpRequested: {
+    type: EVENTS.USER_OTP_REQUESTED,
+    actorType: 'USER',
+    payloadKeys: ['phone', 'otp', 'namespace', 'expiryMinutes'],
+  },
 
-  // ── OTP ────────────────────────────────────────────────────────────────────
+  // ─── Timetable ─────────────────────────────────────────────────────────
+  timetableGenerateStarted: {
+    type: EVENTS.TIMETABLE_GENERATE_STARTED,
+    actorType: 'WORKER',
+    payloadKeys: ['templateId', 'schoolId'],
+  },
 
-  otpRequested: ({ actorId, payload, meta = {} }) =>
-    _publish(EVENTS.USER_OTP_REQUESTED, {
-      actorId,
-      actorType: 'USER',
-      payload: {
-        phone: payload.phone,
-        otp: payload.otp,
-        namespace: payload.namespace,
-        expiryMinutes: payload.expiryMinutes ?? 5,
-      },
-      meta,
-    }),
+  timetableGenerateCompleted: {
+    type: EVENTS.TIMETABLE_GENERATE_COMPLETED,
+    actorType: 'WORKER',
+    payloadKeys: ['timetableId', 'totalSlots', 'qualityScore'],
+    metaKeys: ['timetableId'],
+  },
 
-  // ── Order lifecycle ────────────────────────────────────────────────────────
+  timetableGenerateFailed: {
+    type: EVENTS.TIMETABLE_GENERATE_FAILED,
+    actorType: 'WORKER',
+    payloadKeys: ['error', 'templateId'],
+  },
 
-  orderConfirmed: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_CONFIRMED, {
-      schoolId,
-      actorId,
-      actorType: 'USER',
-      payload: {
-        orderNumber: payload.orderNumber,
-        cardCount: payload.cardCount,
-        amount: payload.amount,
-      },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  // ─── Crisis ────────────────────────────────────────────────────────────
+  crisisTriggered: {
+    type: EVENTS.CRISIS_TRIGGERED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['teacherId', 'roomId', 'date', 'timetableId'],
+    metaKeys: ['crisisEventId'],
+  },
 
-  advancePaymentReceived: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_ADVANCE_PAYMENT_RECEIVED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        orderNumber: payload.orderNumber,
-        amount: payload.amount,
-      },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  crisisResolved: {
+    type: EVENTS.CRISIS_RESOLVED,
+    actorType: 'WORKER',
+    payloadKeys: ['replaced', 'unresolved'],
+    metaKeys: ['crisisEventId'],
+  },
 
-  partialPaymentConfirmed: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.PARTIAL_PAYMENT_CONFIRMED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        orderNumber: payload.orderNumber,
-        amount: payload.amount,
-      },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  substitutionCreated: {
+    type: EVENTS.SUBSTITUTION_CREATED,
+    actorType: 'WORKER',
+    payloadKeys: ['substituteId', 'originalTeacherId', 'date', 'periods'],
+  },
 
-  partialInvoiceGenerated: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.PARTIAL_INVOICE_GENERATED, {
-      schoolId,
-      actorId,
-      actorType: 'WORKER',
-      payload: {
-        orderNumber: payload.orderNumber,
-        amount: payload.amount,
-        invoiceUrl: payload.invoiceUrl ?? null,
-      },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  // ─── Wellness ──────────────────────────────────────────────────────────
+  teacherBurnoutDetected: {
+    type: EVENTS.TEACHER_BURNOUT_RISK_DETECTED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['teacherId', 'burnoutScore'],
+  },
 
-  tokenGenerationComplete: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_TOKEN_GENERATION_COMPLETE, {
-      schoolId,
-      actorId,
-      actorType: 'WORKER',
-      payload: { orderNumber: payload.orderNumber },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  accessibilityViolation: {
+    type: EVENTS.TEACHER_ACCESSIBILITY_VIOLATION,
+    actorType: 'SYSTEM',
+    payloadKeys: ['teacherId', 'roomId', 'reason'],
+  },
 
-  cardDesignComplete: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_CARD_DESIGN_COMPLETE, {
-      schoolId,
-      actorId,
-      actorType: 'WORKER',
-      payload: {
-        orderNumber: payload.orderNumber,
-        reviewUrl: payload.reviewUrl ?? null,
-      },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  // ── Order Lifecycle ────────────────────────────────────────────────────
+  orderConfirmed: {
+    type: EVENTS.ORDER_CONFIRMED,
+    actorType: 'USER',
+    payloadKeys: ['orderNumber', 'cardCount', 'amount'],
+    metaKeys: ['orderId'],
+  },
 
-  designApproved: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.DESIGN_APPROVED, {
-      schoolId,
-      actorId,
-      actorType: 'USER',
-      payload: { orderNumber: payload.orderNumber },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  orderShipped: {
+    type: EVENTS.ORDER_SHIPPED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['orderNumber', 'trackingId', 'trackingUrl', 'schoolPhone'],
+    metaKeys: ['orderId'],
+  },
 
-  orderShipped: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_SHIPPED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        orderNumber: payload.orderNumber,
-        trackingId: payload.trackingId,
-        trackingUrl: payload.trackingUrl ?? null,
-        schoolPhone: payload.schoolPhone ?? null,
-      },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  orderDelivered: {
+    type: EVENTS.ORDER_DELIVERED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['orderNumber'],
+    metaKeys: ['orderId'],
+  },
 
-  orderDelivered: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_DELIVERED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: { orderNumber: payload.orderNumber },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  orderCompleted: {
+    type: EVENTS.ORDER_COMPLETED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['orderNumber'],
+    metaKeys: ['orderId'],
+  },
 
-  balanceInvoiceIssued: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_BALANCE_INVOICE_ISSUED, {
-      schoolId,
-      actorId,
-      actorType: 'WORKER',
-      payload: {
-        orderNumber: payload.orderNumber,
-        amount: payload.amount,
-        dueDate: payload.dueDate,
-        invoiceUrl: payload.invoiceUrl ?? null,
-        schoolPhone: payload.schoolPhone ?? null,
-      },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  orderRefunded: {
+    type: EVENTS.ORDER_REFUNDED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['orderNumber', 'amount'],
+    metaKeys: ['orderId'],
+  },
 
-  orderCompleted: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_COMPLETED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: { orderNumber: payload.orderNumber },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  // ── School ─────────────────────────────────────────────────────────────
+  schoolOnboarded: {
+    type: EVENTS.SCHOOL_ONBOARDED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['schoolName', 'adminName', 'adminEmail', 'dashboardUrl'],
+  },
 
-  orderRefunded: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ORDER_REFUNDED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        orderNumber: payload.orderNumber,
-        amount: payload.amount,
-      },
-      meta: { orderId: meta.orderId, ...meta },
-    }),
+  schoolRenewalDue: {
+    type: EVENTS.SCHOOL_RENEWAL_DUE,
+    actorType: 'SYSTEM',
+    payloadKeys: ['schoolName', 'adminEmail', 'schoolPhone', 'expiryDate', 'renewUrl'],
+  },
 
-  // ── School ─────────────────────────────────────────────────────────────────
+  // ── Student ────────────────────────────────────────────────────────────
+  studentQrScanned: {
+    type: EVENTS.STUDENT_QR_SCANNED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['studentName', 'location', 'parentExpoTokens', 'notifyEnabled'],
+    metaKeys: ['studentId'],
+  },
 
-  schoolOnboarded: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.SCHOOL_ONBOARDED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        schoolName: payload.schoolName,
-        adminName: payload.adminName,
-        adminEmail: payload.adminEmail,
-        dashboardUrl: payload.dashboardUrl ?? null,
-      },
-      meta,
-    }),
+  anomalyDetected: {
+    type: EVENTS.ANOMALY_DETECTED,
+    actorType: 'SYSTEM',
+    payloadKeys: [
+      'studentName',
+      'anomalyType',
+      'location',
+      'detectedAt',
+      'parentExpoTokens',
+      'parentEmail',
+    ],
+    metaKeys: ['studentId'],
+  },
 
-  schoolRenewalDue: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.SCHOOL_RENEWAL_DUE, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        schoolName: payload.schoolName,
-        adminEmail: payload.adminEmail,
-        schoolPhone: payload.schoolPhone ?? null,
-        expiryDate: payload.expiryDate,
-        renewUrl: payload.renewUrl ?? null,
-      },
-      meta,
-    }),
+  // ── Parent ─────────────────────────────────────────────────────────────
+  parentRegistered: {
+    type: EVENTS.PARENT_REGISTERED,
+    actorType: 'PARENT_USER',
+    payloadKeys: ['parentName', 'phone'],
+  },
 
-  // ── Student ────────────────────────────────────────────────────────────────
+  parentCardLinked: {
+    type: EVENTS.PARENT_CARD_LINKED,
+    actorType: 'PARENT_USER',
+    payloadKeys: ['parentName', 'studentName', 'cardNumber', 'parentExpoTokens'],
+    metaKeys: ['studentId'],
+  },
 
-  studentCardExpiring: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.STUDENT_CARD_EXPIRING, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        studentName: payload.studentName,
-        expiryDate: payload.expiryDate,
-        daysLeft: payload.daysLeft,
-        parentExpoTokens: payload.parentExpoTokens ?? [],
-      },
-      meta: { studentId: meta.studentId, ...meta },
-    }),
+  parentCardLocked: {
+    type: EVENTS.PARENT_CARD_LOCKED,
+    actorType: 'PARENT_USER',
+    payloadKeys: ['parentName', 'studentName', 'parentEmail', 'parentPhone', 'parentExpoTokens'],
+    metaKeys: ['studentId'],
+  },
 
-  studentQrScanned: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.STUDENT_QR_SCANNED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        studentName: payload.studentName,
-        location: payload.location ?? null,
-        parentExpoTokens: payload.parentExpoTokens ?? [], // Expo tokens
-        notifyEnabled: payload.notifyEnabled ?? true,
-      },
-      meta: { studentId: meta.studentId, ...meta },
-    }),
+  parentEmailChanged: {
+    type: EVENTS.PARENT_EMAIL_CHANGED,
+    actorType: 'PARENT_USER',
+    payloadKeys: ['parentName', 'oldEmail', 'newEmail'],
+  },
 
-  newDeviceLogin: ({ userId, userType, payload, meta = {} }) =>
-    _publish(EVENTS.USER_DEVICE_LOGIN_NEW, {
-      actorId: userId,
-      actorType: userType,
-      payload: {
-        userId,
-        userType,
-        name: payload.name,
-        device: payload.device,
-        location: payload.location,
-        time: payload.time,
-      },
-      meta,
-    }),
+  parentPhoneChanged: {
+    type: EVENTS.PARENT_PHONE_CHANGED,
+    actorType: 'PARENT_USER',
+    payloadKeys: ['parentName', 'oldPhone', 'newPhone', 'parentEmail'],
+  },
 
-  parentEmailVerified: ({ actorId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_EMAIL_VERIFIED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      payload: {
-        parentName: payload.parentName,
-        parentEmail: payload.parentEmail,
-        studentName: payload.studentName,
-        studentClass: payload.studentClass,
-        schoolName: payload.schoolName,
-        cardId: payload.cardId,
-        appStoreUrl: payload.appStoreUrl ?? null,
-        playStoreUrl: payload.playStoreUrl ?? null,
-      },
-      meta,
-    }),
-
-  schoolUserOnboarded: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.SCHOOL_USER_ONBOARDED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        schoolName: payload.schoolName,
-        adminName: payload.adminName,
-        adminEmail: payload.adminEmail,
-        tempPassword: payload.tempPassword,
-        dashboardUrl: payload.dashboardUrl ?? null,
-        planName: payload.planName ?? null,
-        planExpiry: payload.planExpiry ?? null,
-        cardCount: payload.cardCount ?? null,
-      },
-      meta,
-    }),
-
-  // ✅ ADD these to publishNotification object
-
-  // ── Parent actions
-  parentRegistered: ({ actorId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_REGISTERED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      payload: {
-        parentName: payload.parentName,
-        phone: payload.phone,
-      },
-      meta,
-    }),
-
-  parentCardLinked: ({ actorId, schoolId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_CARD_LINKED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      schoolId,
-      payload: {
-        parentName: payload.parentName,
-        studentName: payload.studentName,
-        cardNumber: payload.cardNumber,
-        parentExpoTokens: payload.parentExpoTokens ?? [],
-      },
-      meta: { studentId: meta.studentId, ...meta },
-    }),
-
-  parentCardLocked: ({ actorId, schoolId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_CARD_LOCKED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      schoolId,
-      payload: {
-        parentName: payload.parentName,
-        studentName: payload.studentName,
-        parentEmail: payload.parentEmail ?? null,
-        parentPhone: payload.parentPhone ?? null,
-        parentExpoTokens: payload.parentExpoTokens ?? [],
-      },
-      meta: { studentId: meta.studentId, ...meta },
-    }),
-
-  parentCardReplaceRequested: ({ actorId, schoolId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_CARD_REPLACE_REQUESTED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      schoolId,
-      payload: {
-        parentName: payload.parentName,
-        studentName: payload.studentName,
-        reason: payload.reason ?? null,
-        parentEmail: payload.parentEmail ?? null,
-        parentPhone: payload.parentPhone ?? null,
-      },
-      meta: { studentId: meta.studentId, ...meta },
-    }),
-
-  parentAccountDeleted: ({ actorId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_ACCOUNT_DELETED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      payload: {
-        parentName: payload.parentName,
-        parentEmail: payload.parentEmail ?? null,
-        parentPhone: payload.parentPhone,
-      },
-      meta,
-    }),
-
-  parentPhoneChanged: ({ actorId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_PHONE_CHANGED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      payload: {
-        parentName: payload.parentName,
-        oldPhone: payload.oldPhone,
-        newPhone: payload.newPhone,
-        parentEmail: payload.parentEmail ?? null,
-      },
-      meta,
-    }),
-
-  parentEmailChanged: ({ actorId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_EMAIL_CHANGED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      payload: {
-        parentName: payload.parentName,
-        oldEmail: payload.oldEmail,
-        newEmail: payload.newEmail,
-      },
-      meta,
-    }),
-
-  parentChildUnlinked: ({ actorId, schoolId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_CHILD_UNLINKED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      schoolId,
-      payload: {
-        parentName: payload.parentName,
-        studentName: payload.studentName,
-        parentExpoTokens: payload.parentExpoTokens ?? [],
-        parentPhone: payload.parentPhone ?? null,
-      },
-      meta: { studentId: meta.studentId, ...meta },
-    }),
-
-  parentCardRenewalRequested: ({ actorId, schoolId, payload, meta = {} }) =>
-    _publish(EVENTS.PARENT_CARD_RENEWAL_REQUESTED, {
-      actorId,
-      actorType: 'PARENT_USER',
-      schoolId,
-      payload: {
-        studentName: payload.studentName,
-        schoolName: payload.schoolName,
-        parentPhone: payload.parentPhone ?? null,
-        parentEmail: payload.parentEmail ?? null,
-        adminEmail: payload.adminEmail ?? null,
-      },
-      meta: { studentId: meta.studentId, ...meta },
-    }),
-
-  // ── Student / system
-  anomalyDetected: ({ schoolId, actorId, payload, meta = {} }) =>
-    _publish(EVENTS.ANOMALY_DETECTED, {
-      schoolId,
-      actorId,
-      actorType: 'SYSTEM',
-      payload: {
-        studentName: payload.studentName,
-        anomalyType: payload.anomalyType,
-        location: payload.location ?? null,
-        detectedAt: payload.detectedAt,
-        parentExpoTokens: payload.parentExpoTokens ?? [],
-        parentEmail: payload.parentEmail ?? null,
-      },
-      meta: { studentId: meta.studentId, ...meta },
-    }),
-
-  internalAlert: ({ payload, meta = {} }) =>
-    _publish(EVENTS.INTERNAL_ALERT, {
-      actorId: 'system',
-      actorType: 'SYSTEM',
-      payload: {
-        alertType: payload.alertType,
-        message: payload.message,
-        data: payload.data ?? null,
-      },
-      meta,
-    }),
+  // ── Internal ───────────────────────────────────────────────────────────
+  internalAlert: {
+    type: EVENTS.INTERNAL_ALERT,
+    actorType: 'SYSTEM',
+    payloadKeys: ['alertType', 'message', 'data'],
+  },
 };
+
+// PUBLISHER FACTORY (Single function, no repetition)
+
+/**
+ * Create a publisher function from event definition.
+ * Eliminates repetitive wrapper functions.
+ */
+function createPublisher(def) {
+  return ({ schoolId = null, actorId, actorType = def.actorType, payload = {}, meta = {} }) => {
+    // Pick only defined keys from payload
+    const filteredPayload = {};
+    if (def.payloadKeys) {
+      for (const key of def.payloadKeys) {
+        if (payload[key] !== undefined) {
+          filteredPayload[key] = payload[key];
+        } else if (key === 'parentExpoTokens') {
+          filteredPayload[key] = []; // Default for Expo tokens
+        } else if (key === 'notifyEnabled') {
+          filteredPayload[key] = true;
+        } else if (key === 'expiryMinutes') {
+          filteredPayload[key] = 5;
+        }
+      }
+    } else {
+      // No payload keys defined — pass through all
+      Object.assign(filteredPayload, payload);
+    }
+
+    // Pick only defined meta keys
+    const filteredMeta = {};
+    if (def.metaKeys) {
+      for (const key of def.metaKeys) {
+        if (meta[key] !== undefined) {
+          filteredMeta[key] = meta[key];
+        }
+      }
+    }
+    Object.assign(filteredMeta, meta); // Also include any extra meta
+
+    return publish({
+      type: def.type,
+      schoolId,
+      actorId: actorId || 'system',
+      actorType,
+      payload: filteredPayload,
+      meta: filteredMeta,
+    });
+  };
+}
+
+// BUILD PUBLISHER OBJECT (Auto-generated from EVENT_DEFS)
+
+export const publishNotification = {};
+
+for (const [name, def] of Object.entries(EVENT_DEFS)) {
+  publishNotification[name] = createPublisher(def);
+}
+
+// ADDITIONAL PUBLISHERS (Legacy — kept for backward compatibility)
+
+// These are aliases or special cases that don't fit the pattern
+Object.assign(publishNotification, {
+  // Alias for emergency alert
+  emergencyAlertEscalated: createPublisher(EVENT_DEFS.emergencyAlertEscalated),
+
+  // Additional order publishers
+  advancePaymentReceived: createPublisher({
+    type: EVENTS.ORDER_ADVANCE_PAYMENT_RECEIVED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['orderNumber', 'amount'],
+    metaKeys: ['orderId'],
+  }),
+
+  partialPaymentConfirmed: createPublisher({
+    type: EVENTS.PARTIAL_PAYMENT_CONFIRMED,
+    actorType: 'SYSTEM',
+    payloadKeys: ['orderNumber', 'amount'],
+    metaKeys: ['orderId'],
+  }),
+
+  partialInvoiceGenerated: createPublisher({
+    type: EVENTS.PARTIAL_INVOICE_GENERATED,
+    actorType: 'WORKER',
+    payloadKeys: ['orderNumber', 'amount', 'invoiceUrl'],
+    metaKeys: ['orderId'],
+  }),
+
+  tokenGenerationComplete: createPublisher({
+    type: EVENTS.ORDER_TOKEN_GENERATION_COMPLETE,
+    actorType: 'WORKER',
+    payloadKeys: ['orderNumber'],
+    metaKeys: ['orderId'],
+  }),
+
+  cardDesignComplete: createPublisher({
+    type: EVENTS.ORDER_CARD_DESIGN_COMPLETE,
+    actorType: 'WORKER',
+    payloadKeys: ['orderNumber', 'reviewUrl'],
+    metaKeys: ['orderId'],
+  }),
+
+  designApproved: createPublisher({
+    type: EVENTS.DESIGN_APPROVED,
+    actorType: 'USER',
+    payloadKeys: ['orderNumber'],
+    metaKeys: ['orderId'],
+  }),
+
+  balanceInvoiceIssued: createPublisher({
+    type: EVENTS.ORDER_BALANCE_INVOICE_ISSUED,
+    actorType: 'WORKER',
+    payloadKeys: ['orderNumber', 'amount', 'dueDate', 'invoiceUrl', 'schoolPhone'],
+    metaKeys: ['orderId'],
+  }),
+});

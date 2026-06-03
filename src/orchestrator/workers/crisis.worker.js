@@ -1,7 +1,5 @@
-// =============================================================================
 // orchestrator/workers/crisis.worker.js — RESQID
 // Handles crisis management: teacher substitution, room reassignment.
-// =============================================================================
 
 import { Worker } from 'bullmq';
 import { getQueueConnection } from '../queues/queue.connection.js';
@@ -11,6 +9,7 @@ import { crisisRepository } from '#modules/m1-timetable-main/crisis/crisis.repos
 import { timetableRepository } from '#modules/m1-timetable-main/timetable.repository.js';
 import { publishCrisis } from '../events/event.publisher.js';
 import { EVENTS } from '../events/event.types.js';
+import { ENV } from '#config/env.js';
 import { logger } from '#config/logger.js';
 
 /**
@@ -50,8 +49,7 @@ export const startCrisisWorker = () => {
         }
 
         // Update job status
-        const status = result.success ? 'COMPLETED' : 'COMPLETED';
-        await timetableRepository.updateJobStatus(jobId, status, {
+        await timetableRepository.updateJobStatus(jobId, 'COMPLETED', {
           statusMessage: result.message,
           progressPercent: 100,
           output: result,
@@ -67,13 +65,21 @@ export const startCrisisWorker = () => {
         });
 
         logger.info(
-          { jobId, success: result.success, replaced: result.replaced?.length },
+          {
+            jobId,
+            success: result.success,
+            replaced: result.replaced?.length || 0,
+            unresolved: result.unresolved?.length || 0,
+          },
           '[crisis.worker] Crisis handled'
         );
 
         return result;
       } catch (error) {
-        logger.error({ jobId, error: error.message }, '[crisis.worker] Crisis handling failed');
+        logger.error(
+          { jobId, type, error: error.message, stack: error.stack },
+          '[crisis.worker] Crisis handling failed'
+        );
 
         // Update crisis event as failed
         if (crisisEventId) {
@@ -97,7 +103,7 @@ export const startCrisisWorker = () => {
     },
     {
       connection: getQueueConnection(),
-      concurrency: 5,
+      concurrency: ENV.TIMETABLE_CRISIS_CONCURRENCY || 5,
       lockDuration: 120000,
       stalledInterval: 15000,
     }
@@ -113,4 +119,14 @@ export const startCrisisWorker = () => {
 
   logger.info('[crisis.worker] Worker started');
   return worker;
+};
+
+/**
+ * Stop the crisis worker.
+ */
+export const stopCrisisWorker = async (worker) => {
+  if (worker) {
+    await worker.close();
+    logger.info('[crisis.worker] Worker stopped');
+  }
 };

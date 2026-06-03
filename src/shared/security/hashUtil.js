@@ -2,11 +2,6 @@
 // hashUtil.js — RESQID
 //
 // Password hashing and verification using bcrypt.
-//
-// Used by:
-//   - auth.service.js     → login verification
-//   - parent.service.js   → parent account creation
-//   - admins.service.js   → admin account management
 // =============================================================================
 
 import bcrypt from 'bcrypt';
@@ -34,7 +29,10 @@ export async function hashPassword(plainPassword) {
     throw new Error('Password must be at least 8 characters');
   }
 
-  // Optional: check against common weak passwords
+  if (plainPassword.length > 128) {
+    throw new Error('Password must be at most 128 characters');
+  }
+
   if (isCommonPassword(plainPassword)) {
     throw new Error('Password is too common. Please choose a stronger password.');
   }
@@ -58,7 +56,11 @@ export async function verifyPassword(plainPassword, hashedPassword) {
   // Basic format check — bcrypt hashes start with $2a$, $2b$, or $2y$
   if (!hashedPassword.startsWith('$2')) return false;
 
-  return bcrypt.compare(plainPassword, hashedPassword);
+  try {
+    return await bcrypt.compare(plainPassword, hashedPassword);
+  } catch {
+    return false;
+  }
 }
 
 // ─── Hash Upgrade ────────────────────────────────────────────────────────────
@@ -114,7 +116,7 @@ export function validatePasswordStrength(password) {
   return errors;
 }
 
-// ─── Common Password Check (Basic) ───────────────────────────────────────────
+// ─── Common Password Check ───────────────────────────────────────────────────
 
 const COMMON_PASSWORDS = new Set([
   'password',
@@ -129,8 +131,16 @@ const COMMON_PASSWORDS = new Set([
   'password1',
   '123456789',
   'iloveyou',
+  '1234567890',
+  '123123123',
+  'qwertyuiop',
+  '1q2w3e4r',
 ]);
 
 function isCommonPassword(password) {
   return COMMON_PASSWORDS.has(password.toLowerCase());
 }
+
+// ─── Export config ────────────────────────────────────────────────────────────
+
+export { SALT_ROUNDS };

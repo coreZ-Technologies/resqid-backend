@@ -1,4 +1,3 @@
-// =============================================================================
 // orchestrator/events/event.consumer.js — RESQID
 // consume(eventType, handler) — registers a typed handler.
 // Workers call this to subscribe to specific event types from their queue.
@@ -7,7 +6,6 @@
 // app.js or API routes. This registry is in-process — handlers registered in
 // the API process will never fire because BullMQ jobs execute in the worker
 // process. A worker context guard enforces this at startup.
-// =============================================================================
 
 import { EVENTS } from './event.types.js';
 import { logger } from '#config/logger.js';
@@ -196,9 +194,7 @@ export const dispatchWithRetry = async (event, maxRetries = 3) => {
   return lastResult;
 };
 
-// =============================================================================
 // STATS & MONITORING
-// =============================================================================
 
 function updateHandlerStats(handlerId, status, error = null) {
   if (!_handlerStats.has(handlerId)) {
@@ -218,9 +214,7 @@ function updateHandlerStats(handlerId, status, error = null) {
   }
 }
 
-// =============================================================================
 // PUBLIC API
-// =============================================================================
 
 /**
  * Check if any handlers are registered for a given event type.

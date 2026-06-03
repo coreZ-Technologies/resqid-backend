@@ -36,29 +36,30 @@ enum OrderStatus {
 // ─── Plan Model ───────────────────────────────────────────────────────────────
 
 model Plan {
-  id              String   @id @default(cuid())
-  label           String
-  description     String?
+  id          String  @id @default(cuid())
+  label       String
+  description String?
 
   pricePerStudent Int
-  currency        String   @default("INR")
-  billingCycle    String   @default("MONTHLY")
-  
-  modules         String[]
-  maxStudents     Int?
-  maxTeachers     Int?
-  maxSchools      Int      @default(1)
-  
-  trialDays       Int      @default(14)
+  currency        String @default("INR")
+  billingCycle    String @default("MONTHLY")
+
+  modules     String[]
+  maxStudents Int?
+  maxTeachers Int?
+  maxSchools  Int      @default(1)
+
+  trialDays        Int     @default(14)
   isTrialAvailable Boolean @default(true)
 
-  isActive        Boolean  @default(true)
-  isDefault       Boolean  @default(false)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  isActive  Boolean @default(true)
+  isDefault Boolean @default(false)
 
-  subscriptions   Subscription[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+  schools       School[]
 
   @@index([isActive])
   @@map("plans")
@@ -67,36 +68,36 @@ model Plan {
 // ─── Subscription Model ───────────────────────────────────────────────────────
 
 model Subscription {
-  id        String   @id @default(cuid())
-  schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id])
-  planId    String
-  plan      Plan     @relation(fields: [planId], references: [id])
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+  planId   String
+  plan     Plan   @relation(fields: [planId], references: [id])
 
-  modules   String[]
+  modules              String[]
   studentCount         Int
   teacherCount         Int      @default(0)
   pricePerStudentPaise Int
   totalAmountPaise     Int
-  
-  billingCycle    String   @default("MONTHLY")
-  nextBillingDate DateTime?
-  autoRenew       Boolean  @default(true)
 
-  validFrom  DateTime
-  validUntil DateTime
+  billingCycle    String    @default("MONTHLY")
+  nextBillingDate DateTime?
+  autoRenew       Boolean   @default(true)
+
+  validFrom   DateTime
+  validUntil  DateTime
   trialEndsAt DateTime?
 
   // 🔧 FIXED: Use TRIAL without quotes
-  status    SubscriptionStatus @default(TRIAL)
-  cancelledAt DateTime?
+  status       SubscriptionStatus @default(TRIAL)
+  cancelledAt  DateTime?
   cancelReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  payments   Payment[]
-  invoices   Invoice[]
+  payments Payment[]
+  invoices Invoice[]
 
   @@index([schoolId])
   @@index([planId])
@@ -108,27 +109,27 @@ model Subscription {
 // ─── Payment Model ────────────────────────────────────────────────────────────
 
 model Payment {
-  id             String        @id @default(cuid())
+  id             String       @id @default(cuid())
   subscriptionId String
-  subscription   Subscription  @relation(fields: [subscriptionId], references: [id])
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
   schoolId       String
-  school         School        @relation(fields: [schoolId], references: [id])
+  school         School       @relation(fields: [schoolId], references: [id])
 
-  amountPaise    Int
-  currency       String        @default("INR")
+  amountPaise Int
+  currency    String        @default("INR")
   // 🔧 FIXED: Use PENDING without quotes
-  status         PaymentStatus @default(PENDING)
-  
-  paymentMethod  String?
+  status      PaymentStatus @default(PENDING)
+
+  paymentMethod String?
 
   gateway          String?
-  gatewayOrderId   String?     @unique
-  gatewayPaymentId String?     @unique
+  gatewayOrderId   String? @unique
+  gatewayPaymentId String? @unique
   gatewaySignature String?
   gatewayResponse  Json?
-  
-  invoiceId       String?
-  invoice         Invoice?     @relation(fields: [invoiceId], references: [id])
+
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
 
   attemptedAt  DateTime?
   paidAt       DateTime?
@@ -136,10 +137,10 @@ model Payment {
   refundAmount Int?
   refundReason String?
 
-  metadata     Json?
-  
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([subscriptionId])
   @@index([schoolId])
@@ -152,32 +153,32 @@ model Payment {
 // ─── Invoice Model ────────────────────────────────────────────────────────────
 
 model Invoice {
-  id              String   @id @default(cuid())
-  subscriptionId  String
-  subscription    Subscription @relation(fields: [subscriptionId], references: [id])
-  schoolId        String
-  school          School   @relation(fields: [schoolId], references: [id])
-  
-  invoiceNumber   String   @unique
-  invoiceDate     DateTime @default(now())
-  dueDate         DateTime
-  
-  subtotalPaise   Int
-  taxPaise        Int      @default(0)
-  discountPaise   Int      @default(0)
-  totalPaise      Int
-  
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  schoolId       String
+  school         School       @relation(fields: [schoolId], references: [id])
+
+  invoiceNumber String   @unique
+  invoiceDate   DateTime @default(now())
+  dueDate       DateTime
+
+  subtotalPaise Int
+  taxPaise      Int @default(0)
+  discountPaise Int @default(0)
+  totalPaise    Int
+
   // 🔧 FIXED: String field, keep quotes
-  status          String   @default("PENDING")
-  paidAt          DateTime?
-  
-  invoiceUrl      String?
-  
-  payments        Payment[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  status String    @default("PENDING")
+  paidAt DateTime?
+
+  invoiceUrl String?
+
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([subscriptionId])
   @@index([schoolId])
   @@index([status])
@@ -188,33 +189,33 @@ model Invoice {
 // ─── Order Model ──────────────────────────────────────────────────────────────
 
 model Order {
-  id        String      @id @default(cuid())
-  schoolId  String
-  school    School      @relation(fields: [schoolId], references: [id])
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
 
-  orderNumber String    @unique
+  orderNumber String      @unique
   // 🔧 FIXED: Use DRAFT without quotes
   status      OrderStatus @default(DRAFT)
-  
-  quantity        Int
-  itemType        String
+
+  quantity         Int
+  itemType         String
   totalAmountPaise Int
-  
+
   shippingAddress Json?
   trackingNumber  String?
   shippedAt       DateTime?
   deliveredAt     DateTime?
 
   // 🔧 FIXED: Use PENDING without quotes
-  paymentStatus   PaymentStatus @default(PENDING)
-  paymentId       String?
-  
-  notes           String?
-  
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentId     String?
 
-  items     OrderItem[]
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items OrderItem[]
 
   @@index([schoolId])
   @@index([status])
@@ -225,20 +226,20 @@ model Order {
 // ─── Order Item Model ─────────────────────────────────────────────────────────
 
 model OrderItem {
-  id       String  @id @default(cuid())
-  orderId  String
-  order    Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  
-  tokenId  String  @unique
-  token    Token   @relation(fields: [tokenId], references: [id])
-  
-  studentName  String?
-  studentId    String?
-  
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  tokenId String @unique
+  token   Token  @relation(fields: [tokenId], references: [id])
+
+  studentName String?
+  studentId   String?
+
   // 🔧 String field, keep quotes
-  status       String   @default("PENDING")
-  printedAt    DateTime?
-  
+  status    String    @default("PENDING")
+  printedAt DateTime?
+
   @@index([orderId])
   @@index([tokenId])
   @@map("order_items")

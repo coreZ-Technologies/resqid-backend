@@ -14,21 +14,21 @@ enum SchoolUserRole {
 // ─── Super Admin ──────────────────────────────────────────────────────────────
 
 model SuperAdmin {
-  id           String        @id @default(cuid())
+  id           String @id @default(cuid())
   name         String
-  email        String        @unique
+  email        String @unique
   passwordHash String
 
-  isPasswordDefault  Boolean  @default(false)
-  passwordChangedAt  DateTime?
+  isPasswordDefault Boolean   @default(false)
+  passwordChangedAt DateTime?
 
-  isActive     Boolean       @default(true)
-  lastLoginAt  DateTime?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
 
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  sessions     UserSession[]
+  sessions UserSession[]
 
   @@map("super_admins")
 }
@@ -36,9 +36,9 @@ model SuperAdmin {
 // ─── School User ──────────────────────────────────────────────────────────────
 
 model SchoolUser {
-  id           String         @id @default(cuid())
-  schoolId     String
-  school       School         @relation(fields: [schoolId], references: [id])
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
 
   name         String
   email        String         @unique
@@ -46,19 +46,52 @@ model SchoolUser {
   passwordHash String
   role         SchoolUserRole @default(TEACHER)
 
-  isPasswordDefault  Boolean  @default(true)
-  passwordChangedAt  DateTime?
+  isPasswordDefault Boolean   @default(true)
+  passwordChangedAt DateTime?
 
-  isActive     Boolean        @default(true)
-  lastLoginAt  DateTime?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
 
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  deletedAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   // ─── Relations ───
-  sessions     UserSession[]
-  teacher      Teacher?       // Link to timetable teacher profile
+  sessions UserSession[]
+  teacher  Teacher?
+
+  // Attendance Back-Refs
+  createdSessions        AttendanceSession[]       @relation("SessionCreator")
+  recordedTaps           AttendanceTap[]           @relation("StaffTap")
+  staffAttendance        StaffAttendanceRecord[]   @relation("StaffRecord")
+  studentMarkedRecords   StudentAttendanceRecord[] @relation("StudentMarkedBy")
+  studentVerifiedRecords StudentAttendanceRecord[] @relation("StudentVerifiedBy")
+  staffMarkedRecords     StaffAttendanceRecord[]   @relation("StaffMarkedBy")
+  staffApprovedRecords   StaffAttendanceRecord[]   @relation("StaffApprovedBy")
+  generatedReports       AttendanceReport[]        @relation("ReportGeneratedBy")
+  updatedSettings        AttendanceSettings[]      @relation("SettingsUpdatedBy")
+
+  // Communication Back-Refs
+  authoredAnnouncements Announcement[]          @relation("AnnouncementAuthor")
+  sentMessages          Message[]               @relation("MessageSender")
+  createdTemplates      MessageTemplate[]       @relation("TemplateCreator")
+  createdCampaigns      CommunicationCampaign[] @relation("CampaignCreator")
+  approvedCampaigns     CommunicationCampaign[] @relation("CampaignApprover")
+  deliveryReceipts      AnnouncementDelivery[]
+  queueNotifications    NotificationQueue[]
+
+  // Emergency Back-Refs
+  reportedIncidents EmergencyIncident[]  @relation("IncidentReporter")
+  handledIncidents  EmergencyIncident[]  @relation("IncidentHandler")
+  conductedDrills   EmergencyDrill[]
+  emergencyAccesses EmergencyAccessLog[]
+
+  // Token & Notification Back-Refs
+  createdBatches             QrBatchGeneration[]
+  receivedNotifications      Notification[]
+  notificationPrefs          NotificationPreference[]
+  deviceTokens               NotificationDeviceToken[]
+  createdNotificationBatches NotificationBatch[]
 
   @@index([schoolId])
   @@index([email])
@@ -69,50 +102,56 @@ model SchoolUser {
 // ─── Parent User ──────────────────────────────────────────────────────────────
 
 model ParentUser {
-  id           String          @id @default(cuid())
-  
-  firstName    String?
-  lastName     String?
-  name         String?
-  phone        String          @unique
-  email        String?
-  photoUrl     String?
-  
-  address      String?
-  city         String?
-  state        String?
-  pincode      String?
-  
-  occupation   String?
-  
-  canCall      Boolean         @default(true)
-  canWhatsapp  Boolean         @default(true)
-  canEmail     Boolean         @default(true)
-  canSMS       Boolean         @default(true)
-  
-  otp          String?
-  otpExpiresAt DateTime?
-  otpAttempts  Int             @default(0)
-  otpRequestedAt DateTime?
-  isPhoneVerified Boolean      @default(false)
-  
-  isActive     Boolean         @default(true)
-  lastLoginAt  DateTime?
-  lastSeenAt   DateTime?
-  
-  isEmergencyContact Boolean   @default(true)
-  emergencyPriority Int        @default(1)
-  
-  metadata     Json?
-  
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  deletedAt    DateTime?
+  id String @id @default(cuid())
+
+  firstName String?
+  lastName  String?
+  name      String?
+  phone     String  @unique
+  email     String?
+  photoUrl  String?
+
+  address String?
+  city    String?
+  state   String?
+  pincode String?
+
+  occupation String?
+
+  canCall     Boolean @default(true)
+  canWhatsapp Boolean @default(true)
+  canEmail    Boolean @default(true)
+  canSMS      Boolean @default(true)
+
+  otp             String?
+  otpExpiresAt    DateTime?
+  otpAttempts     Int       @default(0)
+  otpRequestedAt  DateTime?
+  isPhoneVerified Boolean   @default(false)
+
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  lastSeenAt  DateTime?
+
+  isEmergencyContact Boolean @default(true)
+  emergencyPriority  Int     @default(1)
+
+  metadata Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   // ─── Relations ───
-  students     ParentStudent[]
-  sessions     UserSession[]
-  devices      ParentDevice[]
+  students               ParentStudent[]
+  sessions               UserSession[]
+  devices                ParentDevice[]
+  notifications          Notification[]
+  notificationPrefs      NotificationPreference?
+  deviceTokens           NotificationDeviceToken[]
+  announcementDeliveries AnnouncementDelivery[]
+  messages               Message[]
+  notificationQueues     NotificationQueue[]
 
   @@index([phone])
   @@index([email])
@@ -123,23 +162,23 @@ model ParentUser {
 // ─── Parent ↔ Student Link ────────────────────────────────────────────────────
 
 model ParentStudent {
-  id           String       @id @default(cuid())
-  parentId     String
-  parent       ParentUser   @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  studentId    String
-  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  
-  relation     Relationship @default(GUARDIAN)  // Enum from student.prisma
-  
-  isPrimary    Boolean      @default(false)
-  isEmergency  Boolean      @default(true)
-  priority     Int          @default(1)
-  canPickup    Boolean      @default(true)
-  
-  isActive     Boolean      @default(true)
-  
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id        String     @id @default(cuid())
+  parentId  String
+  parent    ParentUser @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  relation Relationship @default(GUARDIAN) // Enum from student.prisma
+
+  isPrimary   Boolean @default(false)
+  isEmergency Boolean @default(true)
+  priority    Int     @default(1)
+  canPickup   Boolean @default(true)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([parentId, studentId])
   @@index([studentId])
@@ -150,24 +189,24 @@ model ParentStudent {
 // ─── User Session (polymorphic) ───────────────────────────────────────────────
 
 model UserSession {
-  id                String       @id @default(cuid())
+  id String @id @default(cuid())
 
-  superAdminId      String?
-  superAdmin        SuperAdmin?  @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
-  schoolUserId      String?
-  schoolUser        SchoolUser?  @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
-  parentUserId      String?
-  parentUser        ParentUser?  @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
+  superAdminId String?
+  superAdmin   SuperAdmin? @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+  schoolUserId String?
+  schoolUser   SchoolUser? @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
+  parentUserId String?
+  parentUser   ParentUser? @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
 
-  refreshTokenHash  String       @unique
+  refreshTokenHash  String  @unique
   deviceFingerprint String?
   deviceInfo        Json?
   ipAddress         String?
 
-  expiresAt         DateTime
-  revokedAt         DateTime?
+  expiresAt DateTime
+  revokedAt DateTime?
 
-  createdAt         DateTime     @default(now())
+  createdAt DateTime @default(now())
 
   @@index([superAdminId])
   @@index([schoolUserId])
@@ -179,21 +218,21 @@ model UserSession {
 // ─── Parent Device ────────────────────────────────────────────────────────────
 
 model ParentDevice {
-  id                String     @id @default(cuid())
-  parentId          String
-  parent            ParentUser @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  id       String     @id @default(cuid())
+  parentId String
+  parent   ParentUser @relation(fields: [parentId], references: [id], onDelete: Cascade)
 
-  deviceFingerprint String     @unique
+  deviceFingerprint String  @unique
   platform          String
-  expoPushToken     String?    @unique
+  expoPushToken     String? @unique
 
-  isActive          Boolean    @default(true)
-  loggedOutAt       DateTime?
-  logoutReason      String?
-  lastSeenAt        DateTime?
+  isActive     Boolean   @default(true)
+  loggedOutAt  DateTime?
+  logoutReason String?
+  lastSeenAt   DateTime?
 
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([parentId])
   @@map("parent_devices")
@@ -212,21 +251,21 @@ enum DeviceStatus {
 }
 
 model AttendanceDevice {
-  id          String       @id @default(cuid())
-  schoolId    String
-  school      School       @relation(fields: [schoolId], references: [id])
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
 
-  name        String
-  apiKey      String       @unique
-  status      DeviceStatus @default(UNREGISTERED)
+  name   String
+  apiKey String       @unique
+  status DeviceStatus @default(UNREGISTERED)
 
-  lastSeenAt  DateTime?
-  ipAddress   String?
+  lastSeenAt DateTime?
+  ipAddress  String?
 
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  scans       Scan[]
+  scans Scan[]
 
   @@index([schoolId])
   @@map("attendance_devices")
@@ -235,14 +274,14 @@ model AttendanceDevice {
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 
 model FeatureFlag {
-  id          String    @id @default(cuid())
-  key         String    @unique
-  enabled     Boolean   @default(false)
+  id          String  @id @default(cuid())
+  key         String  @unique
+  enabled     Boolean @default(false)
   description String?
   metadata    Json?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("feature_flags")
 }
@@ -250,14 +289,15 @@ model FeatureFlag {
 // ─── Trusted Scan Zone ────────────────────────────────────────────────────────
 
 model TrustedScanZone {
-  id          String    @id @default(cuid())
+  id          String  @id @default(cuid())
   schoolId    String?
+  school      School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
   ipRange     String
   description String?
-  isActive    Boolean   @default(true)
+  isActive    Boolean @default(true)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("trusted_scan_zones")
 }
