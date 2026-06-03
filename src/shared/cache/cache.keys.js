@@ -3,10 +3,6 @@
 //
 // Centralized cache key builders. Every cache key in the system is built here.
 // Uses CACHE_KEYS from constants — no magic strings anywhere else.
-//
-// Import this instead of building keys manually:
-//   import { keys } from '#shared/cache/cache.keys.js';
-//   const key = keys.student.profile(studentId);
 // =============================================================================
 
 import { CACHE_KEYS } from '#shared/constants/cache.js';
@@ -61,12 +57,35 @@ export const cacheKeys = {
     school: (schoolId) => CACHE_KEYS.TIMETABLE(schoolId),
     class: (schoolId, classId) => CACHE_KEYS.TIMETABLE_CLASS(schoolId, classId),
     substitution: (id) => CACHE_KEYS.SUBSTITUTION(id),
+    // 🔧 ADDED:
+    generation: (jobId) => `timetable:generation:${jobId}`,
+    validation: (timetableId) => `timetable:validation:${timetableId}`,
+    export: (timetableId) => `timetable:export:${timetableId}`,
+    crisis: (schoolId) => `timetable:crisis:${schoolId}`,
+    template: (templateId) => `timetable:template:${templateId}`,
+    constraintPreset: (schoolId) => `timetable:constraints:${schoolId}`,
+    gradeConfig: (schoolId) => `timetable:grade-config:${schoolId}`,
   },
 
   // ─── Teacher ─────────────────────────────────────────────────────────────
   teacher: {
     profile: (id) => CACHE_KEYS.TEACHER(id),
     schedule: (teacherId) => CACHE_KEYS.TEACHER_SCHEDULE(teacherId),
+    // 🔧 ADDED:
+    wellness: (teacherId) => `teacher:wellness:${teacherId}`,
+    substitution: (teacherId) => `teacher:substitution:${teacherId}`,
+  },
+
+  // ─── Room ────────────────────────────────────────────────────────────────
+  room: {
+    list: (schoolId) => `rooms:${schoolId}`,
+    schedule: (roomId) => `room:schedule:${roomId}`,
+  },
+
+  // ─── Class ───────────────────────────────────────────────────────────────
+  class: {
+    list: (schoolId) => `classes:${schoolId}`,
+    schedule: (classId) => `class:schedule:${classId}`,
   },
 
   // ─── Emergency ───────────────────────────────────────────────────────────

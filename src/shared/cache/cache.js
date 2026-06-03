@@ -3,9 +3,6 @@
 //
 // Promise-based cache layer. Every module uses this instead of talking
 // directly to Redis. Supports both HTTP-path and middleware Redis clients.
-//
-// Uses REDIS_KEY_PREFIX from env.js (already set in redis.js config).
-// Values are auto-serialized to/from JSON.
 // =============================================================================
 
 import { redis, middlewareRedis } from '#config/redis.js';
@@ -15,10 +12,6 @@ const DEFAULT_TTL = 300; // 5 minutes
 
 // ─── Basic Operations (HTTP-path Redis) ─────────────────────────────────────
 
-/**
- * Get a cached value, auto-parsed from JSON.
- * Uses HTTP-path Redis client.
- */
 export async function get(key) {
   try {
     const raw = await redis.get(key);
@@ -29,10 +22,6 @@ export async function get(key) {
   }
 }
 
-/**
- * Set a value with optional TTL (seconds).
- * Uses HTTP-path Redis client.
- */
 export async function set(key, value, ttl = DEFAULT_TTL) {
   try {
     const serialized = JSON.stringify(value);
@@ -46,10 +35,6 @@ export async function set(key, value, ttl = DEFAULT_TTL) {
   }
 }
 
-/**
- * Delete one or more keys.
- * Uses HTTP-path Redis client.
- */
 export async function del(...keys) {
   if (keys.length === 0) return;
   try {
@@ -59,9 +44,6 @@ export async function del(...keys) {
   }
 }
 
-/**
- * Check if a key exists.
- */
 export async function exists(key) {
   try {
     return (await redis.exists(key)) === 1;
@@ -71,10 +53,6 @@ export async function exists(key) {
   }
 }
 
-/**
- * Get TTL of a key in seconds.
- * Returns -2 if key doesn't exist, -1 if no expiry.
- */
 export async function ttl(key) {
   try {
     return await redis.ttl(key);
@@ -84,10 +62,6 @@ export async function ttl(key) {
   }
 }
 
-/**
- * Set a key only if it doesn't already exist (atomic).
- * Returns true if set, false if key already exists.
- */
 export async function setNX(key, value, ttl = DEFAULT_TTL) {
   try {
     const serialized = JSON.stringify(value);
@@ -99,19 +73,12 @@ export async function setNX(key, value, ttl = DEFAULT_TTL) {
   }
 }
 
-// ─── Middleware-Specific Operations (middlewareRedis) ────────────────────────
+// ─── Middleware-Specific Operations ──────────────────────────────────────────
 
-/**
- * Increment a counter atomically.
- * Used by rateLimit.middleware.js, ipReputation.middleware.js
- * Returns the new value after increment.
- */
 export async function increment(key, amount = 1, ttl = null) {
   try {
     const result = await middlewareRedis.incrby(key, amount);
-    if (ttl) {
-      await middlewareRedis.expire(key, ttl);
-    }
+    if (ttl) await middlewareRedis.expire(key, ttl);
     return result;
   } catch (err) {
     logger.error({ err: err.message, key }, 'Cache INCR failed');
@@ -119,10 +86,6 @@ export async function increment(key, amount = 1, ttl = null) {
   }
 }
 
-/**
- * Decrement a counter atomically.
- * Used by ipReputation.middleware.js (penalty scoring)
- */
 export async function decrement(key, amount = 1) {
   try {
     return await middlewareRedis.decrby(key, amount);
@@ -132,15 +95,6 @@ export async function decrement(key, amount = 1) {
   }
 }
 
-/**
- * Atomic increment with automatic TTL set.
- * Uses pipeline for atomicity — both commands execute together.
- * Used by rate limiting middleware.
- *
- * @param {string} key - Redis key
- * @param {number} windowMs - TTL in milliseconds
- * @returns {Promise<number>} New count after increment
- */
 export async function incrementWithTTL(key, windowMs) {
   try {
     const pipeline = middlewareRedis.pipeline();
@@ -154,10 +108,6 @@ export async function incrementWithTTL(key, windowMs) {
   }
 }
 
-/**
- * Get current value of a counter.
- * Used by rate limiting to check remaining quota.
- */
 export async function getCounter(key) {
   try {
     const value = await middlewareRedis.get(key);
@@ -168,10 +118,6 @@ export async function getCounter(key) {
   }
 }
 
-/**
- * Set a key with expiry (middleware Redis).
- * Used by CSRF token storage, device fingerprint cache.
- */
 export async function middlewareSet(key, value, ttl = DEFAULT_TTL) {
   try {
     const serialized = typeof value === 'string' ? value : JSON.stringify(value);
@@ -185,9 +131,6 @@ export async function middlewareSet(key, value, ttl = DEFAULT_TTL) {
   }
 }
 
-/**
- * Get a value from middleware Redis.
- */
 export async function middlewareGet(key) {
   try {
     const raw = await middlewareRedis.get(key);
@@ -195,7 +138,7 @@ export async function middlewareGet(key) {
     try {
       return JSON.parse(raw);
     } catch {
-      return raw; // Return as string if not JSON
+      return raw;
     }
   } catch (err) {
     logger.error({ err: err.message, key }, 'Middleware Cache GET failed');
@@ -203,9 +146,6 @@ export async function middlewareGet(key) {
   }
 }
 
-/**
- * Delete key(s) from middleware Redis.
- */
 export async function middlewareDel(...keys) {
   if (keys.length === 0) return;
   try {
@@ -215,9 +155,6 @@ export async function middlewareDel(...keys) {
   }
 }
 
-/**
- * Check if key exists in middleware Redis.
- */
 export async function middlewareExists(key) {
   try {
     return (await middlewareRedis.exists(key)) === 1;
@@ -229,10 +166,6 @@ export async function middlewareExists(key) {
 
 // ─── Batch Operations ───────────────────────────────────────────────────────
 
-/**
- * Get multiple keys at once.
- * Used by behavioral security for pattern analysis.
- */
 export async function mget(...keys) {
   try {
     const values = await middlewareRedis.mget(...keys);
@@ -250,15 +183,16 @@ export async function mget(...keys) {
   }
 }
 
-/**
- * Set multiple keys at once with same TTL.
- */
 export async function mset(keyValuePairs, ttl = DEFAULT_TTL) {
   try {
     const pipeline = middlewareRedis.pipeline();
     for (const [key, value] of Object.entries(keyValuePairs)) {
       const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-      pipeline.set(key, serialized, 'EX', ttl);
+      if (ttl > 0) {
+        pipeline.set(key, serialized, 'EX', ttl);
+      } else {
+        pipeline.set(key, serialized);
+      }
     }
     await pipeline.exec();
   } catch (err) {
@@ -268,11 +202,6 @@ export async function mset(keyValuePairs, ttl = DEFAULT_TTL) {
 
 // ─── Utility Operations ─────────────────────────────────────────────────────
 
-/**
- * Get or set cache (read-through pattern).
- * If key exists, returns cached value. If not, calls factory function,
- * caches the result, and returns it.
- */
 export async function getOrSet(key, factory, ttl = DEFAULT_TTL) {
   try {
     const cached = await get(key);
@@ -283,13 +212,10 @@ export async function getOrSet(key, factory, ttl = DEFAULT_TTL) {
     return value;
   } catch (err) {
     logger.error({ err: err.message, key }, 'Cache GET_OR_SET failed');
-    return factory(); // Fallback to factory without caching
+    return factory(); // Fallback without caching
   }
 }
 
-/**
- * Invalidate cache by pattern (use with caution in production).
- */
 export async function invalidatePattern(pattern) {
   try {
     const keys = await redis.keys(pattern);
@@ -304,11 +230,6 @@ export async function invalidatePattern(pattern) {
   }
 }
 
-/**
- * Acquire a distributed lock (simple implementation).
- * Returns true if lock acquired, false otherwise.
- * Used by idempotency service, worker coordination.
- */
 export async function acquireLock(key, ttl = 30) {
   try {
     const result = await middlewareRedis.set(key, '1', 'EX', ttl, 'NX');
@@ -319,13 +240,51 @@ export async function acquireLock(key, ttl = 30) {
   }
 }
 
-/**
- * Release a distributed lock.
- */
 export async function releaseLock(key) {
   try {
     await middlewareRedis.del(key);
   } catch (err) {
     logger.error({ err: err.message, key }, 'Lock release failed');
+  }
+}
+
+/**
+ * Execute a function with a distributed lock.
+ * Automatically releases lock after execution.
+ */
+export async function withLock(key, ttl, fn) {
+  const acquired = await acquireLock(key, ttl);
+  if (!acquired) return null;
+
+  try {
+    return await fn();
+  } finally {
+    await releaseLock(key);
+  }
+}
+
+/**
+ * Clear all keys with a prefix (safer than KEYS *).
+ * Uses SCAN for production safety.
+ */
+export async function clearByPrefix(prefix) {
+  try {
+    let cursor = '0';
+    let deleted = 0;
+
+    do {
+      const reply = await redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
+      cursor = reply[0];
+      const keys = reply[1];
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        deleted += keys.length;
+      }
+    } while (cursor !== '0');
+
+    return deleted;
+  } catch (err) {
+    logger.error({ err: err.message, prefix }, 'Cache CLEAR_BY_PREFIX failed');
+    return 0;
   }
 }

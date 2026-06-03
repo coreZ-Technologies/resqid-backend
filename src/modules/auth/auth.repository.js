@@ -25,20 +25,11 @@ export const findSuperAdminByEmail = (email) =>
 export const findSuperAdminById = (id) =>
   prisma.superAdmin.findUnique({
     where: { id },
-    select: {
-      id: true,
-      isActive: true,
-      name: true,
-      email: true,
-      passwordHash: true,
-    },
+    select: { id: true, isActive: true, name: true, email: true, passwordHash: true },
   });
 
 export const updateSuperAdminLastLogin = (id) =>
-  prisma.superAdmin.update({
-    where: { id },
-    data: { lastLoginAt: new Date() },
-  });
+  prisma.superAdmin.update({ where: { id }, data: { lastLoginAt: new Date() } });
 
 export const updateSuperAdminPassword = (id, hashedPassword) =>
   prisma.superAdmin.update({
@@ -51,7 +42,7 @@ export const updateSuperAdminPassword = (id, hashedPassword) =>
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const findSchoolUserByPhone = (phone) =>
-  prisma.schoolUser.findUnique({
+  prisma.schoolUser.findFirst({
     where: { phone },
     select: {
       id: true,
@@ -63,9 +54,7 @@ export const findSchoolUserByPhone = (phone) =>
       role: true,
       isActive: true,
       isPasswordDefault: true,
-      school: {
-        select: { id: true, name: true, code: true, status: true, logoUrl: true },
-      },
+      school: { select: { id: true, name: true, code: true, status: true, logoUrl: true } },
     },
   });
 
@@ -81,39 +70,23 @@ export const findSchoolUserByEmail = (email) =>
       role: true,
       isActive: true,
       isPasswordDefault: true,
-      school: {
-        select: { id: true, name: true, code: true, status: true },
-      },
+      school: { select: { id: true, name: true, code: true, status: true } },
     },
   });
 
 export const findSchoolUserById = (id) =>
   prisma.schoolUser.findUnique({
     where: { id },
-    select: {
-      id: true,
-      schoolId: true,
-      role: true,
-      isActive: true,
-      name: true,
-      phone: true,
-    },
+    select: { id: true, schoolId: true, role: true, isActive: true, name: true, phone: true },
   });
 
 export const updateSchoolUserLastLogin = (id) =>
-  prisma.schoolUser.update({
-    where: { id },
-    data: { lastLoginAt: new Date() },
-  });
+  prisma.schoolUser.update({ where: { id }, data: { lastLoginAt: new Date() } });
 
 export const updateSchoolUserPassword = (id, hashedPassword) =>
   prisma.schoolUser.update({
     where: { id },
-    data: {
-      passwordHash: hashedPassword,
-      isPasswordDefault: false,
-      passwordChangedAt: new Date(),
-    },
+    data: { passwordHash: hashedPassword, isPasswordDefault: false, passwordChangedAt: new Date() },
   });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -144,11 +117,6 @@ export const findParentByPhone = (phone) =>
               photoUrl: true,
               schoolId: true,
               school: { select: { id: true, name: true } },
-              tokens: {
-                where: { status: 'ACTIVE' },
-                select: { id: true, rfidUid: true, qrCode: true },
-                take: 1,
-              },
             },
           },
         },
@@ -159,13 +127,7 @@ export const findParentByPhone = (phone) =>
 export const findParentById = (id) =>
   prisma.parentUser.findUnique({
     where: { id },
-    select: {
-      id: true,
-      phone: true,
-      name: true,
-      email: true,
-      isActive: true,
-    },
+    select: { id: true, phone: true, name: true, email: true, isActive: true },
   });
 
 export const findParentByPhoneBasic = (phone) =>
@@ -184,25 +146,13 @@ export const findParentByPhoneBasic = (phone) =>
 export const upsertParentOtp = (phone, otpHash, expiresAt) =>
   prisma.parentUser.upsert({
     where: { phone },
-    create: {
-      phone,
-      otp: otpHash,
-      otpExpiresAt: expiresAt,
-      otpAttempts: 0,
-    },
-    update: {
-      otp: otpHash,
-      otpExpiresAt: expiresAt,
-      otpAttempts: 0,
-    },
+    create: { phone, otp: otpHash, otpExpiresAt: expiresAt, otpAttempts: 0 },
+    update: { otp: otpHash, otpExpiresAt: expiresAt, otpAttempts: 0 },
     select: { id: true },
   });
 
 export const incrementOtpAttempts = (phone) =>
-  prisma.parentUser.update({
-    where: { phone },
-    data: { otpAttempts: { increment: 1 } },
-  });
+  prisma.parentUser.update({ where: { phone }, data: { otpAttempts: { increment: 1 } } });
 
 export const clearOtp = (phone) =>
   prisma.parentUser.update({
@@ -211,25 +161,23 @@ export const clearOtp = (phone) =>
   });
 
 export const updateParentProfile = (parentId, data) =>
-  prisma.parentUser.update({
-    where: { id: parentId },
-    data,
-  });
+  prisma.parentUser.update({ where: { id: parentId }, data });
 
 export const updateParentLastLogin = (id) =>
-  prisma.parentUser.update({
-    where: { id },
-    data: { lastLoginAt: new Date() },
-  });
+  prisma.parentUser.update({ where: { id }, data: { lastLoginAt: new Date() } });
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CARD / TOKEN LOOKUP
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// 🔧 Fixed: Token model fields
 export const findCardByNumber = (cardNumber) =>
   prisma.token.findFirst({
     where: {
-      OR: [{ rfidUid: cardNumber }, { qrCode: cardNumber }],
+      OR: [
+        { rfidTagNumber: cardNumber }, // 🔧 Prisma field name
+        { scanCode: cardNumber }, // 🔧 Prisma field name
+      ],
       status: { in: ['UNREGISTERED', 'ISSUED', 'ACTIVE'] },
     },
     select: {
@@ -246,10 +194,7 @@ export const findCardByNumber = (cardNumber) =>
           section: true,
           schoolId: true,
           school: { select: { id: true, name: true } },
-          parentLinks: {
-            select: { parent: { select: { phone: true } } },
-            take: 1,
-          },
+          parentLinks: { select: { parent: { select: { phone: true } } }, take: 1 },
         },
       },
     },
@@ -258,34 +203,22 @@ export const findCardByNumber = (cardNumber) =>
 export const activateCard = (cardId, studentId) =>
   prisma.token.update({
     where: { id: cardId },
-    data: {
-      studentId,
-      status: 'ACTIVE',
-      issuedAt: new Date(),
-    },
+    data: { studentId, status: 'ACTIVE', issuedAt: new Date() },
   });
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STUDENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const createStubStudent = (schoolId) =>
+export const createStudent = (schoolId) =>
   prisma.student.create({
-    data: {
-      schoolId,
-      firstName: null,
-      lastName: null,
-      isActive: true,
-    },
+    data: { schoolId, firstName: 'New', lastName: 'Student', isActive: true },
     select: { id: true },
   });
 
-export const createEmergencyProfile = (studentId) =>
+export const createEmergencyProfile = (studentId, schoolId) =>
   prisma.emergencyProfile.create({
-    data: {
-      studentId,
-      isComplete: false,
-    },
+    data: { studentId, schoolId, isComplete: false },
   });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -294,18 +227,9 @@ export const createEmergencyProfile = (studentId) =>
 
 export const linkParentToStudent = (parentId, studentId) =>
   prisma.parentStudent.upsert({
-    where: {
-      parentId_studentId: { parentId, studentId },
-    },
-    create: {
-      parentId,
-      studentId,
-      relation: 'PARENT',
-      isPrimary: true,
-    },
-    update: {
-      isPrimary: true,
-    },
+    where: { parentId_studentId: { parentId, studentId } },
+    create: { parentId, studentId, relation: 'GUARDIAN', isPrimary: true },
+    update: { isPrimary: true },
   });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -322,7 +246,6 @@ export const createSession = ({
   ipAddress,
 }) => {
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
   return prisma.userSession.create({
     data: {
       refreshTokenHash,
@@ -330,9 +253,9 @@ export const createSession = ({
       deviceInfo: deviceInfo || undefined,
       ipAddress,
       expiresAt,
-      ...(superAdminId && { superAdmin: { connect: { id: superAdminId } } }),
-      ...(schoolUserId && { schoolUser: { connect: { id: schoolUserId } } }),
-      ...(parentUserId && { parentUser: { connect: { id: parentUserId } } }),
+      ...(superAdminId && { superAdminId }),
+      ...(schoolUserId && { schoolUserId }),
+      ...(parentUserId && { parentUserId }),
     },
     select: { id: true },
   });
@@ -348,27 +271,18 @@ export const findSessionByRefreshHash = (hash) =>
       parentUserId: true,
       expiresAt: true,
       revokedAt: true,
-      deviceFingerprint: true,
     },
   });
 
 export const revokeSession = (sessionId) =>
-  prisma.userSession.update({
-    where: { id: sessionId },
-    data: { revokedAt: new Date() },
-  });
+  prisma.userSession.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
 
 export const revokeAllUserSessions = async (userId, role) => {
   const where = { revokedAt: null };
-
   if (role === 'SUPER_ADMIN') where.superAdminId = userId;
   else if (role === 'SCHOOL_ADMIN' || role === 'TEACHER') where.schoolUserId = userId;
   else if (role === 'PARENT') where.parentUserId = userId;
-
-  return prisma.userSession.updateMany({
-    where,
-    data: { revokedAt: new Date() },
-  });
+  return prisma.userSession.updateMany({ where, data: { revokedAt: new Date() } });
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -409,9 +323,10 @@ export const createAuditLog = ({
 }) =>
   prisma.auditLog.create({
     data: {
+      action,
+      severity: 'INFO',
       actorId,
       actorType,
-      action,
       entity,
       entityId,
       metadata: metadata || undefined,

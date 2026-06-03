@@ -25,7 +25,7 @@ const ROUTE_LIMITS = [
   { prefix: '/api/parents', limit: KB(50) },
   { prefix: '/api/emergency', limit: 0 },
   { prefix: '/api/attendance/tap', limit: KB(5) },
-  { prefix: '/api/school-admin/students/bulk', limit: KB(500) },
+  { prefix: '/api/school-admin/students/bulk', limit: MB(1) }, // 🔧 1MB for bulk uploads
   { prefix: '/api/school-admin', limit: KB(100) },
   { prefix: '/api/super-admin', limit: KB(200) },
   { prefix: '/api/webhooks', limit: KB(50) },
@@ -50,9 +50,11 @@ export const enforceRequestSize = asyncHandler(async (req, _res, next) => {
   }
 
   if (bodySize > limit) {
-    throw ApiError.custom(
+    // 🔧 Fixed: ApiError.custom → new ApiError
+    throw new ApiError(
       413,
       `Request body too large — max ${formatBytes(limit)} allowed`,
+      [],
       'REQUEST_TOO_LARGE'
     );
   }

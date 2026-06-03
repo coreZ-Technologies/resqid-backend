@@ -47,67 +47,55 @@ import {
   checkTokenStatus,
   getEmergencyContacts,
 } from './scan.redirect.controller.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { perTokenScanLimit } from '#middleware/security/rateLimit.middleware.js';
+import {
+  scanCodeParamsSchema,
+  contactRedirectParamsSchema,
+  tokenOnlyParamsSchema,
+} from './scan.validation.js';
 
 const router = Router();
 
-// ===========================================================================
-// PUBLIC SCAN ENDPOINTS (No Authentication Required)
-// ===========================================================================
-
-/**
- * GET /s/:code
- * Main QR code scan endpoint - serves HTML for browsers, JSON for API
- */
-router.get(
-  '/s/:code',
-  addScanSecurityHeaders,
-  serveEmergencyHtml,
-  validateScanCodeFormat,
-  checkIpBlockedRedis,
-  detectSuspiciousActivity,
-  publicScanLimiter,
-  perTokenScanLimit,
-  logScanRequest,
-  validate(scanCodeParamsSchema, 'params'),
-  handleScan
-);
-
-// ===========================================================================
-// PUBLIC EMERGENCY REDIRECT ENDPOINTS (No Authentication Required)
-// ===========================================================================
+// =============================================================================
+// REDIRECT ROUTES — BEFORE /:code wildcard
+// These handle "Call Contact" and "WhatsApp" links from emergency profile page
+// =============================================================================
 
 /**
  * GET /s/call/:contactId/:token
- * Initiate phone call to emergency contact
+ * Opens phone dialer to call an emergency contact.
  */
-router.get(
-  '/s/call/:contactId/:token',
-  checkIpBlockedRedis,
-  publicScanLimiter,
-  callContact
-);
+router.get('/call/:contactId/:token', validate(contactRedirectParamsSchema), callContact);
 
 /**
- * GET /s/whatsapp/:contactId/:token
- * Open WhatsApp chat with emergency contact
+ * GET /s/wa/:contactId/:token
+ * Opens WhatsApp chat with emergency contact.
  */
-router.get(
-  '/s/whatsapp/:contactId/:token',
-  checkIpBlockedRedis,
-  publicScanLimiter,
-  whatsappContact
-);
+router.get('/wa/:contactId/:token', validate(contactRedirectParamsSchema), whatsappContact);
 
 /**
- * GET /s/call/school/:token
- * Initiate phone call to school
+ * GET /s/school-call/:token
+ * Opens phone dialer to call the school.
  */
-router.get(
-  '/s/call/school/:token',
-  checkIpBlockedRedis,
-  publicScanLimiter,
-  callSchool
-);
+router.get('/school-call/:token', validate(tokenOnlyParamsSchema), callSchool);
+
+/**
+ * GET /s/doctor-call/:token
+ * Opens phone dialer to call student's doctor.
+ */
+router.get('/doctor-call/:token', validate(tokenOnlyParamsSchema), callDoctor);
+
+// =============================================================================
+// MAIN QR SCAN — AFTER redirect routes (/:code wildcard must be LAST)
+// =============================================================================
+
+/**
+ * GET /s/:code
+ * Main QR code scan endpoint.
+ * Decrypts code, fetches emergency profile, returns to responder.
+ */
+router.get('/:code', validate(scanCodeParamsSchema), perTokenScanLimit, scanQr);
 
 /**
  * GET /s/call/doctor/:token

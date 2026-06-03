@@ -117,18 +117,16 @@ const TRUSTED_IPS = new Set([
 async function calculateBehavioralScore(ip, requestData) {
   let score = 0;
   const reasons = [];
-
-  // [1] Request rate anomaly (sliding window using sorted set)
-  const rateKey = `behavior:rate:${ip}`;
   const now = Date.now();
   const windowStart = now - WINDOWS.SHORT * 1000;
 
+  // [1] Request rate anomaly (sliding window using sorted set)
+  const rateKey = `behavior:rate:${ip}`;
   try {
     await redis.zremrangebyscore(rateKey, 0, windowStart);
     const requestCount = await redis.zcard(rateKey);
     await redis.zadd(rateKey, now, `${now}:${Math.random().toString(36).slice(2, 8)}`);
     await redis.expire(rateKey, WINDOWS.SHORT);
-
     if (requestCount > 60) {
       score += Math.min((requestCount - 60) * 2, 40);
       reasons.push(`High request rate: ${requestCount}/min`);
@@ -146,7 +144,6 @@ async function calculateBehavioralScore(ip, requestData) {
     pathEntries.forEach((entry) => uniquePaths.add(entry.split(':')[0]));
     await redis.zadd(pathKey, now, `${requestData.path}:${now}`);
     await redis.expire(pathKey, WINDOWS.MEDIUM);
-
     if (uniquePaths.size > 20) {
       score += Math.min((uniquePaths.size - 20) * 2, 30);
       reasons.push(`Path scanning: ${uniquePaths.size} unique endpoints`);
@@ -196,7 +193,6 @@ async function calculateBehavioralScore(ip, requestData) {
         break;
       }
     }
-
     const isNormalMobile = NORMAL_PATTERNS.MOBILE_UA.some((p) => ua.includes(p.toLowerCase()));
     if (!isNormalMobile && !ua.includes('mozilla') && !ua.includes('chrome')) {
       score += 5;
@@ -221,7 +217,6 @@ async function calculateBehavioralScore(ip, requestData) {
     const hour = new Date().getHours();
     const isSchoolHour = hour >= 8 && hour <= 18;
     const isParentHour = hour >= 6 && hour <= 22;
-
     if ([ROLES.SCHOOL_ADMIN, ROLES.TEACHER].includes(requestData.role) && !isSchoolHour) {
       score += 5;
       reasons.push('School staff outside school hours');
@@ -286,36 +281,22 @@ async function blockIpBehavioral(ip, score, reasons, previousBlockCount = 0) {
     isPermanent ? WINDOWS.DAY : blockDuration
   );
 
-  // Try to update ScanRateLimit if table exists
+  // Log to AuditLog for persistence
   try {
-    await prisma.scanRateLimit.upsert({
-      where: {
-        identifier_identifier_type: {
-          identifier: ip,
-          identifier_type: 'IP',
-        },
-      },
-      update: {
-        block_count: { increment: 1 },
-        blocked_until: blockUntil,
-        blocked_reason: `BEHAVIORAL_BLOCK_${score}`,
-        last_hit: new Date(),
-        metadata: { behavioralScore: score, reasons, offenseCount },
-      },
-      create: {
-        identifier: ip,
-        identifier_type: 'IP',
-        count: 1,
-        block_count: 1,
-        blocked_until: blockUntil,
-        blocked_reason: `BEHAVIORAL_BLOCK_${score}`,
-        window_start: new Date(),
-        last_hit: new Date(),
-        metadata: { behavioralScore: score, reasons, offenseCount },
+    await prisma.auditLog.create({
+      data: {
+        action: 'BEHAVIORAL_BLOCK',
+        severity: score >= BEHAVIOR_THRESHOLDS.PERMANENT_BLOCK ? 'CRITICAL' : 'WARNING',
+        actorId: 'SYSTEM',
+        actorType: 'SYSTEM',
+        entity: 'IP',
+        entityId: ip,
+        ipAddress: ip,
+        metadata: { score, reasons, offenseCount, isPermanent, blockUntil },
       },
     });
   } catch {
-    // Table may not exist — non-critical
+    /* non-critical */
   }
 
   logger.warn(
@@ -384,7 +365,6 @@ export async function recordSuccessfulAuth(ip, userId, role) {
 
 export const behavioralSecurity = asyncHandler(async (req, res, next) => {
   const ip = extractIp(req);
-
   if (TRUSTED_IPS.has(ip)) return next();
 
   // Check if already blocked behaviorally
@@ -429,11 +409,9 @@ export const behavioralSecurity = asyncHandler(async (req, res, next) => {
 export async function getBehavioralReport() {
   const reports = [];
   let cursor = '0';
-
   do {
     const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', 'behavior:score:*', 'COUNT', 100);
     cursor = nextCursor;
-
     for (const key of keys) {
       const ip = key.replace('behavior:score:', '');
       const data = await redis.get(key);
@@ -461,7 +439,6 @@ export async function whitelistIp(ip, reason, adminId) {
   await redis.del(`behavior:paths:${ip}`);
 
   await redis.set(`whitelist:${ip}`, JSON.stringify({ reason, adminId }), 'EX', WINDOWS.DAY * 30);
-
   logger.info({ ip, reason, adminId }, 'IP whitelisted');
 }
 
@@ -476,12 +453,10 @@ export async function behavioralCleanup() {
   let deleted = 0;
   let total = 0;
   let cursor = '0';
-
   do {
     const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', 'behavior:*', 'COUNT', 100);
     cursor = nextCursor;
     total += keys.length;
-
     for (const key of keys) {
       const ttl = await redis.ttl(key);
       if (ttl <= 0) {
@@ -490,7 +465,6 @@ export async function behavioralCleanup() {
       }
     }
   } while (cursor !== '0');
-
   logger.info({ deleted, total }, 'Behavioral cleanup completed');
   return { deleted, total };
 }

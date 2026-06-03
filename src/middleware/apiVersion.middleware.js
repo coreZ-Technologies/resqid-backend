@@ -2,17 +2,6 @@
 // apiVersion.middleware.js — RESQID
 //
 // API version enforcement and deprecation management.
-// Reads API-Version header or URL prefix — rejects unsupported versions.
-//
-// Version resolution (priority order):
-//   1. URL prefix:      /api/v2/students
-//   2. Header:          API-Version: 2
-//   3. Default:         v1 (current stable)
-//
-// Version-free routes (always latest):
-//   - /api/emergency/*   — Public QR scans
-//   - /health            — Health checks
-//   - /api/webhooks/*    — External providers
 // =============================================================================
 
 import { ApiError } from '#shared/response/ApiError.js';
@@ -26,7 +15,6 @@ const DEPRECATED_VERSIONS = new Set([]);
 const DEFAULT_VERSION = ENV.API_DEFAULT_VERSION || 'v1';
 const VERSION_HEADER = ENV.API_VERSION_HEADER || 'x-api-version';
 
-// Version-free routes — always served on current implementation
 const VERSION_FREE_PREFIXES = [
   '/api/emergency',
   '/api/attendance/tap',
@@ -36,12 +24,11 @@ const VERSION_FREE_PREFIXES = [
   '/api/webhooks',
 ];
 
-// Sunset dates for deprecated versions
 const SUNSET_DATES = {};
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────
 
-export const apiVersion = asyncHandler(async (req, _res, next) => {
+export const apiVersion = asyncHandler(async (req, res, next) => {
   // Skip version-free routes
   if (VERSION_FREE_PREFIXES.some((p) => req.path.startsWith(p))) {
     req.apiVersion = DEFAULT_VERSION;
@@ -69,14 +56,14 @@ export const apiVersion = asyncHandler(async (req, _res, next) => {
       ? `API version '${version}' was sunset on ${sunset}. Please upgrade to ${getLatestVersion()}.`
       : `API version '${version}' is deprecated. Please upgrade to ${getLatestVersion()}.`;
 
-    throw ApiError.custom(410, message, 'VERSION_DEPRECATED');
+    throw new ApiError(410, message, [], 'VERSION_DEPRECATED'); // 🔧 Fixed: ApiError.custom → new ApiError
   }
 
   // Attach version to request
   req.apiVersion = version;
 
-  // Set response header so clients know which version they hit
-  _res.setHeader('X-API-Version', version);
+  // Set response header
+  res.setHeader('X-API-Version', version);
 
   next();
 });

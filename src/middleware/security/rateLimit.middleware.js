@@ -9,7 +9,6 @@ import { rateLimit } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { middlewareRedis } from '#config/redis.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
-import { prisma } from '#config/prisma.js';
 import { extractIp } from '#shared/network/extractIp.js';
 import { logger } from '#config/logger.js';
 
@@ -178,25 +177,9 @@ export const checkIpBlocked = asyncHandler(async (req, res, next) => {
   const ip = extractIp(req);
   const redisKey = `ipblock:${ip}`;
 
-  const cached = await middlewareRedis.get(redisKey).catch(() => null);
-  if (cached) {
-    return res.status(403).json({
-      success: false,
-      message: 'IP temporarily blocked',
-      errorCode: 'IP_BLOCKED',
-      requestId: req.requestId,
-    });
-  }
-
   try {
-    const block = await prisma.scanRateLimit.findUnique({
-      where: { identifier_identifier_type: { identifier: ip, identifier_type: 'IP' } },
-      select: { blocked_until: true },
-    });
-
-    if (block?.blocked_until && new Date(block.blocked_until) > new Date()) {
-      const ttl = Math.ceil((new Date(block.blocked_until) - Date.now()) / 1000);
-      if (ttl > 0) await middlewareRedis.set(redisKey, '1', 'EX', ttl);
+    const cached = await middlewareRedis.get(redisKey);
+    if (cached) {
       return res.status(403).json({
         success: false,
         message: 'IP temporarily blocked',
@@ -205,7 +188,7 @@ export const checkIpBlocked = asyncHandler(async (req, res, next) => {
       });
     }
   } catch {
-    /* Non-critical */
+    // Redis error — allow through
   }
 
   next();
@@ -215,19 +198,14 @@ export const checkIpBlocked = asyncHandler(async (req, res, next) => {
 
 async function logRateLimitHit(req) {
   const ip = extractIp(req);
+  const key = `rl:hit:${ip}`;
+
   try {
-    await prisma.scanRateLimit.upsert({
-      where: { identifier_identifier_type: { identifier: ip, identifier_type: 'IP' } },
-      update: { count: { increment: 1 }, last_hit: new Date() },
-      create: {
-        identifier: ip,
-        identifier_type: 'IP',
-        count: 1,
-        window_start: new Date(),
-        last_hit: new Date(),
-      },
-    });
+    await middlewareRedis.incr(key);
+    await middlewareRedis.expire(key, 3600);
   } catch {
-    /* Non-critical */
+    // Non-critical
   }
+
+  logger.warn({ ip, path: req.path, method: req.method, userId: req.user?.id }, 'Rate limit hit');
 }
