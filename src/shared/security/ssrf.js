@@ -1,5 +1,5 @@
 /**
- * ssrf.js
+ * ssrf.js — RESQID
  *
  * Prevents Server‑Side Request Forgery by validating that a URL
  * points to a safe external resource, not internal infrastructure.
@@ -10,9 +10,9 @@
  *   - any module that downloads files or fetches remote content
  */
 
-import { URL } from 'url';
-import { isIP } from 'net';
-import dns from 'dns/promises';
+import { URL } from 'node:url';
+import { isIP } from 'node:net';
+import dns from 'node:dns/promises';
 
 // ------------------------------------------------------------------
 // BLOCKLIST – IP ranges that must NEVER be accessed from the backend
@@ -33,10 +33,16 @@ const BLOCKED_RANGES = [
   'fe80::/10', // link‑local
 ];
 
+// Additional blocked hostnames (cloud metadata endpoints)
+const BLOCKED_HOSTNAMES = [
+  'metadata.google.internal', // GCP metadata
+  '169.254.169.254', // AWS/cloud metadata IP
+  'metadata.azure.com', // Azure metadata
+  '169.254.170.2', // AWS ECS metadata
+];
+
 /**
  * Convert an IP range string (CIDR) to a range of numeric values.
- * @param {string} cidr - e.g. "192.168.0.0/16"
- * @returns {{ start: number, end: number, family: 4|6 }}
  */
 function parseCidr(cidr) {
   const [addr, bits] = cidr.split('/');
@@ -50,11 +56,9 @@ function parseCidr(cidr) {
     const start = ipNum & mask;
     const end = ipNum | (~mask >>> 0);
     return { start, end, family: 4 };
-  } else {
-    // IPv6 – simplified: block entire /64 block
-    // For a full implementation you'd use BigInt, but this is safe enough.
-    return { start: 0, end: 0, family: 6, cidr }; // treated as blocked entirely
   }
+  // IPv6 — block entirely for safety
+  return { start: 0, end: 0, family: 6, cidr };
 }
 
 function ipv4ToNumber(ip) {
@@ -63,8 +67,6 @@ function ipv4ToNumber(ip) {
 
 /**
  * Check if a given IPv4 address falls within any blocked range.
- * @param {string} ip - IPv4 dotted string
- * @returns {boolean}
  */
 function isBlockedIPv4(ip) {
   const num = ipv4ToNumber(ip);
@@ -80,15 +82,17 @@ function isBlockedIPv4(ip) {
 
 /**
  * Check if the hostname resolves to an internal/blocked IP.
- * Also blocks if the IP itself is passed as host.
- * @param {string} hostname
- * @returns {Promise<boolean>} true if blocked
  */
 async function resolvesToBlockedIP(hostname) {
+  // Check blocked hostnames first (cloud metadata)
+  if (BLOCKED_HOSTNAMES.includes(hostname.toLowerCase())) {
+    return true;
+  }
+
   // If host is already an IP address
   const ipFamily = isIP(hostname);
   if (ipFamily === 4) return isBlockedIPv4(hostname);
-  if (ipFamily === 6) return true; // block all IPv6 for simplicity
+  if (ipFamily === 6) return true;
 
   // Resolve hostname to IPs
   try {
@@ -96,7 +100,7 @@ async function resolvesToBlockedIP(hostname) {
     for (const addr of addresses) {
       if (isBlockedIPv4(addr)) return true;
     }
-    // Also check IPv6 if resolved
+
     const addresses6 = await dns.resolve6(hostname).catch(() => []);
     for (const addr of addresses6) {
       if (
@@ -109,8 +113,7 @@ async function resolvesToBlockedIP(hostname) {
       }
     }
   } catch {
-    // DNS resolution failure – safe to block
-    return true;
+    return true; // DNS failure → block for safety
   }
   return false;
 }
@@ -122,11 +125,6 @@ async function resolvesToBlockedIP(hostname) {
 /**
  * Validate that a URL is safe to fetch.
  * Throws an error if the URL is internal or uses a blocked protocol.
- *
- * @param {string} urlString - The URL to validate.
- * @param {object} [options]
- * @param {string[]} [options.allowedDomains] - If set, only these domains are allowed.
- * @returns {Promise<string>} The validated URL (normalised).
  */
 export async function validateUrl(urlString, options = {}) {
   let parsed;
@@ -141,13 +139,13 @@ export async function validateUrl(urlString, options = {}) {
     throw new Error(`Blocked protocol: ${parsed.protocol}`);
   }
 
-  // Prevent username / password in URL (bypass attempts)
+  // Prevent username / password in URL
   if (parsed.username || parsed.password) {
     throw new Error('URL must not contain credentials');
   }
 
   // Optional domain whitelist
-  if (options.allowedDomains && options.allowedDomains.length > 0) {
+  if (options.allowedDomains?.length > 0) {
     const hostname = parsed.hostname.toLowerCase();
     const allowed = options.allowedDomains.some(
       (d) => hostname === d || hostname.endsWith(`.${d}`)
@@ -167,24 +165,14 @@ export async function validateUrl(urlString, options = {}) {
 }
 
 /**
- * Validate a URL that is intended for redirecting a user's browser.
- * Slightly less strict – allows the redirect to happen, but still blocks
- * internal destinations and non‑HTTP protocols.
- *
- * @param {string} urlString
- * @returns {Promise<string>}
+ * Validate a URL for browser redirect.
  */
 export async function validateRedirectUrl(urlString) {
-  // For redirects, we might allow only HTTP(S) and no internal IPs.
   return validateUrl(urlString);
 }
 
 /**
- * Quick synchronous check for protocol only (used in simple cases).
- * Does NOT perform DNS resolution – use validateUrl for full protection.
- *
- * @param {string} urlString
- * @returns {boolean}
+ * Quick synchronous check for protocol only.
  */
 export function isSafeProtocol(urlString) {
   try {

@@ -11,13 +11,22 @@ import { prisma } from '#config/prisma.js';
 
 export const createSession = ({ schoolId, teacherId, grade, section, subject }) =>
   prisma.attendanceSession.create({
-    data: { schoolId, teacherId, grade, section, subject },
+    data: {
+      schoolId,
+      createdById: teacherId,
+      grade,
+      section,
+      subject,
+      type: 'MORNING',
+      mode: 'RFID',
+      scheduledStart: new Date(),
+      startedAt: new Date(),
+      isActive: true,
+    },
   });
 
 export const findSessionById = (sessionId, schoolId) =>
-  prisma.attendanceSession.findFirst({
-    where: { id: sessionId, schoolId },
-  });
+  prisma.attendanceSession.findFirst({ where: { id: sessionId, schoolId } });
 
 export const findActiveSessionByClass = (schoolId, grade, section) =>
   prisma.attendanceSession.findFirst({
@@ -56,13 +65,42 @@ export const listSessions = ({ schoolId, filters = {}, page = 1, limit = 20 }) =
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TOKEN / STUDENT LOOKUP
+// TOKEN / STUDENT LOOKUP (for RFID)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const findTokenByUid = (rfidUid, schoolId) =>
-  prisma.token.findFirst({
-    where: { rfidUid, schoolId, status: 'ACTIVE' },
-    select: { id: true, studentId: true },
+/**
+ * Find student by RFID UID hash.
+ * 🔧 Your Token model may have rfidTagNumber or uidHash field.
+ */
+export const findStudentByRfid = (uidHash, schoolId) =>
+  prisma.student.findFirst({
+    where: { rfidTagNumber: uidHash, schoolId, isActive: true },
+    select: { id: true, firstName: true, lastName: true, grade: true, section: true },
+  });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ATTENDANCE TAP (Raw tap from device)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const createTap = ({ sessionId, schoolId, studentId, uidHash, deviceId, deviceName }) =>
+  prisma.attendanceTap.create({
+    data: {
+      sessionId,
+      schoolId,
+      studentId,
+      uidHash,
+      deviceId,
+      deviceName,
+      tapType: 'RFID_CARD',
+      tappedAt: new Date(),
+      processed: false,
+    },
+  });
+
+export const markTapProcessed = (tapId) =>
+  prisma.attendanceTap.update({
+    where: { id: tapId },
+    data: { processed: true, processedAt: new Date() },
   });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -70,15 +108,28 @@ export const findTokenByUid = (rfidUid, schoolId) =>
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const findRecord = (sessionId, studentId) =>
-  prisma.attendanceRecord.findUnique({
-    where: { sessionId_studentId: { sessionId, studentId } },
+  prisma.studentAttendanceRecord.findFirst({
+    where: { sessionId, studentId },
   });
 
-export const upsertRecord = ({ sessionId, studentId, schoolId, status, markedAt }) =>
-  prisma.attendanceRecord.upsert({
-    where: { sessionId_studentId: { sessionId, studentId } },
-    create: { sessionId, studentId, schoolId, status, markedAt: markedAt || new Date() },
-    update: { status, markedAt: markedAt || new Date() },
+export const upsertRecord = ({ sessionId, studentId, schoolId, status, markedAt, tapId }) =>
+  prisma.studentAttendanceRecord.upsert({
+    where: {
+      sessionId_studentId: { sessionId, studentId },
+    },
+    create: {
+      sessionId,
+      studentId,
+      schoolId,
+      status: status || 'PRESENT',
+      mode: 'RFID',
+      markedAt: markedAt || new Date(),
+      tapId: tapId || null,
+    },
+    update: {
+      status: status || 'PRESENT',
+      markedAt: markedAt || new Date(),
+    },
     include: {
       student: {
         select: { id: true, firstName: true, lastName: true, grade: true, section: true },
@@ -89,7 +140,7 @@ export const upsertRecord = ({ sessionId, studentId, schoolId, status, markedAt 
 export const listSessionRecords = (sessionId, page = 1, limit = 20) => {
   const where = { sessionId };
   return Promise.all([
-    prisma.attendanceRecord.findMany({
+    prisma.studentAttendanceRecord.findMany({
       where,
       skip: (page - 1) * limit,
       take: limit,
@@ -107,7 +158,7 @@ export const listSessionRecords = (sessionId, page = 1, limit = 20) => {
         },
       },
     }),
-    prisma.attendanceRecord.count({ where }),
+    prisma.studentAttendanceRecord.count({ where }),
   ]);
 };
 
@@ -123,23 +174,21 @@ export const listStudentRecords = (studentId, { page = 1, limit = 20, from, to }
   };
 
   return Promise.all([
-    prisma.attendanceRecord.findMany({
+    prisma.studentAttendanceRecord.findMany({
       where,
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { markedAt: 'desc' },
       include: {
-        session: {
-          select: { id: true, grade: true, section: true, subject: true, startedAt: true },
-        },
+        session: { select: { id: true, name: true, grade: true, section: true, subject: true } },
       },
     }),
-    prisma.attendanceRecord.count({ where }),
+    prisma.studentAttendanceRecord.count({ where }),
   ]);
 };
 
 export const listClassRecords = (schoolId, grade, section, from, to) =>
-  prisma.attendanceRecord.findMany({
+  prisma.studentAttendanceRecord.findMany({
     where: {
       schoolId,
       session: { grade, section },
@@ -152,9 +201,7 @@ export const listClassRecords = (schoolId, grade, section, from, to) =>
     },
     orderBy: { markedAt: 'desc' },
     include: {
-      student: {
-        select: { id: true, firstName: true, lastName: true, grade: true, section: true },
-      },
+      student: { select: { id: true, firstName: true, lastName: true } },
     },
   });
 
@@ -164,7 +211,7 @@ export const listClassRecords = (schoolId, grade, section, from, to) =>
 
 export const createDevice = ({ schoolId, name, location }) =>
   prisma.attendanceDevice.create({
-    data: { schoolId, name, location, status: 'UNREGISTERED' },
+    data: { schoolId, name, status: 'UNREGISTERED' },
   });
 
 export const updateDeviceHeartbeat = (deviceId) =>

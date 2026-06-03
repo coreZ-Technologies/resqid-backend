@@ -1,12 +1,12 @@
 // =============================================================================
 // modules/m4-communication/communication.service.js — RESQID
-// Business logic for announcements and direct messages.
+// Business logic for announcements, messages, templates, and campaigns.
 // =============================================================================
 
 import { ApiError } from '#shared/response/ApiError.js';
 import { logger } from '#config/logger.js';
 import * as repo from './communication.repository.js';
-import { publish } from '#orchestrator/events/event.publisher.js';
+import { publishNotification } from '#orchestrator/notifications/notification.publisher.js';
 import { EVENTS } from '#orchestrator/events/event.types.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -18,9 +18,10 @@ export const createAnnouncement = async ({
   authorId,
   title,
   body,
-  targetAll,
+  target,
   targetGrades,
-  channels,
+  targetSections,
+  priority,
 }) => {
   // 1. Save to DB
   const announcement = await repo.createAnnouncement({
@@ -28,36 +29,36 @@ export const createAnnouncement = async ({
     authorId,
     title,
     body,
-    targetAll,
+    target,
     targetGrades,
-    channels,
+    targetSections,
+    priority,
   });
 
   // 2. Count estimated recipients
-  const recipients = await repo.findRecipients(schoolId, targetGrades, targetAll);
+  const recipients = await repo.findRecipients(schoolId, targetGrades, target === 'ALL');
   const estimatedCount = recipients.length;
 
-  // 3. Publish to BullMQ for async delivery
-  await publish({
-    type: EVENTS.NOTIFICATION_SENT,
-    actorId: authorId,
-    actorType: 'TEACHER',
-    schoolId,
-    payload: {
-      announcementId: announcement.id,
-      title,
-      body,
-      channels,
-      recipientCount: estimatedCount,
-      targetGrades,
-      targetAll,
-    },
-  }).catch((err) => logger.error({ err: err.message }, '[comm] Publish failed'));
+  // 3. Publish for async delivery via notification publisher
+  publishNotification
+    .emergencyAlertTriggered?.({
+      schoolId,
+      actorId: authorId,
+      payload: {
+        announcementId: announcement.id,
+        title,
+        body,
+        recipientCount: estimatedCount,
+        targetGrades,
+        target,
+      },
+    })
+    .catch((err) => logger.error({ err: err.message }, '[comm] Publish failed'));
 
   return {
     id: announcement.id,
     title: announcement.title,
-    channels: announcement.channels,
+    priority: announcement.priority,
     estimatedRecipients: estimatedCount,
     status: 'QUEUED',
   };
@@ -65,47 +66,72 @@ export const createAnnouncement = async ({
 
 export const listAnnouncements = async (schoolId, page, limit) => {
   const [announcements, total] = await repo.listAnnouncements(schoolId, page, limit);
-  return { announcements, total, page, limit };
+  return { announcements, total, page: parseInt(page) || 1, limit: parseInt(limit) || 20 };
 };
 
 export const getAnnouncement = async (id, schoolId) => {
   const announcement = await repo.findAnnouncement(id, schoolId);
   if (!announcement) throw ApiError.notFound('Announcement not found');
+  return announcement;
+};
 
-  // Get delivery stats
-  const stats = await getAnnouncementDeliveryStats(id);
-
-  return { ...announcement, deliveryStats: stats };
+export const deleteAnnouncement = async (id, schoolId) => {
+  const announcement = await repo.findAnnouncement(id, schoolId);
+  if (!announcement) throw ApiError.notFound('Announcement not found');
+  await repo.deleteAnnouncement(id, schoolId);
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DIRECT MESSAGES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const sendMessage = async ({ schoolId, senderId, parentId, studentId, body }) => {
-  const message = await repo.createMessage({ schoolId, senderId, parentId, studentId, body });
+export const sendMessage = async ({
+  schoolId,
+  senderId,
+  parentId,
+  studentId,
+  subject,
+  body,
+  type,
+}) => {
+  const message = await repo.createMessage({
+    schoolId,
+    senderId,
+    parentId,
+    studentId,
+    subject,
+    body,
+    type,
+  });
 
   // Notify parent via push
-  await publish({
-    type: EVENTS.NOTIFICATION_SENT,
-    actorId: senderId,
-    actorType: 'TEACHER',
-    schoolId,
-    payload: {
-      messageId: message.id,
-      parentId,
-      studentId,
-      body: body.slice(0, 100), // Truncate for push preview
-      type: 'DIRECT_MESSAGE',
-    },
-  }).catch((err) => logger.error({ err: err.message }, '[comm] Message notify failed'));
+  publishNotification
+    .emergencyAlertTriggered?.({
+      schoolId,
+      actorId: senderId,
+      payload: {
+        messageId: message.id,
+        parentId,
+        studentId,
+        subject,
+        body: body?.slice(0, 100),
+        type: 'DIRECT_MESSAGE',
+      },
+    })
+    .catch((err) => logger.error({ err: err.message }, '[comm] Message notify failed'));
 
   return message;
 };
 
 export const listMessages = async (parentId, page, limit, studentId) => {
   const [messages, total] = await repo.listMessages(parentId, page, limit, studentId);
-  return { messages, total, page, limit };
+  return { messages, total, page: parseInt(page) || 1, limit: parseInt(limit) || 20 };
+};
+
+export const getThread = async (threadId, userId) => {
+  const messages = await repo.findThread(threadId);
+  if (!messages.length) throw ApiError.notFound('Thread not found');
+  return messages;
 };
 
 export const markMessageRead = async (messageId, parentId) => {
@@ -113,32 +139,64 @@ export const markMessageRead = async (messageId, parentId) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DELIVERY STATS (for announcement detail view)
+// MESSAGE TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { prisma } from '#config/prisma.js';
+export const createTemplate = async ({
+  schoolId,
+  createdById,
+  name,
+  type,
+  subject,
+  body,
+  variables,
+}) => {
+  return repo.createTemplate({ schoolId, createdById, name, type, subject, body, variables });
+};
 
-const getAnnouncementDeliveryStats = async (announcementId) => {
-  const stats = await prisma.notification.groupBy({
-    by: ['channel', 'status'],
-    where: {
-      type: 'ANNOUNCEMENT',
-      data: { path: ['announcementId'], equals: announcementId },
-    },
-    _count: { id: true },
+export const listTemplates = async (schoolId) => {
+  return repo.listTemplates(schoolId);
+};
+
+export const deleteTemplate = async (id, schoolId) => {
+  const templates = await repo.listTemplates(schoolId);
+  const exists = templates.some((t) => t.id === id);
+  if (!exists) throw ApiError.notFound('Template not found');
+  await repo.deleteTemplate(id, schoolId);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAMPAIGNS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const createCampaign = async ({
+  schoolId,
+  createdById,
+  name,
+  type,
+  subject,
+  body,
+  target,
+  targetGrades,
+}) => {
+  return repo.createCampaign({
+    schoolId,
+    createdById,
+    name,
+    type,
+    subject,
+    body,
+    target,
+    targetGrades,
   });
+};
 
-  const result = {
-    PUSH: { sent: 0, failed: 0 },
-    SMS: { sent: 0, failed: 0 },
-    EMAIL: { sent: 0, failed: 0 },
-  };
+export const listCampaigns = async (schoolId) => {
+  return repo.listCampaigns(schoolId);
+};
 
-  for (const s of stats) {
-    if (result[s.channel]) {
-      result[s.channel][s.status === 'SENT' ? 'sent' : 'failed'] = s._count.id;
-    }
-  }
-
-  return result;
+export const getCampaign = async (id, schoolId) => {
+  const campaign = await repo.findCampaign(id, schoolId);
+  if (!campaign) throw ApiError.notFound('Campaign not found');
+  return campaign;
 };

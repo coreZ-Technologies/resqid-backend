@@ -46,26 +46,122 @@ export const buildScanLogPayload = ({
   longitude: typeof longitude === 'number' && isFinite(longitude) ? longitude : null,
 });
 
-/**
- * Blood group display mapping.
- */
+// ─── Blood Group Display Mapping (matches Prisma BloodGroup enum) ─────────────
+
 const BLOOD_GROUP_MAP = {
-  A_POS: 'A+',
-  A_NEG: 'A-',
-  B_POS: 'B+',
-  B_NEG: 'B-',
-  AB_POS: 'AB+',
-  AB_NEG: 'AB-',
-  O_POS: 'O+',
-  O_NEG: 'O-',
+  A_POSITIVE: 'A+',
+  A_NEGATIVE: 'A-',
+  B_POSITIVE: 'B+',
+  B_NEGATIVE: 'B-',
+  AB_POSITIVE: 'AB+',
+  AB_NEGATIVE: 'AB-',
+  O_POSITIVE: 'O+',
+  O_NEGATIVE: 'O-',
+  UNKNOWN: 'Unknown',
 };
 
+/**
+ * Format blood group for display.
+ * Converts Prisma enum → display label.
+ *   A_POSITIVE → A+
+ *   UNKNOWN   → Unknown
+ */
 export const formatBloodGroup = (bg) => BLOOD_GROUP_MAP[bg] || bg || null;
+
+/**
+ * Apply visibility filters to emergency profile.
+ * Used by scan service to filter what responder sees.
+ */
+export const applyVisibilityFilters = (profile) => {
+  if (!profile) return null;
+
+  return {
+    student: profile.student
+      ? {
+          id: profile.student.id,
+          firstName: profile.student.firstName,
+          lastName: profile.student.lastName,
+          grade: profile.student.grade,
+          section: profile.student.section,
+          photoUrl: profile.student.photoUrl,
+        }
+      : null,
+
+    // Only show if visibility flag allows
+    bloodGroup: profile.showBloodGroup ? formatBloodGroup(profile.bloodGroup) : null,
+    allergies: profile.showAllergies ? profile.allergies : [],
+    medications: profile.showMedications ? profile.medications : [],
+    conditions: profile.showConditions ? profile.conditions : [],
+    medicalNotes: profile.showConditions ? profile.medicalNotes : null,
+    emergencyInstructions: profile.showInstructions ? profile.emergencyInstructions : null,
+    specialNeeds: profile.showSpecialNeeds ? profile.specialNeeds : null,
+
+    // Doctor info
+    doctorName: profile.showDoctorInfo ? profile.doctorName : null,
+    doctorPhone: profile.showDoctorInfo ? maskPhone(profile.doctorPhone) : null,
+
+    // Hospital info
+    hospitalName: profile.showDoctorInfo ? profile.hospitalName : null,
+    hospitalPhone: profile.showDoctorInfo ? maskPhone(profile.hospitalPhone) : null,
+
+    // Contacts
+    contacts: profile.showContacts
+      ? (profile.contacts || []).map((c) => ({
+          name: c.name,
+          phone: maskPhone(c.phone),
+          relation: c.relation,
+          priority: c.priority,
+          isPrimary: c.isPrimary,
+        }))
+      : [],
+
+    // Insurance (usually hidden)
+    insuranceProvider: profile.showInsurance ? profile.insuranceProvider : null,
+    insurancePolicyNumber: profile.showInsurance ? profile.insurancePolicyNumber : null,
+  };
+};
 
 /**
  * Strip internal cache fields before sending to client.
  */
-export const formatScanResponse = (cached) => {
-  const { _schoolId, _parentTokens, _studentId, ...safe } = cached;
+export const formatScanResponse = (data) => {
+  const { _schoolId, _parentTokens, _studentId, ...safe } = data;
   return safe;
+};
+
+/**
+ * Get severity label for display.
+ */
+export const getSeverityLabel = (severity) => {
+  const labels = {
+    LOW: 'Low',
+    MEDIUM: 'Medium',
+    HIGH: 'High',
+    CRITICAL: 'Critical',
+  };
+  return labels[severity] || severity;
+};
+
+/**
+ * Get incident type label for display.
+ */
+export const getIncidentTypeLabel = (type) => {
+  const labels = {
+    INJURY: 'Injury',
+    ILLNESS: 'Illness',
+    ALLERGIC_REACTION: 'Allergic Reaction',
+    ASTHMA_ATTACK: 'Asthma Attack',
+    ACCIDENT: 'Accident',
+    SEIZURE: 'Seizure',
+    FAINTING: 'Fainting',
+    BLEEDING: 'Bleeding',
+    FRACTURE: 'Fracture',
+    BURN: 'Burn',
+    POISONING: 'Poisoning',
+    HEAD_INJURY: 'Head Injury',
+    BREATHING_DIFFICULTY: 'Breathing Difficulty',
+    DIABETIC_EMERGENCY: 'Diabetic Emergency',
+    OTHER: 'Other',
+  };
+  return labels[type] || type;
 };

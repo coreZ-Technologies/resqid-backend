@@ -4,20 +4,18 @@
 // =============================================================================
 
 import { Router } from 'express';
-import { validate, validateAll } from '#middleware/validate.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
-import { authorize } from '#middleware/auth/rbac.middleware.js';
+import { authorize } from '#middleware/auth/authorize.middleware.js';
 import { ROLES } from '#shared/constants/roles.js';
 import * as controller from './parent.controller.js';
 import {
   parentProfileSchema,
   updateVisibilitySchema,
   updateNotificationsSchema,
-  lockCardSchema,
   registerDeviceTokenSchema,
   linkCardSchema,
   setActiveStudentSchema,
-  scanHistorySchema,
   generateUploadUrlSchema,
   confirmUploadSchema,
 } from './parent.validation.js';
@@ -27,51 +25,66 @@ const router = Router();
 // All routes require PARENT role
 router.use(authenticate, authorize(ROLES.PARENT));
 
-// Dashboard
+// =============================================================================
+// DASHBOARD
+// =============================================================================
+
 router.get('/me', controller.getMe);
 
-// Profile
+// =============================================================================
+// PROFILE
+// =============================================================================
+
 router.patch('/me', validate(parentProfileSchema), controller.updateParentProfile);
 
-// Card visibility per child
-router.patch(
-  '/me/students/:studentId/visibility',
-  validateAll(updateVisibilitySchema),
-  controller.updateVisibility
-);
+// =============================================================================
+// NOTIFICATIONS
+// =============================================================================
 
-// Notification preferences
 router.patch(
   '/me/notifications',
   validate(updateNotificationsSchema),
   controller.updateNotifications
 );
 
-// Lock card (emergency)
-router.post('/me/students/:studentId/lock', validateAll(lockCardSchema), controller.lockCard);
+// =============================================================================
+// CHILD MANAGEMENT
+// =============================================================================
 
-// Device token for push
-router.post('/me/device', validate(registerDeviceTokenSchema), controller.registerDeviceToken);
-
-// Add child
-router.post('/me/children', validate(linkCardSchema), controller.linkCard);
-
-// Switch active child
-router.patch('/me/active-child', validate(setActiveStudentSchema), controller.setActiveStudent);
-
-// Scan history per child
-router.get(
-  '/me/students/:studentId/scans',
-  validateAll(scanHistorySchema),
-  controller.getScanHistory
+router.patch(
+  '/me/students/:studentId/visibility',
+  validate(updateVisibilitySchema),
+  controller.updateVisibility
 );
 
-// Photo upload
+router.post('/me/students/:studentId/lock', controller.lockCard);
+
+router.post('/me/children', validate(linkCardSchema), controller.linkCard);
+
+router.patch('/me/active-child', validate(setActiveStudentSchema), controller.setActiveStudent);
+
+// =============================================================================
+// SCAN HISTORY
+// =============================================================================
+
+router.get('/me/students/:studentId/scans', controller.getScanHistory);
+
+// =============================================================================
+// DEVICE
+// =============================================================================
+
+router.post('/me/device', validate(registerDeviceTokenSchema), controller.registerDeviceToken);
+
+// =============================================================================
+// PHOTO UPLOAD
+// =============================================================================
+
 router.post(
   '/me/students/:studentId/photo/upload-url',
   validate(generateUploadUrlSchema),
   controller.generatePhotoUploadUrl
 );
+
 router.post(
   '/me/students/:studentId/photo/confirm',
   validate(confirmUploadSchema),

@@ -12,9 +12,8 @@ import {
   callSchool,
   callDoctor,
 } from './scan.redirect.controller.js';
-import { validateAll } from '#middleware/validate.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
 import { perTokenScanLimit } from '#middleware/security/rateLimit.middleware.js';
-import { serveEmergencyHtml } from './scan.middleware.js';
 import {
   scanCodeParamsSchema,
   contactRedirectParamsSchema,
@@ -23,27 +22,44 @@ import {
 
 const router = Router();
 
-// Redirect routes — BEFORE /:code wildcard
-router.get(
-  '/call/:contactId/:token',
-  validateAll({ params: contactRedirectParamsSchema }),
-  callContact
-);
-router.get(
-  '/wa/:contactId/:token',
-  validateAll({ params: contactRedirectParamsSchema }),
-  whatsappContact
-);
-router.get('/school-call/:token', validateAll({ params: tokenOnlyParamsSchema }), callSchool);
-router.get('/doctor-call/:token', validateAll({ params: tokenOnlyParamsSchema }), callDoctor);
+// =============================================================================
+// REDIRECT ROUTES — BEFORE /:code wildcard
+// These handle "Call Contact" and "WhatsApp" links from emergency profile page
+// =============================================================================
 
-// Main QR scan — AFTER redirect routes
-router.get(
-  '/:code',
-  serveEmergencyHtml,
-  validateAll({ params: scanCodeParamsSchema }),
-  perTokenScanLimit,
-  scanQr
-);
+/**
+ * GET /s/call/:contactId/:token
+ * Opens phone dialer to call an emergency contact.
+ */
+router.get('/call/:contactId/:token', validate(contactRedirectParamsSchema), callContact);
+
+/**
+ * GET /s/wa/:contactId/:token
+ * Opens WhatsApp chat with emergency contact.
+ */
+router.get('/wa/:contactId/:token', validate(contactRedirectParamsSchema), whatsappContact);
+
+/**
+ * GET /s/school-call/:token
+ * Opens phone dialer to call the school.
+ */
+router.get('/school-call/:token', validate(tokenOnlyParamsSchema), callSchool);
+
+/**
+ * GET /s/doctor-call/:token
+ * Opens phone dialer to call student's doctor.
+ */
+router.get('/doctor-call/:token', validate(tokenOnlyParamsSchema), callDoctor);
+
+// =============================================================================
+// MAIN QR SCAN — AFTER redirect routes (/:code wildcard must be LAST)
+// =============================================================================
+
+/**
+ * GET /s/:code
+ * Main QR code scan endpoint.
+ * Decrypts code, fetches emergency profile, returns to responder.
+ */
+router.get('/:code', validate(scanCodeParamsSchema), perTokenScanLimit, scanQr);
 
 export default router;

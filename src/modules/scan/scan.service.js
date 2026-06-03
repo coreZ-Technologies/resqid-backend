@@ -8,7 +8,7 @@ import { logger } from '#config/logger.js';
 import * as repo from './scan.repository.js';
 import { getCachedEmergencyProfile, cacheEmergencyProfile } from '#shared/cache/scan.cache.js';
 import { evaluateScan } from '#shared/anomaly/anomaly.evaluator.js';
-import { publish } from '#orchestrator/events/event.publisher.js';
+import { publishNotification } from '#orchestrator/notifications/notification.publisher.js';
 import { EVENTS } from '#orchestrator/events/event.types.js';
 import {
   maskPhone,
@@ -18,9 +18,15 @@ import {
   formatBloodGroup,
 } from './scan.helper.js';
 
+// ─── Cache TTLs ───────────────────────────────────────────────────────────────
+
 const ACTIVE_CACHE_TTL = 300; // 5 minutes
 const DEAD_CACHE_TTL = 3600; // 1 hour
 const SENTINEL_ID = '00000000-0000-0000-0000-000000000000';
+
+// =============================================================================
+// MAIN SCAN RESOLVER
+// =============================================================================
 
 /**
  * Resolve a QR scan — decode, validate, build profile, notify.
@@ -71,7 +77,6 @@ export const resolveScan = async ({
         schoolId: cached._schoolId,
         studentId: cached._studentId,
         ip,
-        scanResult: 'SUCCESS',
         scanCount,
       });
     }
@@ -103,6 +108,12 @@ export const resolveScan = async ({
     .flatMap((l) => l.parent?.devices?.map((d) => d.expoPushToken) || [])
     .filter(Boolean);
 
+  // Extract parent phones for SMS
+  const parentPhones = (student?.parentLinks || []).map((l) => l.parent?.phone).filter(Boolean);
+
+  // Extract parent emails
+  const parentEmails = (student?.parentLinks || []).map((l) => l.parent?.email).filter(Boolean);
+
   // ── 4. Token state checks ────────────────────────────────────────────────
   const stateResult = validateTokenState(token);
   if (stateResult) {
@@ -126,6 +137,7 @@ export const resolveScan = async ({
   }
 
   // ── 6. Build ACTIVE profile ──────────────────────────────────────────────
+  // 🔧 Use emergency module's getProfileForScan instead of embedded query
   const emergency = student.emergencyProfile;
   const visibility = student.cardVisibility?.visibility || 'PUBLIC';
 
@@ -139,6 +151,8 @@ export const resolveScan = async ({
     _schoolId: schoolId,
     _studentId: student.id,
     _parentTokens: parentTokens,
+    _parentPhones: parentPhones,
+    _parentEmails: parentEmails,
   };
 
   logScan({
@@ -153,22 +167,16 @@ export const resolveScan = async ({
   });
   cacheEmergencyProfile(tokenId, payload, ACTIVE_CACHE_TTL);
 
+  // 🔧 Fire-and-forget: notifications + anomaly check
   fireNotification(payload);
-  fireAnomalyCheck({
-    tokenId,
-    schoolId,
-    studentId: student.id,
-    ip,
-    scanResult: 'SUCCESS',
-    scanCount,
-  });
+  fireAnomalyCheck({ tokenId, schoolId, studentId: student.id, ip, scanCount });
 
   return formatScanResponse(payload);
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
+// TOKEN STATE VALIDATION
+// =============================================================================
 
 const validateTokenState = (token) => {
   if (token.expiresAt && new Date(token.expiresAt) < new Date()) {
@@ -209,27 +217,32 @@ const validateTokenState = (token) => {
   return null; // ACTIVE
 };
 
+// =============================================================================
+// PROFILE BUILDER
+// =============================================================================
+
 const buildProfile = (student, emergency, visibility) => {
   const base = {
+    id: student.id,
     name: [student.firstName, student.lastName].filter(Boolean).join(' ') || null,
     photoUrl: student.photoUrl || null,
     grade: student.grade || null,
     section: student.section || null,
+    gender: student.gender || null,
     visibility,
   };
 
-  if (visibility === 'HIDDEN')
+  if (visibility === 'HIDDEN') {
     return { ...base, message: 'Emergency information is hidden by parent.' };
+  }
+
   if (visibility === 'MINIMAL') {
     const primary = (emergency?.contacts || []).sort((a, b) => a.priority - b.priority)[0];
     return {
       ...base,
+      bloodGroup: formatBloodGroup(emergency?.bloodGroup),
       primaryContact: primary
-        ? {
-            name: primary.name,
-            relation: primary.relation,
-            phone: maskPhone(primary.phone),
-          }
+        ? { name: primary.name, relation: primary.relation, phone: maskPhone(primary.phone) }
         : null,
     };
   }
@@ -238,14 +251,11 @@ const buildProfile = (student, emergency, visibility) => {
   return {
     ...base,
     bloodGroup: formatBloodGroup(emergency?.bloodGroup),
-    allergies: emergency?.allergies || null,
-    conditions: emergency?.conditions || null,
-    medications: emergency?.medications || null,
+    allergies: emergency?.allergies || [],
+    conditions: emergency?.conditions || [],
+    medications: emergency?.medications || [],
     doctor: emergency?.doctorName
-      ? {
-          name: emergency.doctorName,
-          phone: maskPhone(emergency.doctorPhone),
-        }
+      ? { name: emergency.doctorName, phone: maskPhone(emergency.doctorPhone) }
       : null,
     notes: emergency?.notes || null,
     contacts: (emergency?.contacts || []).map((c) => ({
@@ -254,6 +264,8 @@ const buildProfile = (student, emergency, visibility) => {
       relation: c.relation,
       phone: maskPhone(c.phone),
       priority: c.priority,
+      callEnabled: c.callEnabled,
+      whatsappEnabled: c.whatsappEnabled,
     })),
   };
 };
@@ -261,47 +273,63 @@ const buildProfile = (student, emergency, visibility) => {
 const safeSchool = (school) => {
   if (!school) return null;
   return {
+    id: school.id,
     name: school.name,
     logoUrl: school.logoUrl,
     phone: school.phone,
-    address: school.address,
+    address: [school.street, school.city, school.state].filter(Boolean).join(', ') || null,
   };
 };
 
 const buildResponse = (state, message) => ({ state, message });
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // FIRE-AND-FORGET
-// ═══════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
+/**
+ * Queue scan log for bulk write by scan worker.
+ */
 const logScan = (entry) => {
   const payload = buildScanLogPayload(entry);
-  // Enqueue to Redis for bulk write by scan worker
+  // Import dynamically to avoid circular dependency
   import('#shared/cache/scan.cache.js')
     .then(({ enqueueScanLog }) => {
-      enqueueScanLog(payload).catch((err) =>
+      enqueueScanLog?.(payload)?.catch((err) =>
         logger.error({ err: err.message }, '[scan] Log enqueue failed')
       );
     })
     .catch(() => {});
 };
 
+/**
+ * 🔧 Publish emergency notification via the notification publisher.
+ */
 const fireNotification = (payload) => {
-  if (!payload._parentTokens?.length) return;
+  if (!payload._parentTokens?.length && !payload._parentPhones?.length) return;
 
-  publish({
-    type: EVENTS.EMERGENCY_QR_SCANNED,
-    schoolId: payload._schoolId,
-    actorId: payload._studentId || 'anonymous',
-    actorType: 'EMERGENCY_RESPONDER',
-    payload: {
-      studentId: payload._studentId,
-      studentName: payload.profile?.name,
-      parentTokens: payload._parentTokens,
-    },
-  }).catch((err) => logger.error({ err: err.message }, '[scan] Notification publish failed'));
+  // Use notification publisher for emergency alert
+  publishNotification
+    .emergencyAlertTriggered({
+      schoolId: payload._schoolId,
+      actorId: payload._studentId || 'anonymous',
+      payload: {
+        studentId: payload._studentId,
+        studentName: payload.profile?.name,
+        parentExpoTokens: payload._parentTokens || [],
+        parentPhones: payload._parentPhones || [],
+        parentEmails: payload._parentEmails || [],
+        schoolName: payload.school?.name,
+        scannedAt: new Date().toISOString(),
+      },
+      meta: { studentId: payload._studentId, source: 'QR_SCAN' },
+    })
+    .catch((err) => logger.error({ err: err.message }, '[scan] Notification publish failed'));
 };
 
+/**
+ * Run anomaly detection (fire-and-forget).
+ */
 const fireAnomalyCheck = (data) => {
   evaluateScan({
     type: 'QR',

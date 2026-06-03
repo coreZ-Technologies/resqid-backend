@@ -22,6 +22,7 @@ export const validateEmail = (email) => {
   if (!email) return { valid: false, message: 'Email is required' };
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) return { valid: false, message: 'Invalid email address' };
+  if (email.length > 254) return { valid: false, message: 'Email too long' };
   return { valid: true };
 };
 
@@ -86,24 +87,59 @@ export const validateUuid = (id) => {
   return { valid: true };
 };
 
+// ─── Timetable-specific Validators ───────────────────────────────────────────
+
+export const validatePeriodNumber = (period) => {
+  const num = parseInt(period);
+  if (isNaN(num) || num < 1 || num > 12)
+    return { valid: false, message: 'Period must be between 1 and 12' };
+  return { valid: true };
+};
+
+export const validateDayOfWeek = (day) => {
+  const num = parseInt(day);
+  if (isNaN(num) || num < 1 || num > 7)
+    return { valid: false, message: 'Day must be between 1 (Mon) and 7 (Sun)' };
+  return { valid: true };
+};
+
+export const validateGrade = (grade) => {
+  const valid = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+  if (!grade) return { valid: false, message: 'Grade is required' };
+  if (!valid.includes(String(grade)))
+    return { valid: false, message: `Grade must be one of: ${valid.join(', ')}` };
+  return { valid: true };
+};
+
+export const validateTeacherLoad = (maxPerDay, maxPerWeek) => {
+  const day = parseInt(maxPerDay);
+  const week = parseInt(maxPerWeek);
+  if (isNaN(day) || day < 1 || day > 12)
+    return { valid: false, message: 'Max periods per day must be 1-12' };
+  if (isNaN(week) || week < 1 || week > 60)
+    return { valid: false, message: 'Max periods per week must be 1-60' };
+  if (day > week) return { valid: false, message: 'Daily max cannot exceed weekly max' };
+  return { valid: true };
+};
+
 // ─── Batch Validation ────────────────────────────────────────────────────────
 
 /**
  * Validate multiple fields at once.
  * Returns first error found or null if all valid.
  *
- * Usage:
- * const error = validateFields({
- *   phone: [phone, validatePhone],
- *   email: [email, validateEmail],
- * });
- * if (error) throw ApiError.badRequest(error.message);
+ * @example
+ *   const error = validateFields({
+ *     phone: [phone, validatePhone],
+ *     email: [email, validateEmail],
+ *   });
+ *   if (error) throw ApiError.badRequest(error.message);
  */
 export const validateFields = (fields) => {
-  for (const [field, [value, validatorFn]] of Object.entries(fields)) {
+  for (const [fieldName, [value, validatorFn]] of Object.entries(fields)) {
     const result = validatorFn(value);
     if (!result.valid) {
-      return { field, message: result.message };
+      return { field: fieldName, message: result.message };
     }
   }
   return null;
@@ -115,10 +151,10 @@ export const validateFields = (fields) => {
  */
 export const validateAllFields = (fields) => {
   const errors = [];
-  for (const [field, [value, validatorFn]] of Object.entries(fields)) {
+  for (const [fieldName, [value, validatorFn]] of Object.entries(fields)) {
     const result = validatorFn(value);
     if (!result.valid) {
-      errors.push({ field, message: result.message });
+      errors.push({ field: fieldName, message: result.message });
     }
   }
   return errors;

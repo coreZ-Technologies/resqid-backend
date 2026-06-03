@@ -27,7 +27,9 @@ export const findTokenForScan = async (tokenId) => {
           code: true,
           logoUrl: true,
           phone: true,
-          address: true,
+          street: true,
+          city: true,
+          state: true,
         },
       },
 
@@ -43,14 +45,19 @@ export const findTokenForScan = async (tokenId) => {
           isActive: true,
 
           parentLinks: {
+            where: { isActive: true, isEmergency: true },
             select: {
               parent: {
                 select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                  email: true,
                   devices: {
-                    where: { isActive: true },
+                    where: { isActive: true, expoPushToken: { not: null } },
                     take: 3,
                     orderBy: { lastSeenAt: 'desc' },
-                    select: { expoPushToken: true },
+                    select: { expoPushToken: true, platform: true },
                   },
                 },
               },
@@ -59,32 +66,6 @@ export const findTokenForScan = async (tokenId) => {
 
           cardVisibility: {
             select: { visibility: true },
-          },
-
-          emergencyProfile: {
-            select: {
-              bloodGroup: true,
-              allergies: true,
-              conditions: true,
-              medications: true,
-              doctorName: true,
-              doctorPhone: true,
-              notes: true,
-              isComplete: true,
-              contacts: {
-                where: { isActive: true },
-                orderBy: { priority: 'asc' },
-                select: {
-                  id: true,
-                  name: true,
-                  phone: true,
-                  relation: true,
-                  priority: true,
-                  callEnabled: true,
-                  whatsappEnabled: true,
-                },
-              },
-            },
           },
         },
       },
@@ -95,27 +76,32 @@ export const findTokenForScan = async (tokenId) => {
 /**
  * Find student with parent contact info for emergency notifications.
  */
-export const findStudentWithParent = async (studentId) => {
+export const findStudentWithParents = async (studentId) => {
   if (!studentId) return null;
 
   return prisma.student.findUnique({
     where: { id: studentId },
     select: {
+      id: true,
       firstName: true,
       lastName: true,
+      grade: true,
+      section: true,
+      photoUrl: true,
       parentLinks: {
-        take: 1,
+        where: { isActive: true, isEmergency: true },
         select: {
           parent: {
             select: {
-              email: true,
+              id: true,
               name: true,
+              email: true,
               phone: true,
               devices: {
-                where: { isActive: true },
-                take: 3,
+                where: { isActive: true, expoPushToken: { not: null } },
+                take: 5,
                 orderBy: { lastSeenAt: 'desc' },
-                select: { expoPushToken: true },
+                select: { expoPushToken: true, platform: true },
               },
             },
           },
@@ -126,9 +112,10 @@ export const findStudentWithParent = async (studentId) => {
 };
 
 /**
- * Bulk insert scan logs (called by scan worker).
+ * Bulk insert scan records (called by scan worker).
+ * 🔧 Uses 'Scan' model (check your Prisma schema for the exact model name).
  */
-export const bulkWriteScanLogs = async (entries) => {
+export const bulkWriteScans = async (entries) => {
   if (!Array.isArray(entries) || entries.length === 0) return;
 
   const valid = entries.filter((e) => e && e.tokenId && e.schoolId && e.result);
@@ -136,9 +123,52 @@ export const bulkWriteScanLogs = async (entries) => {
   if (valid.length === 0) return;
 
   try {
-    await prisma.scanLog.createMany({ data: valid, skipDuplicates: true });
+    // 🔧 If your model is 'Scan' use prisma.scan, if 'ScanLog' use prisma.scanLog
+    await prisma.scan.createMany({
+      data: valid.map((e) => ({
+        tokenId: e.tokenId,
+        schoolId: e.schoolId,
+        result: e.result,
+        scannedAt: e.scannedAt || new Date(),
+        ipAddress: e.ipAddress || null,
+        device: e.device || null,
+        latitude: e.latitude || null,
+        longitude: e.longitude || null,
+      })),
+      skipDuplicates: true,
+    });
   } catch (err) {
     logger.error({ err: err.message, count: valid.length }, '[scan.repo] Bulk write failed');
     throw err;
   }
+};
+
+/**
+ * Create a single scan record (fire-and-forget).
+ */
+export const createScanRecord = async (data) => {
+  try {
+    return await prisma.scan.create({ data }); // 🔧 or prisma.scanLog
+  } catch (err) {
+    logger.error({ err: err.message }, '[scan.repo] Failed to create scan record');
+    return null;
+  }
+};
+
+/**
+ * Check if token exists (lightweight check).
+ */
+export const tokenExists = async (tokenId) => {
+  const count = await prisma.token.count({ where: { id: tokenId } });
+  return count > 0;
+};
+
+/**
+ * Find token status only (lightweight).
+ */
+export const findTokenStatus = async (tokenId) => {
+  return prisma.token.findUnique({
+    where: { id: tokenId },
+    select: { id: true, status: true, expiresAt: true },
+  });
 };

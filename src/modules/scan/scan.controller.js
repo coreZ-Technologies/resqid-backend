@@ -26,14 +26,16 @@ export const scanQr = asyncHandler(async (req, res) => {
     .digest('hex')
     .slice(0, 16);
 
-  logger.info({ code: code?.slice(0, 8), ip }, '[scan] Incoming');
+  logger.info({ code: code?.slice(0, 8), ip }, '[scan] Incoming QR scan');
 
+  // Security headers
   res.set({
     'Cache-Control': 'no-store, no-cache, must-revalidate, private',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
   });
 
+  // Resolve the scan
   const result = await resolveScan({
     code,
     ip,
@@ -44,6 +46,7 @@ export const scanQr = asyncHandler(async (req, res) => {
     longitude: lng,
   });
 
+  // Map result state to HTTP status
   const statusMap = {
     ACTIVE: 200,
     ISSUED: 200,
@@ -51,7 +54,27 @@ export const scanQr = asyncHandler(async (req, res) => {
     UNREGISTERED: 200,
     EXPIRED: 200,
     REVOKED: 200,
+    VALID: 200,
     INVALID: 400,
+    ERROR: 500,
   };
-  return res.status(statusMap[result.state] || 200).json(result);
+
+  const statusCode = statusMap[result.state] || 200;
+
+  // Log successful scans
+  if (statusCode === 200) {
+    logger.info(
+      {
+        studentId: result.data?.student?.id,
+        studentName: result.data?.student
+          ? `${result.data.student.firstName} ${result.data.student.lastName}`
+          : null,
+        ip,
+        scanCount,
+      },
+      '[scan] QR scan successful'
+    );
+  }
+
+  return res.status(statusCode).json(result);
 });

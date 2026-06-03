@@ -31,7 +31,8 @@ export const getParentHome = async (parentId) => {
       email: true,
       phone: true,
       isActive: true,
-      notificationPref: {
+      notificationPrefs: {
+        // 🔧 Fixed: notificationPrefs (not notificationPref)
         select: {
           pushEnabled: true,
           smsEnabled: true,
@@ -63,11 +64,6 @@ export const getParentHome = async (parentId) => {
           gender: true,
           isActive: true,
           school: { select: { id: true, name: true, code: true, logoUrl: true } },
-          tokens: {
-            where: { status: 'ACTIVE' },
-            take: 1,
-            select: { id: true, status: true, rfidUid: true, qrCode: true, expiresAt: true },
-          },
           emergencyProfile: {
             select: {
               bloodGroup: true,
@@ -76,7 +72,6 @@ export const getParentHome = async (parentId) => {
               medications: true,
               doctorName: true,
               doctorPhone: true,
-              notes: true,
               isComplete: true,
             },
           },
@@ -86,7 +81,7 @@ export const getParentHome = async (parentId) => {
     },
   });
 
-  // Get scan stats for active student
+  // Get scan stats for first student
   const activeLink = studentLinks.find((l) => l.isPrimary) || studentLinks[0];
   const activeStudentId = activeLink?.student?.id;
 
@@ -94,12 +89,13 @@ export const getParentHome = async (parentId) => {
     scanCount = 0;
   if (activeStudentId) {
     const [scan, count] = await Promise.all([
-      prisma.scanLog.findFirst({
+      prisma.scan.findFirst({
+        // 🔧 Fixed: scan (not scanLog)
         where: { token: { studentId: activeStudentId } },
         orderBy: { scannedAt: 'desc' },
         select: { id: true, result: true, scannedAt: true, ipAddress: true },
       }),
-      prisma.scanLog.count({ where: { token: { studentId: activeStudentId } } }),
+      prisma.scan.count({ where: { token: { studentId: activeStudentId } } }), // 🔧 Fixed
     ]);
     lastScan = scan;
     scanCount = count;
@@ -115,7 +111,6 @@ export const getParentHome = async (parentId) => {
     relation: l.relation,
     isPrimary: l.isPrimary,
     school: l.student.school,
-    token: l.student.tokens[0] || null,
     emergency: l.student.emergencyProfile,
     visibility: l.student.cardVisibility?.visibility || 'PUBLIC',
   }));
@@ -127,7 +122,7 @@ export const getParentHome = async (parentId) => {
       email: parent.email,
       phone: parent.phone,
       isActive: parent.isActive,
-      notificationPrefs: parent.notificationPref || {},
+      notificationPrefs: parent.notificationPrefs || {},
     },
     students,
     lastScan,
@@ -177,7 +172,10 @@ export const lockStudentCard = (studentId) =>
 export const findCardByNumber = (cardNumber) =>
   prisma.token.findFirst({
     where: {
-      OR: [{ rfidUid: cardNumber }, { qrCode: cardNumber }],
+      OR: [
+        { rfidTagNumber: cardNumber }, // 🔧 Fixed
+        { scanCode: cardNumber }, // 🔧 Fixed
+      ],
       status: { in: ['UNREGISTERED', 'ISSUED', 'ACTIVE'] },
     },
     select: {
@@ -200,11 +198,18 @@ export const findCardByNumber = (cardNumber) =>
 // STUDENT MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const createStubStudent = (schoolId) =>
-  prisma.student.create({ data: { schoolId, isActive: true }, select: { id: true } });
+export const createStudent = (
+  schoolId // 🔧 Renamed from createStubStudent
+) =>
+  prisma.student.create({
+    data: { schoolId, firstName: 'New', lastName: 'Student', isActive: true },
+    select: { id: true },
+  });
 
-export const createEmergencyProfile = (studentId) =>
-  prisma.emergencyProfile.create({ data: { studentId, isComplete: false } });
+export const createEmergencyProfile = (
+  studentId,
+  schoolId // 🔧 Added schoolId
+) => prisma.emergencyProfile.create({ data: { studentId, schoolId, isComplete: false } });
 
 export const activateCard = (cardId, studentId) =>
   prisma.token.update({
@@ -216,27 +221,27 @@ export const findParentStudentLink = (parentId, studentId) =>
   prisma.parentStudent.findUnique({ where: { parentId_studentId: { parentId, studentId } } });
 
 export const createParentStudentLink = (parentId, studentId, isPrimary) =>
-  prisma.parentStudent.create({ data: { parentId, studentId, relation: 'PARENT', isPrimary } });
+  prisma.parentStudent.create({ data: { parentId, studentId, relation: 'GUARDIAN', isPrimary } }); // 🔧 Fixed enum
 
 export const countParentChildren = (parentId) =>
   prisma.parentStudent.count({ where: { parentId } });
-
-export const setActiveStudent = (parentId, studentId) =>
-  prisma.parentUser.update({ where: { id: parentId }, data: { activeStudentId: studentId } });
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DEVICE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const upsertParentDevice = (
-  parentId,
-  { token, platform, deviceName, deviceModel, osVersion }
-) =>
+export const upsertParentDevice = (parentId, { token, platform }) =>
   prisma.parentDevice.upsert({
     where: { deviceFingerprint: token },
-    create: { parentId, deviceFingerprint: token, platform, expoPushToken: token },
+    create: {
+      parentId,
+      deviceFingerprint: token,
+      platform: platform || 'unknown',
+      expoPushToken: token,
+      isActive: true,
+    },
     update: {
-      platform,
+      platform: platform || 'unknown',
       expoPushToken: token,
       isActive: true,
       lastSeenAt: new Date(),
@@ -248,7 +253,7 @@ export const upsertParentDevice = (
 // SCAN HISTORY
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const getScanHistory = async (parentId, { studentId, page, limit, filter }) => {
+export const getScanHistory = async (parentId, { studentId, page = 1, limit = 20, filter }) => {
   await verifyStudentOwnership(parentId, studentId);
 
   const where = { token: { studentId } };
@@ -256,14 +261,15 @@ export const getScanHistory = async (parentId, { studentId, page, limit, filter 
   if (filter === 'success') where.result = 'SUCCESS';
 
   const [rows, total] = await Promise.all([
-    prisma.scanLog.findMany({
+    prisma.scan.findMany({
+      // 🔧 Fixed
       where,
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { scannedAt: 'desc' },
       select: { id: true, result: true, scannedAt: true, ipAddress: true, city: true },
     }),
-    prisma.scanLog.count({ where }),
+    prisma.scan.count({ where }), // 🔧 Fixed
   ]);
 
   return { scans: rows, total, page, limit };

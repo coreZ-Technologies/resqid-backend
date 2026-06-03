@@ -14,18 +14,29 @@ export const createAnnouncement = ({
   authorId,
   title,
   body,
-  targetAll,
+  target,
   targetGrades,
-  channels,
+  targetSections,
+  priority,
 }) =>
   prisma.announcement.create({
-    data: { schoolId, authorId, title, body, targetAll, targetGrades, channels },
+    data: {
+      schoolId,
+      authorId,
+      title,
+      body,
+      target: target || 'ALL',
+      targetGrades: targetGrades || [],
+      targetSections: targetSections || [],
+      priority: priority || 'NORMAL',
+    },
     select: {
       id: true,
       title: true,
-      targetAll: true,
+      target: true,
       targetGrades: true,
-      channels: true,
+      targetSections: true,
+      priority: true,
       createdAt: true,
     },
   });
@@ -41,11 +52,14 @@ export const listAnnouncements = (schoolId, page = 1, limit = 20) => {
       select: {
         id: true,
         title: true,
-        targetAll: true,
+        target: true,
         targetGrades: true,
-        channels: true,
-        sentAt: true,
+        priority: true,
+        publishedAt: true,
         createdAt: true,
+        totalRecipients: true,
+        deliveredCount: true,
+        readCount: true,
         author: { select: { id: true, name: true } },
       },
     }),
@@ -60,26 +74,29 @@ export const findAnnouncement = (id, schoolId) =>
       id: true,
       title: true,
       body: true,
-      targetAll: true,
+      target: true,
       targetGrades: true,
-      channels: true,
-      sentAt: true,
+      targetSections: true,
+      priority: true,
+      publishedAt: true,
+      totalRecipients: true,
+      deliveredCount: true,
+      readCount: true,
       createdAt: true,
       author: { select: { id: true, name: true } },
     },
   });
 
+export const deleteAnnouncement = (id, schoolId) =>
+  prisma.announcement.deleteMany({ where: { id, schoolId } });
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// RECIPIENT LOOKUP (for worker)
+// RECIPIENT LOOKUP (for notification worker)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const findRecipients = async (schoolId, targetGrades, targetAll) => {
-  const where = {
-    schoolId,
-    isActive: true,
-  };
-
-  if (!targetAll && targetGrades.length > 0) {
+  const where = { schoolId, isActive: true };
+  if (!targetAll && targetGrades?.length > 0) {
     where.grade = { in: targetGrades };
   }
 
@@ -92,20 +109,13 @@ export const findRecipients = async (schoolId, targetGrades, targetAll) => {
       grade: true,
       section: true,
       parentLinks: {
+        where: { isActive: true },
         select: {
           parent: {
             select: {
               id: true,
               phone: true,
               email: true,
-              notificationPref: {
-                select: {
-                  pushEnabled: true,
-                  smsEnabled: true,
-                  emailEnabled: true,
-                  onAnnouncement: true,
-                },
-              },
               devices: {
                 where: { isActive: true, expoPushToken: { not: null } },
                 select: { expoPushToken: true },
@@ -117,7 +127,7 @@ export const findRecipients = async (schoolId, targetGrades, targetAll) => {
     },
   });
 
-  // Flatten: each parent gets unique entry with their children info
+  // Deduplicate parents
   const parentMap = new Map();
   for (const student of students) {
     for (const link of student.parentLinks) {
@@ -127,7 +137,6 @@ export const findRecipients = async (schoolId, targetGrades, targetAll) => {
           parentId: parent.id,
           phone: parent.phone,
           email: parent.email,
-          prefs: parent.notificationPref || {},
           expoTokens: parent.devices.map((d) => d.expoPushToken),
           students: [],
         });
@@ -148,14 +157,33 @@ export const findRecipients = async (schoolId, targetGrades, targetAll) => {
 // DIRECT MESSAGES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export const createMessage = ({ schoolId, senderId, parentId, studentId, body }) =>
+export const createMessage = ({ schoolId, senderId, parentId, studentId, subject, body, type }) =>
   prisma.message.create({
-    data: { schoolId, senderId, parentId, studentId, body },
-    select: { id: true, parentId: true, studentId: true, body: true, createdAt: true },
+    data: {
+      schoolId,
+      senderId,
+      parentId,
+      studentId,
+      subject,
+      body,
+      type: type || 'GENERAL',
+      direction: 'SCHOOL_TO_PARENT',
+    },
+    select: {
+      id: true,
+      parentId: true,
+      studentId: true,
+      subject: true,
+      body: true,
+      createdAt: true,
+    },
   });
 
-export const listMessages = (parentId, page = 1, limit = 20, studentId) => {
-  const where = { parentId, ...(studentId && { studentId }) };
+export const listMessages = (parentId, page = 1, limit = 20, studentId = null) => {
+  const where = {
+    parentId,
+    ...(studentId && { studentId }),
+  };
   return Promise.all([
     prisma.message.findMany({
       where,
@@ -164,7 +192,9 @@ export const listMessages = (parentId, page = 1, limit = 20, studentId) => {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
+        subject: true,
         body: true,
+        type: true,
         isRead: true,
         createdAt: true,
         student: { select: { id: true, firstName: true, lastName: true } },
@@ -175,8 +205,91 @@ export const listMessages = (parentId, page = 1, limit = 20, studentId) => {
   ]);
 };
 
+export const findThread = (threadId) =>
+  prisma.message.findMany({
+    where: { threadId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      subject: true,
+      body: true,
+      direction: true,
+      isRead: true,
+      createdAt: true,
+      sender: { select: { id: true, name: true } },
+    },
+  });
+
 export const markMessageRead = (id, parentId) =>
   prisma.message.updateMany({
     where: { id, parentId, isRead: false },
     data: { isRead: true, readAt: new Date() },
+  });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MESSAGE TEMPLATES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const createTemplate = ({ schoolId, createdById, name, type, subject, body, variables }) =>
+  prisma.messageTemplate.create({
+    data: { schoolId, createdById, name, type, subject, body, variables: variables || [] },
+  });
+
+export const listTemplates = (schoolId) =>
+  prisma.messageTemplate.findMany({
+    where: { schoolId, isActive: true },
+    orderBy: { name: 'asc' },
+  });
+
+export const deleteTemplate = (id, schoolId) =>
+  prisma.messageTemplate.deleteMany({ where: { id, schoolId } });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CAMPAIGNS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const createCampaign = ({
+  schoolId,
+  createdById,
+  name,
+  type,
+  subject,
+  body,
+  target,
+  targetGrades,
+}) =>
+  prisma.communicationCampaign.create({
+    data: {
+      schoolId,
+      createdById,
+      name,
+      type: type || 'GENERAL',
+      subject,
+      body,
+      target: target || 'ALL',
+      targetGrades: targetGrades || [],
+      targetSections: [],
+      totalRecipients: 0,
+    },
+  });
+
+export const listCampaigns = (schoolId) =>
+  prisma.communicationCampaign.findMany({
+    where: { schoolId },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      status: true,
+      totalRecipients: true,
+      sentCount: true,
+      deliveredCount: true,
+      createdAt: true,
+    },
+  });
+
+export const findCampaign = (id, schoolId) =>
+  prisma.communicationCampaign.findFirst({
+    where: { id, schoolId },
   });
