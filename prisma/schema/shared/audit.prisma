@@ -49,47 +49,47 @@ enum AuditEntity {
 // ─── Audit Log Model ──────────────────────────────────────────────────────────
 
 model AuditLog {
-  id         String        @id @default(cuid())
+  id String @id @default(cuid())
 
   // ─── What happened ───
-  action     String        // "TIMETABLE_GENERATED", "TEACHER_SUBSTITUTED", "CRISIS_RESOLVED"
-  severity   AuditSeverity @default(INFO)
-  description String?       // Human-readable summary
+  action      String // "TIMETABLE_GENERATED", "TEACHER_SUBSTITUTED", "CRISIS_RESOLVED"
+  severity    AuditSeverity @default(INFO)
+  description String? // Human-readable summary
 
   // ─── Who did it ───
-  actorId    String?
-  actorType  AuditActorType?
-  actorName  String?        // Denormalized for quick display
+  actorId   String?
+  actorType AuditActorType?
+  actorName String? // Denormalized for quick display
 
   // ─── What was affected ───
-  entity     AuditEntity?
-  entityId   String?
-  entityLabel String?       // "Timetable 2024-25 First Term"
+  entity      AuditEntity?
+  entityId    String?
+  entityLabel String? // "Timetable 2024-25 First Term"
 
   // ─── Changes made ───
-  oldValue   Json?          // Before state
-  newValue   Json?          // After state
-  changes    Json?          // Diff summary: [{field, oldValue, newValue}]
+  oldValue Json? // Before state
+  newValue Json? // After state
+  changes  Json? // Diff summary: [{field, oldValue, newValue}]
 
   // ─── Context ───
-  schoolId   String?
-  school     School?        @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
 
   // ─── Technical details ───
-  ipAddress  String?
-  userAgent  String?
-  device     String?
-  requestId  String?        // For tracing across services
-  sessionId  String?
+  ipAddress String?
+  userAgent String?
+  device    String?
+  requestId String? // For tracing across services
+  sessionId String?
 
   // ─── Extended metadata ───
-  metadata   Json?          // Any additional context
+  metadata Json? // Any additional context
 
   // ─── Status ───
-  isSensitive Boolean @default(false)  // Contains PII or confidential data
-  retentionUntil DateTime?             // Auto-delete after this date
+  isSensitive    Boolean   @default(false) // Contains PII or confidential data
+  retentionUntil DateTime? // Auto-delete after this date
 
-  createdAt  DateTime      @default(now())
+  createdAt DateTime @default(now())
 
   @@index([schoolId, createdAt])
   @@index([actorId, actorType, createdAt])
@@ -104,37 +104,37 @@ model AuditLog {
 // ─── Audit Log Archive (for old records) ──────────────────────────────────────
 
 model AuditLogArchive {
-  id         String        @id @default(cuid())
+  id String @id @default(cuid())
 
-  action     String
-  severity   AuditSeverity
+  action      String
+  severity    AuditSeverity
   description String?
 
-  actorId    String?
-  actorType  AuditActorType?
-  actorName  String?
+  actorId   String?
+  actorType AuditActorType?
+  actorName String?
 
-  entity     AuditEntity?
-  entityId   String?
+  entity      AuditEntity?
+  entityId    String?
   entityLabel String?
 
-  oldValue   Json?
-  newValue   Json?
-  changes    Json?
+  oldValue Json?
+  newValue Json?
+  changes  Json?
 
-  schoolId   String?
+  schoolId String?
 
-  ipAddress  String?
-  userAgent  String?
-  device     String?
-  requestId  String?
+  ipAddress String?
+  userAgent String?
+  device    String?
+  requestId String?
 
-  metadata   Json?
+  metadata Json?
 
   isSensitive Boolean
 
-  originalCreatedAt DateTime   // When the original log was created
-  archivedAt        DateTime   @default(now())
+  originalCreatedAt DateTime // When the original log was created
+  archivedAt        DateTime @default(now())
 
   @@index([schoolId, originalCreatedAt])
   @@index([entity, entityId])

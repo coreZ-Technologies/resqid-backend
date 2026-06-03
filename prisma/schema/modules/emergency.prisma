@@ -86,40 +86,40 @@ enum DrillStatus {
 // ─── Emergency Profile (One per student) ──────────────────────────────────────
 
 model EmergencyProfile {
-  id         String   @id @default(cuid())
-  studentId  String   @unique
-  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  schoolId   String
-  school     School   @relation(fields: [schoolId], references: [id])
+  id        String  @id @default(cuid())
+  studentId String  @unique
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId  String
+  school    School  @relation(fields: [schoolId], references: [id])
 
   // ─── Medical Information (Quick Reference) ───
   bloodGroup   BloodGroup @default(UNKNOWN)
-  allergies    String[]   // ["Peanuts", "Dust Mites", "Penicillin"]
-  medications  String[]   // ["Inhaler (Salbutamol)", "EpiPen"]
-  conditions   String[]   // ["Asthma", "Diabetes Type 1", "Epilepsy"]
-  medicalNotes String?    // Additional medical context
-  
+  allergies    String[] // ["Peanuts", "Dust Mites", "Penicillin"]
+  medications  String[] // ["Inhaler (Salbutamol)", "EpiPen"]
+  conditions   String[] // ["Asthma", "Diabetes Type 1", "Epilepsy"]
+  medicalNotes String? // Additional medical context
+
   // ─── Doctor Information ───
   doctorName           String?
   doctorPhone          String?
   doctorSpecialization String?
   doctorClinic         String?
   doctorAddress        String?
-  
+
   // ─── Hospital Preference ───
-  hospitalName     String?
-  hospitalPhone    String?
-  hospitalAddress  String?
-  
+  hospitalName    String?
+  hospitalPhone   String?
+  hospitalAddress String?
+
   // ─── Insurance Information ───
   insuranceProvider     String?
   insurancePolicyNumber String?
   insuranceValidUntil   DateTime?
-  
+
   // ─── Emergency Instructions ───
-  emergencyInstructions String?  // "In case of asthma attack, use blue inhaler. If no improvement in 5 mins, call ambulance."
-  specialNeeds          String?  // "Uses hearing aid", "Wheelchair user", "Non-verbal"
-  
+  emergencyInstructions String? // "In case of asthma attack, use blue inhaler. If no improvement in 5 mins, call ambulance."
+  specialNeeds          String? // "Uses hearing aid", "Wheelchair user", "Non-verbal"
+
   // ─── Visibility Controls (what shows on QR scan) ───
   showBloodGroup   Boolean @default(true)
   showAllergies    Boolean @default(true)
@@ -130,22 +130,22 @@ model EmergencyProfile {
   showInstructions Boolean @default(true)
   showInsurance    Boolean @default(false)
   showSpecialNeeds Boolean @default(true)
-  
+
   // ─── Profile Completion ───
-  isComplete  Boolean @default(false)
+  isComplete  Boolean   @default(false)
   completedAt DateTime?
-  
+
   // ─── Last Verification ───
   lastVerifiedAt DateTime?
-  verifiedBy     String?     // SchoolUser ID who verified
-  
+  verifiedBy     String? // SchoolUser ID who verified
+
   // ─── Timestamps ───
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // ─── Relations ───
-  contacts    EmergencyContact[]
-  incidents   EmergencyIncident[]
+  contacts  EmergencyContact[]
+  incidents EmergencyIncident[]
 
   @@index([schoolId])
   @@index([bloodGroup])
@@ -156,44 +156,44 @@ model EmergencyProfile {
 // ─── Emergency Contact Model ──────────────────────────────────────────────────
 
 model EmergencyContact {
-  id         String              @id @default(cuid())
-  profileId  String
-  profile    EmergencyProfile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  
+  id        String           @id @default(cuid())
+  profileId String
+  profile   EmergencyProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
   // ─── Contact Details ───
-  name            String
-  phone           String
-  alternatePhone  String?
-  email           String?
-  relation        EmergencyContactRelation
-  address         String?
-  photoUrl        String?    // For quick identification
-  
+  name           String
+  phone          String
+  alternatePhone String?
+  email          String?
+  relation       EmergencyContactRelation
+  address        String?
+  photoUrl       String? // For quick identification
+
   // ─── Priority & Roles ───
-  isPrimary       Boolean   @default(false)
-  priority        Int       @default(0)      // 0 = highest priority
-  isLegalGuardian Boolean   @default(false)  // Legal guardian status
-  
+  isPrimary       Boolean @default(false)
+  priority        Int     @default(0) // 0 = highest priority
+  isLegalGuardian Boolean @default(false) // Legal guardian status
+
   // ─── Communication Preferences ───
-  isActive        Boolean   @default(true)
-  callEnabled     Boolean   @default(true)
-  whatsappEnabled Boolean   @default(false)
-  smsEnabled      Boolean   @default(true)
-  
+  isActive        Boolean @default(true)
+  callEnabled     Boolean @default(true)
+  whatsappEnabled Boolean @default(false)
+  smsEnabled      Boolean @default(true)
+
   // ─── Availability ───
-  available24x7   Boolean   @default(false)
-  availableFrom   String?   // "09:00" (if not 24x7)
-  availableTo     String?   // "18:00"
-  timezone        String?   // "Asia/Kolkata"
-  
+  available24x7 Boolean @default(false)
+  availableFrom String? // "09:00" (if not 24x7)
+  availableTo   String? // "18:00"
+  timezone      String? // "Asia/Kolkata"
+
   // ─── Relationship to Student ───
-  canPickup       Boolean   @default(false)  // Authorized for pickup
-  pickupPassword  String?   // Optional password for pickup
-  notes           String?   // "Prefers calls over messages", "Works night shifts"
-  
+  canPickup      Boolean @default(false) // Authorized for pickup
+  pickupPassword String? // Optional password for pickup
+  notes          String? // "Prefers calls over messages", "Works night shifts"
+
   // ─── Timestamps ───
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([profileId])
   @@index([priority])
@@ -205,62 +205,62 @@ model EmergencyContact {
 // ─── Emergency Incident Log ───────────────────────────────────────────────────
 
 model EmergencyIncident {
-  id          String    @id @default(cuid())
-  studentId   String
-  student     Student   @relation(fields: [studentId], references: [id])
-  profileId   String?
-  profile     EmergencyProfile? @relation(fields: [profileId], references: [id])
-  schoolId    String
-  school      School    @relation(fields: [schoolId], references: [id])
-  
+  id        String            @id @default(cuid())
+  studentId String
+  student   Student           @relation(fields: [studentId], references: [id])
+  profileId String?
+  profile   EmergencyProfile? @relation(fields: [profileId], references: [id])
+  schoolId  String
+  school    School            @relation(fields: [schoolId], references: [id])
+
   // ─── Incident Details ───
   type        IncidentType
   severity    EmergencySeverity
-  description String    // What happened
-  location    String?   // "Playground", "Classroom 10A", "School Bus"
-  
+  description String // What happened
+  location    String? // "Playground", "Classroom 10A", "School Bus"
+
   // ─── Timing ───
-  occurredAt  DateTime
-  reportedAt  DateTime  @default(now())
-  resolvedAt  DateTime?
-  responseTimeMinutes Int?  // How quickly staff responded
-  
+  occurredAt          DateTime
+  reportedAt          DateTime  @default(now())
+  resolvedAt          DateTime?
+  responseTimeMinutes Int? // How quickly staff responded
+
   // ─── Actions Taken ───
-  actionTaken     String    // "Administered inhaler", "Called parents", "Rushed to hospital"
-  medicationGiven String?   // "Inhaler 2 puffs", "EpiPen administered"
-  
+  actionTaken     String // "Administered inhaler", "Called parents", "Rushed to hospital"
+  medicationGiven String? // "Inhaler 2 puffs", "EpiPen administered"
+
   // ─── People Involved ───
-  reportedById   String?
-  reportedBy     SchoolUser? @relation(fields: [reportedById], references: [id])
-  handledById    String?
-  handledBy      SchoolUser? @relation(fields: [handledById], references: [id])
-  
+  reportedById String?
+  reportedBy   SchoolUser? @relation("IncidentReporter", fields: [reportedById], references: [id])
+  handledById  String?
+  handledBy    SchoolUser? @relation("IncidentHandler", fields: [handledById], references: [id])
+
   // ─── External Help ───
-  ambulanceCalled Boolean  @default(false)
+  ambulanceCalled Boolean @default(false)
   hospitalName    String?
   hospitalVisitId String?
-  
+
   // ─── Parent Notification ───
-  parentNotified      Boolean @default(false)
-  parentNotifiedAt    DateTime?
-  parentArrived       Boolean @default(false)
-  parentArrivedAt     DateTime?
-  contactedContactId  String?  // Which emergency contact was reached
-  
+  parentNotified     Boolean   @default(false)
+  parentNotifiedAt   DateTime?
+  parentArrived      Boolean   @default(false)
+  parentArrivedAt    DateTime?
+  contactedContactId String? // Which emergency contact was reached
+
   // ─── Follow-up ───
-  followUpRequired Boolean @default(false)
+  followUpRequired Boolean   @default(false)
   followUpNotes    String?
   followUpDate     DateTime?
-  
+
   // ─── Status ───
-  status      IncidentStatus @default(OPEN)
-  
+  status IncidentStatus @default(OPEN)
+
   // ─── Attachments ───
-  attachments String[]  // URLs to photos, reports
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  attachments String[] // URLs to photos, reports
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([studentId])
   @@index([schoolId])
   @@index([severity])
@@ -273,41 +273,41 @@ model EmergencyIncident {
 // ─── Emergency Drill Log ──────────────────────────────────────────────────────
 
 model EmergencyDrill {
-  id          String    @id @default(cuid())
-  schoolId    String
-  school      School    @relation(fields: [schoolId], references: [id])
-  
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+
   // ─── Drill Details ───
   type        DrillType
   description String?
-  
+
   // ─── Timing ───
-  scheduledFor DateTime?
-  conductedAt  DateTime?
-  completedAt  DateTime?
+  scheduledFor    DateTime?
+  conductedAt     DateTime?
+  completedAt     DateTime?
   durationMinutes Int?
-  
+
   // ─── Participation ───
-  totalStudents   Int
-  totalStaff      Int
-  evacuationTime  Int?     // Seconds
-  successRate     Float?   // Percentage (0-100)
-  
+  totalStudents  Int
+  totalStaff     Int
+  evacuationTime Int? // Seconds
+  successRate    Float? // Percentage (0-100)
+
   // ─── Conducted By ───
   conductedById String?
   conductedBy   SchoolUser? @relation(fields: [conductedById], references: [id])
-  
+
   // ─── Notes ───
-  observations   String?  // What went well
-  improvements   String?  // What needs improvement
-  incidents      String?  // Any incidents during drill
-  
+  observations String? // What went well
+  improvements String? // What needs improvement
+  incidents    String? // Any incidents during drill
+
   // ─── Status ───
-  status      DrillStatus @default(SCHEDULED)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  status DrillStatus @default(SCHEDULED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([schoolId])
   @@index([type])
   @@index([conductedAt])
@@ -318,21 +318,21 @@ model EmergencyDrill {
 // ─── Emergency Contacts Quick-Access Log ──────────────────────────────────────
 
 model EmergencyAccessLog {
-  id          String    @id @default(cuid())
-  studentId   String
-  student     Student   @relation(fields: [studentId], references: [id])
-  schoolId    String
-  school      School    @relation(fields: [schoolId], references: [id])
-  
+  id        String  @id @default(cuid())
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+  schoolId  String
+  school    School  @relation(fields: [schoolId], references: [id])
+
   // ─── Who accessed ───
-  accessedById   String?
-  accessedBy     SchoolUser? @relation(fields: [accessedById], references: [id])
-  
+  accessedById String?
+  accessedBy   SchoolUser? @relation(fields: [accessedById], references: [id])
+
   // ─── How accessed ───
-  method      String    // "QR_SCAN", "APP", "DASHBOARD", "API"
-  deviceId    String?
-  ipAddress   String?
-  
+  method    String // "QR_SCAN", "APP", "DASHBOARD", "API"
+  deviceId  String?
+  ipAddress String?
+
   // ─── What was viewed ───
   viewedBloodGroup  Boolean @default(false)
   viewedAllergies   Boolean @default(false)
@@ -340,14 +340,14 @@ model EmergencyAccessLog {
   viewedConditions  Boolean @default(false)
   viewedMedications Boolean @default(false)
   calledContact     Boolean @default(false)
-  contactedId       String?  // Which contact was called
-  
+  contactedId       String? // Which contact was called
+
   // ─── Context ───
-  reason      String?   // Why was it accessed
-  incidentId  String?   // Linked to an incident
-  
-  accessedAt  DateTime  @default(now())
-  
+  reason     String? // Why was it accessed
+  incidentId String? // Linked to an incident
+
+  accessedAt DateTime @default(now())
+
   @@index([studentId])
   @@index([schoolId])
   @@index([accessedAt])
