@@ -50,67 +50,67 @@ enum NotificationCategory {
 // ─── Notification Model ───────────────────────────────────────────────────────
 
 model Notification {
-  id           String              @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Recipient (at least one required: parent, staff, or student)
   parentId     String?
-  parent       ParentUser?         @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  parent       ParentUser? @relation(fields: [parentId], references: [id], onDelete: Cascade)
   schoolUserId String?
-  schoolUser   SchoolUser?         @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
+  schoolUser   SchoolUser? @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
   studentId    String?
-  student      Student?            @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  
+  student      Student?    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
   // School context
-  schoolId     String?
-  school       School?             @relation(fields: [schoolId], references: [id], onDelete: SetNull)
-  
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+
   // Content
-  title        String
-  body         String
-  shortBody    String?             // For SMS/push notification preview
-  category     NotificationCategory
-  priority     NotificationPriority @default(NORMAL)
-  
+  title     String
+  body      String
+  shortBody String? // For SMS/push notification preview
+  category  NotificationCategory
+  priority  NotificationPriority @default(NORMAL)
+
   // Action (deep link or action button)
-  actionUrl    String?
-  actionLabel  String?
-  
+  actionUrl   String?
+  actionLabel String?
+
   // Rich Content
-  imageUrl     String?
-  data         Json?
-  
+  imageUrl String?
+  data     Json?
+
   // Reference (link to related entity)
-  referenceId    String?
-  referenceType  String?
-  
+  referenceId   String?
+  referenceType String?
+
   // Channel & Status
-  channel      NotificationChannel
-  status       NotificationStatus  @default(PENDING)
-  failReason   String?
-  retryCount   Int                 @default(0)
-  maxRetries   Int                 @default(3)
-  
+  channel    NotificationChannel
+  status     NotificationStatus  @default(PENDING)
+  failReason String?
+  retryCount Int                 @default(0)
+  maxRetries Int                 @default(3)
+
   // External Tracking
-  externalId        String?
-  providerResponse  Json?
-  
+  externalId       String?
+  providerResponse Json?
+
   // Grouping
-  groupId      String?
-  isRead       Boolean             @default(false)
-  isArchived   Boolean             @default(false)
-  
+  groupId    String?
+  isRead     Boolean @default(false)
+  isArchived Boolean @default(false)
+
   // Scheduling
   scheduledFor DateTime?
   sentAt       DateTime?
   deliveredAt  DateTime?
   readAt       DateTime?
-  
+
   // Expiry
-  expiresAt    DateTime?
-  
+  expiresAt DateTime?
+
   // Timestamps
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([parentId])
   @@index([schoolUserId])
@@ -127,85 +127,85 @@ model Notification {
 // ─── Notification Preference Model ────────────────────────────────────────────
 
 model NotificationPreference {
-  id           String       @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Whose preferences
-  parentId     String?      @unique
-  parent       ParentUser?  @relation(fields: [parentId], references: [id], onDelete: Cascade)
-  schoolUserId String?      @unique
-  schoolUser   SchoolUser?  @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
-  
+  parentId     String?     @unique
+  parent       ParentUser? @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  schoolUserId String?     @unique
+  schoolUser   SchoolUser? @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
+
   // Channel Preferences
-  smsEnabled      Boolean   @default(true)
-  emailEnabled    Boolean   @default(false)
-  pushEnabled     Boolean   @default(true)
-  inAppEnabled    Boolean   @default(true)
-  whatsappEnabled Boolean   @default(false)
-  
+  smsEnabled      Boolean @default(true)
+  emailEnabled    Boolean @default(false)
+  pushEnabled     Boolean @default(true)
+  inAppEnabled    Boolean @default(true)
+  whatsappEnabled Boolean @default(false)
+
   // Category Preferences
-  onScan          Boolean   @default(true)
-  onAttendance    Boolean   @default(true)
-  onAbsent        Boolean   @default(true)
-  onLate          Boolean   @default(true)
-  onFee           Boolean   @default(true)
-  onExam          Boolean   @default(true)
-  onEvent         Boolean   @default(true)
-  onEmergency     Boolean   @default(true)
-  onAnnouncement  Boolean   @default(true)
-  onHomework      Boolean   @default(false)
-  onReportCard    Boolean   @default(true)
-  
+  onScan         Boolean @default(true)
+  onAttendance   Boolean @default(true)
+  onAbsent       Boolean @default(true)
+  onLate         Boolean @default(true)
+  onFee          Boolean @default(true)
+  onExam         Boolean @default(true)
+  onEvent        Boolean @default(true)
+  onEmergency    Boolean @default(true)
+  onAnnouncement Boolean @default(true)
+  onHomework     Boolean @default(false)
+  onReportCard   Boolean @default(true)
+
   // Quiet Hours
-  quietHoursEnabled   Boolean   @default(false)
-  quietHoursStart     String?
-  quietHoursEnd       String?
-  quietHoursTimezone  String?
-  
+  quietHoursEnabled  Boolean @default(false)
+  quietHoursStart    String?
+  quietHoursEnd      String?
+  quietHoursTimezone String?
+
   // Language
-  language    String     @default("en")
-  
+  language String @default("en")
+
   // Per-Student Override
   studentOverrides Json?
-  
+
   // Frequency Control
-  maxPerHour   Int?
-  digestMode   Boolean   @default(false)
-  
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  
+  maxPerHour Int?
+  digestMode Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("notification_preferences")
 }
 
 // ─── Notification Template Model ──────────────────────────────────────────────
 
 model NotificationTemplate {
-  id          String              @id @default(cuid())
-  schoolId    String?
-  school      School?             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
+  id       String  @id @default(cuid())
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
   // Template Details
-  name        String
-  category    NotificationCategory
-  isSystem    Boolean             @default(false)
-  
+  name     String
+  category NotificationCategory
+  isSystem Boolean              @default(false)
+
   // Content Templates
-  titleTemplate   String
-  bodyTemplate    String
-  smsTemplate     String?
-  
+  titleTemplate String
+  bodyTemplate  String
+  smsTemplate   String?
+
   // Default Channel
-  defaultChannel  NotificationChannel @default(PUSH)
-  
+  defaultChannel NotificationChannel @default(PUSH)
+
   // Variables
-  variables       String[]
-  
+  variables String[]
+
   // Status
-  isActive    Boolean             @default(true)
-  
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([schoolId])
   @@index([category])
   @@index([isSystem])
@@ -215,32 +215,32 @@ model NotificationTemplate {
 // ─── Notification Batch ───────────────────────────────────────────────────────
 
 model NotificationBatch {
-  id          String    @id @default(cuid())
-  schoolId    String
-  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
   // Batch Details
-  name        String
-  templateId  String?
-  category    NotificationCategory?
-  
+  name       String
+  templateId String?
+  category   NotificationCategory?
+
   // Stats
-  totalCount      Int   @default(0)
-  sentCount       Int   @default(0)
-  deliveredCount  Int   @default(0)
-  readCount       Int   @default(0)
-  failedCount     Int   @default(0)
-  
+  totalCount     Int @default(0)
+  sentCount      Int @default(0)
+  deliveredCount Int @default(0)
+  readCount      Int @default(0)
+  failedCount    Int @default(0)
+
   // Status
-  status      String    @default("PENDING")
-  
+  status String @default("PENDING")
+
   // Created by
   createdById String?
   createdBy   SchoolUser? @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([schoolId])
   @@index([status])
   @@index([createdAt])
@@ -250,27 +250,27 @@ model NotificationBatch {
 // ─── Notification Device Token ────────────────────────────────────────────────
 
 model NotificationDeviceToken {
-  id          String    @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Owner (parent or staff)
-  parentId    String?
-  parent      ParentUser? @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  parentId     String?
+  parent       ParentUser? @relation(fields: [parentId], references: [id], onDelete: Cascade)
   schoolUserId String?
-  schoolUser  SchoolUser? @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
-  
+  schoolUser   SchoolUser? @relation(fields: [schoolUserId], references: [id], onDelete: Cascade)
+
   // Device Info
-  token       String    @unique
-  platform    String    // "ios", "android", "web"
+  token       String  @unique
+  platform    String // "ios", "android", "web"
   deviceModel String?
   appVersion  String?
-  
+
   // Status
-  isActive    Boolean   @default(true)
-  lastUsedAt  DateTime?
-  
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([parentId, token])
   @@unique([schoolUserId, token])
   @@index([token])

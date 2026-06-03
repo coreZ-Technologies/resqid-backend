@@ -51,9 +51,9 @@ enum DocumentType {
 // ─── Student Model ────────────────────────────────────────────────────────────
 
 model Student {
-  id         String   @id @default(cuid())
-  schoolId   String
-  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   // ─── Personal Information ───
   firstName   String
@@ -64,18 +64,18 @@ model Student {
   photoUrl    String?
 
   // ─── Academic Information ───
-  grade       String?
-  section     String?
-  rollNumber  String?
-  studentId   String?       // School-issued student ID (e.g., "SCT-2024-001")
-  classGroupId String?      // Link to timetable class group
-  classGroup   ClassGroup?  @relation(fields: [classGroupId], references: [id])
+  grade        String?
+  section      String?
+  rollNumber   String?
+  studentId    String? // School-issued student ID (e.g., "SCT-2024-001")
+  classGroupId String? // Link to timetable class group
+  classGroup   ClassGroup? @relation(fields: [classGroupId], references: [id])
 
   // ─── Medical Quick Info (for emergencies) ───
-  allergies   String[]
-  conditions  String[]
-  medications String[]
-  medicalNotes String?      // Additional medical instructions
+  allergies    String[]
+  conditions   String[]
+  medications  String[]
+  medicalNotes String? // Additional medical instructions
 
   // ─── Status ───
   status      StudentStatus @default(ACTIVE)
@@ -88,16 +88,16 @@ model Student {
   cardVisibility   CardVisibility? @relation(fields: [cardVisibilityId], references: [id])
 
   // ─── Transport ───
-  transportRoute   String?   // Bus route number
-  transportStop    String?   // Pickup/Drop point
-  rfidTagNumber    String?   @unique  // For RFID-based attendance
+  transportRoute String? // Bus route number
+  transportStop  String? // Pickup/Drop point
+  rfidTagNumber  String? @unique // For RFID-based attendance
 
   // ─── Metadata ───
-  metadata    Json?
+  metadata Json?
 
   // ─── Timestamps ───
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // ─── Relations ───
   tokens              Token[]
@@ -108,6 +108,10 @@ model Student {
   parentLinks         ParentStudent[]
   documents           StudentDocument[]
   notifications       Notification[]
+  scanAnomalies       ScanAnomaly[]
+  messages            Message[]
+  emergencyIncidents  EmergencyIncident[]
+  emergencyAccessLogs EmergencyAccessLog[]
 
   @@index([schoolId])
   @@index([schoolId, grade, section])
@@ -122,9 +126,9 @@ model Student {
 // ─── Card Visibility Configuration ────────────────────────────────────────────
 
 model CardVisibility {
-  id          String          @id @default(cuid())
-  visibility  VisibilityLevel @default(PUBLIC)
-  
+  id         String          @id @default(cuid())
+  visibility VisibilityLevel @default(PUBLIC)
+
   // ─── Granular controls for MINIMAL mode ───
   showName              Boolean @default(true)
   showBloodGroup        Boolean @default(true)
@@ -138,12 +142,12 @@ model CardVisibility {
   showGrade             Boolean @default(true)
 
   // ─── Optional expiration ───
-  expiresAt   DateTime?
+  expiresAt DateTime?
 
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  students    Student[]
+  students Student[]
 
   @@map("card_visibility")
 }
@@ -151,23 +155,23 @@ model CardVisibility {
 // ─── Student Document Model ────────────────────────────────────────────────────
 
 model StudentDocument {
-  id          String       @id @default(cuid())
-  studentId   String
-  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  name        String       // Display name: "Birth Certificate"
-  type        DocumentType
-  fileType    String       // "PDF", "JPG", "PNG"
-  fileSize    Int          // Size in bytes
-  fileUrl     String       // Storage URL
+  name     String // Display name: "Birth Certificate"
+  type     DocumentType
+  fileType String // "PDF", "JPG", "PNG"
+  fileSize Int // Size in bytes
+  fileUrl  String // Storage URL
 
-  isVerified  Boolean      @default(false)
-  verifiedBy  String?      // Admin/Staff ID
-  verifiedAt  DateTime?
+  isVerified Boolean   @default(false)
+  verifiedBy String? // Admin/Staff ID
+  verifiedAt DateTime?
 
-  uploadedAt  DateTime     @default(now())
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  uploadedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([studentId])
   @@index([type])
