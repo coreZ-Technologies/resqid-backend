@@ -1,10 +1,13 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 /**
  * Storage Provider Interface
  * Defines the contract for all object-storage adapter implementations.
  */
 export class StorageProvider {
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 // infrastructure/storage/storage.provider.js — RESQID
 //
 // Abstract storage provider interface.
@@ -18,7 +21,10 @@ export class StorageProvider {
    * @param {Object} [options] - { contentType, metadata, cacheControl }
    * @returns {Promise<{success: boolean, key: string, location: string}>}
    */
+<<<<<<< HEAD
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
   async upload(file, key, options = {}) {
     throw new Error('StorageProvider.upload() not implemented');
   }
@@ -101,7 +107,11 @@ export class StorageProvider {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 export default StorageProvider;
 =======
 export default StorageProvider;
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+export default StorageProvider;
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

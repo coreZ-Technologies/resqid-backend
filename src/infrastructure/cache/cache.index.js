@@ -117,11 +117,17 @@ export function getCache() {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 /**
  * Gracefully shutdown the cache.
  */
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+/**
+ * Gracefully shutdown the cache.
+ */
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 export async function shutdownCache() {
   if (cacheInstance) {
     await cacheInstance.disconnect();
@@ -131,8 +137,11 @@ export async function shutdownCache() {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 export { CacheProvider, RedisAdapter };
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 /**
  * Check if cache is initialized.
  */
@@ -193,4 +202,7 @@ export async function invalidateTimetableCache(schoolId) {
 }
 
 export { CacheProvider, RedisAdapter };
+<<<<<<< HEAD
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

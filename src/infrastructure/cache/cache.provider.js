@@ -178,7 +178,11 @@ export class CacheProvider {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 export default CacheProvider;
 =======
 export default CacheProvider;
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+export default CacheProvider;
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

@@ -2,6 +2,7 @@
 import { ApiResponse } from '#shared/response/ApiResponse.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { ParentService } from './parent.service.js';
 
 const service = new ParentService();
@@ -102,6 +103,8 @@ export const sendMessageToParent = asyncHandler(async (req, res) => {
   return ApiResponse.created(res, message, 'Message sent successfully');
 });
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 import * as service from './parent.service.js';
 import { getStorage } from '#infrastructure/storage/storage.index.js';
 import { middlewareRedis as redis } from '#config/redis.js';
@@ -219,4 +222,7 @@ export const confirmPhotoUpload = asyncHandler(async (req, res) => {
 
   ApiResponse.ok(res, { photoUrl });
 });
+<<<<<<< HEAD
 >>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

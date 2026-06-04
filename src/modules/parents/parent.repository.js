@@ -1,20 +1,28 @@
-// src/modules/m5-parents/parent.repository.js
+// =============================================================================
+// modules/parents/parent.repository.js — RESQID
+// All DB queries — ownership-gated, index-optimized.
+// =============================================================================
+
 import { prisma } from '#config/prisma.js';
+import { ApiError } from '#shared/response/ApiError.js';
 
-export class ParentRepository {
-  // ─── Parent CRUD ──────────────────────────────────────────────
-  async createParent(data) {
-    return prisma.parentUser.create({ data });
-  }
+// ═══════════════════════════════════════════════════════════════════════════════
+// OWNERSHIP GUARD
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  async updateParent(id, data) {
-    return prisma.parentUser.update({ where: { id }, data });
-  }
+export const verifyStudentOwnership = async (parentId, studentId) => {
+  const link = await prisma.parentStudent.findUnique({
+    where: { parentId_studentId: { parentId, studentId } },
+  });
+  if (!link) throw ApiError.forbidden('Student not linked to your account');
+  return link;
+};
 
-  async deleteParent(id) {
-    return prisma.parentUser.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
-  }
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOME / DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
 
+<<<<<<< HEAD
 <<<<<<< HEAD
   async findParentById(id, schoolId = null) {
     const where = { id };
@@ -83,6 +91,8 @@ export class ParentRepository {
         data: {
           parentId,
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 export const getParentHome = async (parentId) => {
   const parent = await prisma.parentUser.findUnique({
     where: { id: parentId },
@@ -96,15 +106,18 @@ export const getParentHome = async (parentId) => {
         // 🔧 Fixed: notificationPrefs (not notificationPref)
         select: {
           pushEnabled: true,
+<<<<<<< HEAD
 >>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
           smsEnabled: true,
-          emailEnabled: false,
-          pushEnabled: true,
-          inAppEnabled: true,
+          emailEnabled: true,
+          onScan: true,
           onAttendance: true,
           onEmergency: true,
           onAnnouncement: true,
         },
+<<<<<<< HEAD
 <<<<<<< HEAD
       });
     }
@@ -150,6 +163,8 @@ export const getParentHome = async (parentId) => {
   }
 }
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
       },
     },
   });
@@ -381,5 +396,9 @@ export const getScanHistory = async (parentId, { studentId, page = 1, limit = 20
   ]);
 
   return { scans: rows, total, page, limit };
+<<<<<<< HEAD
 };
 >>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
+=======
+};
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

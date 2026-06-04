@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // src/modules/m5-parents/parent.validation.js
 import { z } from 'zod';
 
@@ -26,6 +27,8 @@ export const createParentSchema = z.object({
   }).optional(),
   studentIds: z.array(z.string()).optional(),
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 // =============================================================================
 // modules/parents/parent.validation.js — RESQID
 // Zod schemas for parent module endpoints.
@@ -45,12 +48,16 @@ export const parentProfileSchema = z.object({
     .max(100)
     .transform((v) => v.trim()),
   email: z.string().email().toLowerCase().optional(),
+<<<<<<< HEAD
 >>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 });
 
 // ─── Update Parent ──────────────────────────────────────────────
 export const updateParentSchema = createParentSchema.partial();
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 // ─── List Parents Query ─────────────────────────────────────────
 export const listParentsQuerySchema = z.object({
@@ -83,6 +90,8 @@ export const sendMessageSchema = z.object({
   type: z.string().optional(),
 });
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 export const updateVisibilitySchema = z.object({
   visibility: z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']),
 });
@@ -141,4 +150,7 @@ export const confirmUploadSchema = z.object({
   key: z.string().min(10),
   nonce: z.string().min(10),
 });
+<<<<<<< HEAD
 >>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

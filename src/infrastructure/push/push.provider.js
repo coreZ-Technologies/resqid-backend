@@ -1,10 +1,13 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 /**
  * Push Notification Provider Interface
  * Defines the contract for all push adapter implementations.
  */
 export class PushProvider {
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 // infrastructure/push/push.provider.js — RESQID
 //
 // Abstract push notification provider interface.
@@ -17,7 +20,10 @@ export class PushProvider {
    * @param {Object} notification - { title, body, data, sound, priority }
    * @returns {Promise<{success: boolean, successCount: number, failureCount: number, error?: string, deadTokens?: string[]}>}
    */
+<<<<<<< HEAD
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
   async sendToDevice(deviceToken, notification) {
     throw new Error('PushProvider.sendToDevice() not implemented');
   }
@@ -43,8 +49,13 @@ export class PushProvider {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 export default PushProvider;
 =======
 export default PushProvider;
 Z;
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+export default PushProvider;
+Z;
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

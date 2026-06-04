@@ -1,163 +1,119 @@
-// TODO: Add implementation
-// =============================================================================
-// students.controller.js — RESQID
-// Thin controller — parse req, call service, send ApiResponse.
-// No business logic here.
-// =============================================================================
-
+// school-admin/students/students.controller.js
 import { ApiResponse } from '#shared/response/ApiResponse.js';
-import {
-  listStudents,
-  getStudent,
-  getStudentStats,
-  addStudent,
-  importStudents,
-  editStudent,
-  attachParent,
-  detachParent,
-  transferStudentClass,
-  activateStudent,
-  deactivateStudent,
-  removeStudent,
-} from './students.service.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { StudentService } from './students.service.js';
 
-// =============================================================================
-// GET /students
-// =============================================================================
+const service = new StudentService();
 
-export const list = async (req, res) => {
-  const result = await listStudents(req.schoolId, req.query);
-
-  return ApiResponse.paginated(res, result.data, result.meta, 'Students retrieved');
-};
-
-// =============================================================================
-// GET /students/stats
-// =============================================================================
-
-export const stats = async (req, res) => {
-  const data = await getStudentStats(req.schoolId);
-
-  return ApiResponse.ok(res, data, 'Student statistics retrieved');
-};
-
-// =============================================================================
-// GET /students/:studentId
-// =============================================================================
-
-export const getOne = async (req, res) => {
-  const student = await getStudent(req.params.studentId, req.schoolId);
-
-  return ApiResponse.ok(res, student, 'Student retrieved');
-};
-
-// =============================================================================
-// POST /students
-// =============================================================================
-
-export const create = async (req, res) => {
-  const student = await addStudent(req.schoolId, req.body, req.user.id);
-
+export const createStudent = asyncHandler(async (req, res) => {
+  const data = req.body;
+  const photoFile = req.file;
+  const schoolId = req.user.schoolId;
+  const student = await service.createStudent(data, schoolId, photoFile);
   return ApiResponse.created(res, student, 'Student created successfully');
-};
+});
 
-// =============================================================================
-// POST /students/bulk-import
-// =============================================================================
+export const updateStudent = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const data = req.body;
+  const photoFile = req.file;
+  const schoolId = req.user.schoolId;
+  const updated = await service.updateStudent(id, data, schoolId, photoFile);
+  return ApiResponse.ok(res, updated, 'Student updated');
+});
 
-export const bulkImport = async (req, res) => {
-  const { students, skipDuplicates } = req.body;
+export const deleteStudent = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const schoolId = req.user.schoolId;
+  await service.deleteStudent(id, schoolId);
+  return ApiResponse.ok(res, null, 'Student deleted');
+});
 
-  const result = await importStudents(req.schoolId, students, skipDuplicates, req.user.id);
+export const getStudent = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const schoolId = req.user.schoolId;
+  const student = await service.getStudent(id, schoolId);
+  return ApiResponse.ok(res, student);
+});
 
-  return ApiResponse.created(
-    res,
-    result,
-    `Imported ${result.created} student(s)${result.skipped > 0 ? `, skipped ${result.skipped} duplicate(s)` : ''}`
-  );
-};
+export const listStudents = asyncHandler(async (req, res) => {
+  const query = req.query;
+  const schoolId = req.user.schoolId;
+  const result = await service.listStudents(query, schoolId);
+  return ApiResponse.paginated(res, result.items, result.meta);
+});
 
-// =============================================================================
-// PATCH /students/:studentId
-// =============================================================================
+export const getStats = asyncHandler(async (req, res) => {
+  const schoolId = req.user.schoolId;
+  const stats = await service.getStats(schoolId);
+  return ApiResponse.ok(res, stats);
+});
 
-export const update = async (req, res) => {
-  const student = await editStudent(
-    req.params.studentId,
-    req.schoolId,
-    req.body,
-    req.user.id
-  );
+export const linkParents = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { parentIds } = req.body;
+  const schoolId = req.user.schoolId;
+  await service.linkParents(id, parentIds, schoolId);
+  return ApiResponse.ok(res, null, 'Parents linked');
+});
 
-  return ApiResponse.ok(res, student, 'Student updated successfully');
-};
+export const unlinkParent = asyncHandler(async (req, res) => {
+  const { studentId, parentId } = req.params;
+  const schoolId = req.user.schoolId;
+  await service.unlinkParent(studentId, parentId, schoolId);
+  return ApiResponse.ok(res, null, 'Parent unlinked');
+});
 
-// =============================================================================
-// POST /students/:studentId/parent
-// =============================================================================
+export const updateEmergencyVisibility = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { visibility } = req.body;
+  const schoolId = req.user.schoolId;
+  await service.updateEmergencyVisibility(id, visibility, schoolId);
+  return ApiResponse.ok(res, null, 'Emergency visibility updated');
+});
 
-export const linkParent = async (req, res) => {
-  const result = await attachParent(
-    req.params.studentId,
-    req.schoolId,
-    req.body.parentId,
-    req.user.id
-  );
+export const sendMessageToParents = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { subject, body, type } = req.body;
+  const schoolId = req.user.schoolId;
+  const senderId = req.user.id;
+  const result = await service.sendMessageToParents(id, subject, body, type, schoolId, senderId);
+  return ApiResponse.ok(res, result, 'Messages sent');
+});
 
-  return ApiResponse.ok(res, result, 'Parent linked to student');
-};
+export const exportStudents = asyncHandler(async (req, res) => {
+  const query = req.query;
+  const schoolId = req.user.schoolId;
+  const result = await service.exportStudents(query, schoolId);
+  if (result.buffer) {
+    res.setHeader('Content-Type', result.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    return res.send(result.buffer);
+  }
+  return ApiResponse.ok(res, result, 'Export email sent');
+});
 
-// =============================================================================
-// DELETE /students/:studentId/parent
-// =============================================================================
+export const uploadDocument = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const file = req.file;
+  const { name, type } = req.body;
+  const schoolId = req.user.schoolId;
+  const doc = await service.uploadDocument(id, file, name, type, schoolId);
+  return ApiResponse.created(res, doc, 'Document uploaded');
+});
 
-export const unlinkParent = async (req, res) => {
-  const result = await detachParent(req.params.studentId, req.schoolId, req.user.id);
+export const deleteDocument = asyncHandler(async (req, res) => {
+  const { studentId, documentId } = req.params;
+  const schoolId = req.user.schoolId;
+  await service.deleteDocument(studentId, documentId, schoolId);
+  return ApiResponse.ok(res, null, 'Document deleted');
+});
 
-  return ApiResponse.ok(res, result, 'Parent unlinked from student');
-};
-
-// =============================================================================
-// POST /students/:studentId/transfer
-// =============================================================================
-
-export const transfer = async (req, res) => {
-  const result = await transferStudentClass(
-    req.params.studentId,
-    req.schoolId,
-    req.body,
-    req.user.id
-  );
-
-  return ApiResponse.ok(res, result, 'Student transferred successfully');
-};
-
-// =============================================================================
-// PATCH /students/:studentId/activate
-// =============================================================================
-
-export const activate = async (req, res) => {
-  const result = await activateStudent(req.params.studentId, req.schoolId, req.user.id);
-
-  return ApiResponse.ok(res, result, 'Student activated');
-};
-
-// =============================================================================
-// PATCH /students/:studentId/deactivate
-// =============================================================================
-
-export const deactivate = async (req, res) => {
-  const result = await deactivateStudent(req.params.studentId, req.schoolId, req.user.id);
-
-  return ApiResponse.ok(res, result, 'Student deactivated');
-};
-
-// =============================================================================
-// DELETE /students/:studentId
-// =============================================================================
-
-export const remove = async (req, res) => {
-  const result = await removeStudent(req.params.studentId, req.schoolId, req.user.id);
-
-  return ApiResponse.ok(res, result, 'Student deleted successfully');
-};
+export const bulkUploadStudents = asyncHandler(async (req, res) => {
+  const file = req.file;
+  if (!file) throw ApiError.badRequest('No file uploaded');
+  const schoolId = req.user.schoolId;
+  const result = await service.bulkUploadStudents(file, schoolId);
+  return ApiResponse.ok(res, result, 'Bulk upload processed');
+});

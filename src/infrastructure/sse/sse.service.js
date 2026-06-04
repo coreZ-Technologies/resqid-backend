@@ -1,14 +1,20 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // src/infrastructure/sse/sse.service.js
 // FIXED: Removed CONNECTION_TIMEOUT_MS. Heartbeat alone keeps connection alive.
 // FIXED: Removed lastActivity dead state.
 // FIXED: cleanupConnection timer leak resolved.
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 // src/infrastructure/sse/sse.service.js — RESQID
 //
 // Server-Sent Events (SSE) service for real-time client updates.
 // Used by: timetable generation progress, crisis status, notifications.
+<<<<<<< HEAD
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 
 import { logger } from '#config/logger.js';
 
@@ -271,11 +277,17 @@ export const getConnectedClients = () => {
 };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 /**
  * Check if a user has any active connections.
  */
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+/**
+ * Check if a user has any active connections.
+ */
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 export const isUserConnected = (userId) => {
   const connections = clients.get(userId);
   return connections ? connections.size > 0 : false;
@@ -355,11 +367,17 @@ export default {
   getConnectedCount,
   getTotalConnections,
 <<<<<<< HEAD
+<<<<<<< HEAD
 };
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
   getConnectionStats,
   closeAllConnections,
   pushTimetableProgress,
   pushCrisisUpdate,
 };
+<<<<<<< HEAD
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

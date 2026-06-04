@@ -138,9 +138,12 @@ export class RedisAdapter extends CacheProvider {
   }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   // ─── Batch Operations ─────────────────────────────────────────────────────
 
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
   async keys(pattern) {
     try {
       const keys = [];
@@ -158,7 +161,10 @@ export class RedisAdapter extends CacheProvider {
   }
 
   // Batch Operations
+<<<<<<< HEAD
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
   async mget(keys) {
     try {
       const values = await this.client.mGet(keys);
@@ -197,18 +203,26 @@ export class RedisAdapter extends CacheProvider {
   }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   // ─── Atomic Operations ────────────────────────────────────────────────────
 =======
   // Atomic Operations──
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+  // Atomic Operations──
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 
   async incr(key, by = 1, ttl = null) {
     try {
       const val = await this.client.incrBy(key, by);
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
       // Set TTL only when the key is first created (val === by)
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+      // Set TTL only when the key is first created (val === by)
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
       if (val === by && ttl) {
         await this.client.expire(key, ttl);
       }
@@ -331,7 +345,10 @@ export class RedisAdapter extends CacheProvider {
     await this.del(key);
   }
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 
   /**
    * Execute a function with a distributed lock.
@@ -352,7 +369,10 @@ export class RedisAdapter extends CacheProvider {
       await this.unlock(key);
     }
   }
+<<<<<<< HEAD
 >>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
+=======
+>>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 }
 
 export default RedisAdapter;
