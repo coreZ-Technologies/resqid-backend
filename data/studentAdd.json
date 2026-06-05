@@ -1,0 +1,244 @@
+{
+  "version": "1.0.0",
+  "description": "Data contract for adding students (single & bulk) in the school management system",
+  "singleStudent": {
+    "endpoint": "POST /api/v1/students",
+    "contentType": "application/json",
+    "requiredFields": [
+      "firstName", "lastName", "gender", "dateOfBirth",
+      "class", "section",
+      "parent1Name", "parent1Phone"
+    ],
+    "fieldDefinitions": {
+      "firstName": {
+        "type": "string",
+        "required": true,
+        "maxLength": 50,
+        "example": "Aarav"
+      },
+      "lastName": {
+        "type": "string",
+        "required": true,
+        "maxLength": 50,
+        "example": "Sharma"
+      },
+      "gender": {
+        "type": "string",
+        "enum": ["MALE", "FEMALE", "OTHER"],
+        "required": true
+      },
+      "dateOfBirth": {
+        "type": "date",
+        "format": "YYYY-MM-DD",
+        "required": true,
+        "example": "2010-05-15"
+      },
+      "bloodGroup": {
+        "type": "string",
+        "enum": ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-", ""],
+        "required": false
+      },
+      "class": {
+        "type": "string",
+        "enum": ["Nursery","LKG","UKG","1","2","3","4","5","6","7","8","9","10","11","12"],
+        "required": true
+      },
+      "section": {
+        "type": "string",
+        "enum": ["A","B","C","D"],
+        "required": true
+      },
+      "rollNumber": {
+        "type": "string",
+        "required": false,
+        "example": "24"
+      },
+      "previousSchool": {
+        "type": "string",
+        "required": false,
+        "maxLength": 200,
+        "example": "Delhi Public School"
+      },
+      "email": {
+        "type": "string",
+        "format": "email",
+        "required": false,
+        "example": "student@school.com"
+      },
+      "phone": {
+        "type": "string",
+        "required": false,
+        "pattern": "^[0-9]{10}$",
+        "example": "9876543210"
+      },
+      "address": {
+        "type": "string",
+        "required": false,
+        "maxLength": 300,
+        "example": "123 Main Street"
+      },
+      "city": {
+        "type": "string",
+        "required": false,
+        "example": "Mumbai"
+      },
+      "state": {
+        "type": "string",
+        "required": false,
+        "example": "Maharashtra"
+      },
+      "pincode": {
+        "type": "string",
+        "required": false,
+        "pattern": "^[0-9]{6}$",
+        "example": "400001"
+      },
+      "parent1Name": {
+        "type": "string",
+        "required": true,
+        "maxLength": 100,
+        "example": "Rajesh Sharma"
+      },
+      "parent1Relationship": {
+        "type": "string",
+        "enum": ["Father", "Mother", "Guardian", "Other"],
+        "required": false,
+        "default": "Father"
+      },
+      "parent1Phone": {
+        "type": "string",
+        "required": true,
+        "pattern": "^[0-9]{10}$",
+        "example": "9876543210"
+      },
+      "parent1Email": {
+        "type": "string",
+        "format": "email",
+        "required": false,
+        "example": "parent@example.com"
+      },
+      "parent1Occupation": {
+        "type": "string",
+        "required": false,
+        "example": "Engineer"
+      },
+      "parent2Name": {
+        "type": "string",
+        "required": false,
+        "example": "Neha Sharma"
+      },
+      "parent2Relationship": {
+        "type": "string",
+        "enum": ["Father", "Mother", "Guardian", "Other"],
+        "required": false,
+        "default": "Mother"
+      },
+      "parent2Phone": {
+        "type": "string",
+        "required": false,
+        "pattern": "^[0-9]{10}$"
+      },
+      "parent2Email": {
+        "type": "string",
+        "format": "email",
+        "required": false
+      },
+      "emergencyName": {
+        "type": "string",
+        "required": false,
+        "example": "Ramesh Gupta"
+      },
+      "emergencyPhone": {
+        "type": "string",
+        "required": false,
+        "pattern": "^[0-9]{10}$"
+      },
+      "emergencyRelationship": {
+        "type": "string",
+        "required": false,
+        "example": "Uncle"
+      },
+      "allergies": {
+        "type": "string",
+        "required": false,
+        "example": "Peanuts, Dust"
+      },
+      "medicalConditions": {
+        "type": "string",
+        "required": false,
+        "example": "Asthma"
+      },
+      "medications": {
+        "type": "string",
+        "required": false,
+        "example": "Inhaler"
+      },
+      "doctorName": {
+        "type": "string",
+        "required": false,
+        "example": "Dr. Mehta"
+      },
+      "doctorPhone": {
+        "type": "string",
+        "required": false,
+        "pattern": "^[0-9]{10}$"
+      },
+      "emergencyInstructions": {
+        "type": "string",
+        "required": false,
+        "maxLength": 500,
+        "example": "Call 911 immediately if breathing difficulty"
+      }
+    }
+  },
+  "bulkImport": {
+    "endpoint": "POST /api/v1/students/bulk-import",
+    "contentType": "multipart/form-data (CSV file)",
+    "csvStructure": {
+      "requiredColumns": [
+        "firstName", "lastName", "class", "section",
+        "parent1Name", "parent1Phone"
+      ],
+      "optionalColumns": [
+        "gender", "dateOfBirth", "bloodGroup", "rollNumber",
+        "email", "parent1Email", "parent1Relationship", "parent1Occupation",
+        "parent2Name", "parent2Phone", "parent2Email", "parent2Relationship",
+        "emergencyName", "emergencyPhone", "emergencyRelationship",
+        "address", "city", "state", "pincode",
+        "allergies", "medicalConditions", "medications",
+        "doctorName", "doctorPhone", "emergencyInstructions"
+      ],
+      "columnMapping": {
+        "gender": "MALE/FEMALE/OTHER (default MALE if missing/invalid)",
+        "dateOfBirth": "YYYY-MM-DD (required for each row if class <= Nursery, else optional)",
+        "bloodGroup": "A+, A-, B+, B-, O+, O-, AB+, AB-",
+        "parent1Relationship": "Father/Mother/Guardian/Other (default Father)",
+        "parent2Relationship": "Father/Mother/Guardian/Other (default Mother)"
+      },
+      "validationRules": {
+        "maxRows": 5000,
+        "fileFormat": "CSV (UTF-8)",
+        "firstRowMustBeHeader": true
+      },
+      "exampleCSV": "firstName,lastName,gender,dateOfBirth,class,section,rollNumber,parent1Name,parent1Phone,email\nAarav,Sharma,MALE,2010-05-15,10,A,24,Rajesh Sharma,9876543210,aarav@email.com"
+    },
+    "responseFormat": {
+      "success": true,
+      "data": {
+        "totalRows": 100,
+        "importedCount": 95,
+        "failedCount": 5,
+        "failedRecords": [
+          { "row": 12, "errors": ["Missing parent1Name", "Invalid dateOfBirth"] }
+        ]
+      }
+    }
+  },
+  "enumsReferenced": {
+    "CLASSES": ["Nursery","LKG","UKG","1","2","3","4","5","6","7","8","9","10","11","12"],
+    "SECTIONS": ["A","B","C","D"],
+    "GENDER": ["MALE","FEMALE","OTHER"],
+    "BLOOD_GROUPS": ["A+","A-","B+","B-","O+","O-","AB+","AB-"],
+    "RELATIONSHIPS": ["Father","Mother","Guardian","Other"]
+  }
+}

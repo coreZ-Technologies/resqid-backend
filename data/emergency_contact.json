@@ -1,0 +1,174 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Emergency Contacts page – manage student emergency contacts, medical alerts, and contact verification.",
+  "endpoints": {
+    "getStats": {
+      "method": "GET",
+      "path": "/api/v1/emergency-contacts/stats",
+      "description": "Get summary statistics for the top cards (students with contacts, missing contacts, medical alerts, total verified numbers).",
+      "response": {
+        "success": true,
+        "data": {
+          "studentsWithContacts": "number",
+          "missingContacts": "number",
+          "medicalAlerts": "number",
+          "verifiedNumbers": "number"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "studentsWithContacts": 318,
+          "missingContacts": 24,
+          "medicalAlerts": 11,
+          "verifiedNumbers": 601
+        }
+      }
+    },
+    "getEmergencyContacts": {
+      "method": "GET",
+      "path": "/api/v1/emergency-contacts/students",
+      "description": "Fetch paginated list of students with their emergency contacts, medical alerts, and address information. Supports filtering by search, class, and status.",
+      "queryParams": {
+        "search": "string (optional, searches student name, roll number, contact name)",
+        "class": "string (optional, e.g., 'Class 8' or 'All Classes')",
+        "status": "enum: All, Complete, Missing, Medical Alert (optional)",
+        "limit": "number (default 20)",
+        "offset": "number (default 0)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "students": [
+            {
+              "id": "string (student ID)",
+              "studentName": "string",
+              "studentClass": "string (e.g., 'Class 8-A')",
+              "rollNo": "string",
+              "avatarInitials": "string (first letters of name)",
+              "avatarColor": "string (CSS color class, optional, frontend may compute)",
+              "bloodGroup": "enum: A+, A-, B+, B-, O+, O-, AB+, AB-",
+              "medicalAlert": "string or null",
+              "address": "string or null",
+              "contacts": [
+                {
+                  "name": "string",
+                  "relation": "enum: Father, Mother, Guardian, Doctor, Other",
+                  "phone": "string (formatted)",
+                  "email": "string or null",
+                  "primary": "boolean",
+                  "verified": "boolean"
+                }
+              ]
+            }
+          ],
+          "pagination": {
+            "total": "number",
+            "limit": "number",
+            "offset": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "students": [
+            {
+              "id": "STU-001",
+              "studentName": "Priya Sharma",
+              "studentClass": "Class 8-A",
+              "rollNo": "08A-12",
+              "avatarInitials": "PS",
+              "bloodGroup": "B+",
+              "medicalAlert": "Asthma — carries inhaler",
+              "address": "14B, Salt Lake, Kolkata - 700091",
+              "contacts": [
+                {
+                  "name": "Rajan Sharma",
+                  "relation": "Father",
+                  "phone": "+91 98301 11234",
+                  "email": "rajan.s@gmail.com",
+                  "primary": true,
+                  "verified": true
+                }
+              ]
+            }
+          ],
+          "pagination": { "total": 7, "limit": 20, "offset": 0 }
+        }
+      }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/v1/emergency-contacts/filter-options",
+      "description": "Available classes and status filters for dropdowns.",
+      "response": {
+        "success": true,
+        "data": {
+          "classes": ["All Classes", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"],
+          "statuses": ["All", "Complete", "Missing", "Medical Alert"]
+        }
+      }
+    },
+    "exportContacts": {
+      "method": "GET",
+      "path": "/api/v1/emergency-contacts/export",
+      "description": "Export filtered student contacts as CSV (same query params as getEmergencyContacts, pagination ignored).",
+      "queryParams": "Same as getEmergencyContacts (limit/offset ignored)",
+      "response": "CSV file download with columns: studentId, studentName, class, rollNo, bloodGroup, medicalAlert, address, contactName, relation, phone, email, primary, verified"
+    },
+    "updateContactVerification": {
+      "method": "PATCH",
+      "path": "/api/v1/emergency-contacts/students/:studentId/contacts/:contactId/verify",
+      "description": "Mark a contact as verified (status changes from pending to verified).",
+      "pathParams": {
+        "studentId": "string",
+        "contactId": "string (index or contact ID)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "verified": true
+        }
+      }
+    },
+    "addStudentContact": {
+      "method": "POST",
+      "path": "/api/v1/emergency-contacts/students/:studentId/contacts",
+      "description": "Add a new emergency contact for a student.",
+      "requestBody": {
+        "name": "string (required)",
+        "relation": "enum: Father, Mother, Guardian, Doctor, Other (required)",
+        "phone": "string (required, phone number format)",
+        "email": "string (optional, email format)",
+        "primary": "boolean (default false)"
+      },
+      "response": {
+        "success": true,
+        "data": "Updated contact object"
+      }
+    },
+    "deleteContact": {
+      "method": "DELETE",
+      "path": "/api/v1/emergency-contacts/students/:studentId/contacts/:contactId",
+      "description": "Delete an emergency contact.",
+      "response": {
+        "success": true,
+        "message": "Contact deleted"
+      }
+    }
+  },
+  "enums": {
+    "BloodGroup": ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"],
+    "Relation": ["Father", "Mother", "Guardian", "Doctor", "Other"],
+    "StatusFilter": ["All", "Complete", "Missing", "Medical Alert"]
+  },
+  "fieldNotes": {
+    "avatarColor": "Frontend typically computes a deterministic color based on student name or ID; backend may optionally store a color value but it's not required.",
+    "medicalAlert": "Free‑text string describing any medical condition or alert (e.g., 'Asthma — carries inhaler'). Null if none.",
+    "verified": "Indicates that the contact number has been confirmed (e.g., via SMS or manual verification).",
+    "primary": "One contact per student should be marked as primary (usually the first parent).",
+    "missingContacts": "Count of students with contacts array length = 0.",
+    "verifiedNumbers": "Total count of contacts where verified = true across all students."
+  }
+}
