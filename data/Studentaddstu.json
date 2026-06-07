@@ -1,0 +1,152 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Add Student page – single student registration (multi-step) and bulk CSV import.",
+  "endpoints": {
+    "getDropdownOptions": {
+      "method": "GET",
+      "path": "/api/students/dropdowns",
+      "description": "Fetch static dropdown data for the form: classes, sections, blood groups, genders, relationships.",
+      "response": {
+        "success": true,
+        "data": {
+          "classes": ["Nursery","LKG","UKG","1","2","3","4","5","6","7","8","9","10","11","12"],
+          "sections": ["A","B","C","D"],
+          "bloodGroups": ["A+","A-","B+","B-","O+","O-","AB+","AB-"],
+          "genders": ["MALE","FEMALE","OTHER"],
+          "relationships": ["Father","Mother","Guardian","Other"]
+        }
+      }
+    },
+    "checkEmailAvailability": {
+      "method": "GET",
+      "path": "/api/students/check-email",
+      "description": "Check if an email address is already used by any student.",
+      "queryParams": { "email": "string (required)" },
+      "response": {
+        "success": true,
+        "data": { "available": "boolean" }
+      }
+    },
+    "checkPhoneAvailability": {
+      "method": "GET",
+      "path": "/api/students/check-phone",
+      "description": "Check if a phone number is already used by any student.",
+      "queryParams": { "phone": "string (required)" },
+      "response": {
+        "success": true,
+        "data": { "available": "boolean" }
+      }
+    },
+    "createStudent": {
+      "method": "POST",
+      "path": "/api/students",
+      "description": "Create a new student record. Validates required fields (firstName, lastName, dob, class, section, p1name, p1phone).",
+      "requestBody": {
+        "firstName": "string (required, max 50)",
+        "lastName": "string (required, max 50)",
+        "gender": "enum: MALE, FEMALE, OTHER (default MALE)",
+        "dob": "date (YYYY-MM-DD, required)",
+        "bloodGroup": "string (optional, one of bloodGroups list)",
+        "cls": "string (required, class name from dropdown)",
+        "section": "string (required, section from dropdown)",
+        "roll": "string (optional)",
+        "prevSchool": "string (optional)",
+        "email": "string (optional, email format)",
+        "phone": "string (optional, phone number format)",
+        "address": "string (optional)",
+        "city": "string (optional)",
+        "st": "string (optional, state)",
+        "pin": "string (optional, pincode)",
+        "p1name": "string (required, primary parent name)",
+        "p1rel": "enum: Father, Mother, Guardian, Other (default Father)",
+        "p1phone": "string (required, phone number)",
+        "p1email": "string (optional, email)",
+        "p1occ": "string (optional, occupation)",
+        "p2name": "string (optional, second parent name)",
+        "p2rel": "enum: Father, Mother, Guardian, Other (default Mother)",
+        "p2phone": "string (optional)",
+        "p2email": "string (optional)",
+        "emgName": "string (optional, emergency contact name)",
+        "emgPhone": "string (optional)",
+        "emgRel": "string (optional, relationship)",
+        "allergy": "string (optional, free text)",
+        "cond": "string (optional, free text)",
+        "meds": "string (optional, free text)",
+        "docName": "string (optional, doctor name)",
+        "docPhone": "string (optional)",
+        "emgInstr": "string (optional, emergency instructions)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "id": "string (auto-generated student ID)",
+          "message": "Student created successfully"
+        }
+      },
+      "errorResponses": {
+        "400": { "message": "Validation error – missing required fields or invalid data" },
+        "409": { "message": "Email or phone already exists" },
+        "404": { "message": "Invalid class or section" }
+      }
+    },
+    "bulkImportTemplate": {
+      "method": "GET",
+      "path": "/api/students/bulk-import/template",
+      "description": "Download a CSV template file for bulk student import.",
+      "response": "CSV file download (text/csv) with headers: firstName, lastName, gender, dateOfBirth, bloodGroup, class, section, rollNumber, parent1Name, parent1Phone, email"
+    },
+    "validateBulkImport": {
+      "method": "POST",
+      "path": "/api/students/bulk-import/validate",
+      "description": "Validate a CSV file before import (no actual data insertion). Returns validation errors per row.",
+      "requestBody": "multipart/form-data with field 'file' (CSV file, max 10MB)",
+      "response": {
+        "success": true,
+        "data": {
+          "totalRows": "number",
+          "validRows": "number",
+          "invalidRows": "number",
+          "errors": [
+            {
+              "row": "number (1-indexed row number in CSV)",
+              "errors": ["string (field errors)"]
+            }
+          ]
+        }
+      }
+    },
+    "bulkImportStudents": {
+      "method": "POST",
+      "path": "/api/students/bulk-import",
+      "description": "Import students from a validated CSV file (inserts all valid rows, rolls back entire transaction if any error occurs? Frontend does batch simulation, but backend should support atomic or partial with reporting).",
+      "requestBody": "multipart/form-data with field 'file' (CSV file, max 10MB)",
+      "response": {
+        "success": true,
+        "data": {
+          "total": "number (rows processed)",
+          "imported": "number (successfully inserted)",
+          "failed": "number (rows that failed)",
+          "failedRecords": [
+            {
+              "row": "number",
+              "errors": ["string"]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "enums": {
+    "Gender": ["MALE", "FEMALE", "OTHER"],
+    "Relationship": ["Father", "Mother", "Guardian", "Other"],
+    "BloodGroup": ["A+","A-","B+","B-","O+","O-","AB+","AB-"]
+  },
+  "fieldNotes": {
+    "dob": "Date of birth in YYYY-MM-DD format. Required for single student addition; optional in bulk (but frontend template includes dateOfBirth column as optional).",
+    "cls": "Class value must match one of the predefined CLASSES list.",
+    "section": "Must be A-D (single letter).",
+    "p1phone": "Primary parent phone number – required; format should be validated (e.g., +91 followed by 10 digits).",
+    "bulk import CSV": "File must be CSV with comma delimiter, header row present. Maximum 5000 rows. Supported columns: firstName, lastName, gender, dateOfBirth, bloodGroup, class, section, rollNumber, parent1Name, parent1Phone, email. Only firstName, lastName, class, section, parent1Name, parent1Phone are mandatory; others optional. Date format: YYYY-MM-DD.",
+    "gender": "Accepted values: MALE, FEMALE, OTHER (case-insensitive)."
+  }
+}

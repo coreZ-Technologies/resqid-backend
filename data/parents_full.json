@@ -1,0 +1,174 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Parents page – list, search, filter, stats, detail view, and parent engagement summary.",
+  "endpoints": {
+    "getStats": {
+      "method": "GET",
+      "path": "/api/parents/stats",
+      "description": "Get summary statistics for the top cards (total parents, total children linked, high engagement count, pending notifications, average attendance).",
+      "response": {
+        "success": true,
+        "data": {
+          "totalParents": "number",
+          "totalChildren": "number (sum of all linked children)",
+          "highEngagementCount": "number (parents with engagement = high)",
+          "totalPendingNotifications": "number (sum of unread/pending notifications across all parents)",
+          "averageAttendance": "string (percentage, e.g., '89%')"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalParents": 6,
+          "totalChildren": 9,
+          "highEngagementCount": 3,
+          "totalPendingNotifications": 69,
+          "averageAttendance": "89%"
+        }
+      }
+    },
+    "getParents": {
+      "method": "GET",
+      "path": "/api/parents",
+      "description": "Fetch paginated list of parents with filtering, search, and optional engagement level filter.",
+      "queryParams": {
+        "search": "string (optional, searches parent name, email, child name)",
+        "engagement": "enum: all, high, medium, low (optional, default all)",
+        "page": "number (default 1)",
+        "limit": "number (default 20)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "parents": [
+            {
+              "id": "number or string",
+              "name": "string",
+              "email": "string",
+              "phone": "string",
+              "location": "string",
+              "avatarInitials": "string (e.g., 'RS')",
+              "avatarColor": "string (optional, frontend may derive)",
+              "children": [
+                {
+                  "name": "string",
+                  "class": "string (e.g., 'Class 8-A')",
+                  "rfid": "string",
+                  "attendance": "number (percentage, 0-100)",
+                  "status": "enum: present, absent, late"
+                }
+              ],
+              "lastSeen": "string (e.g., '2 min ago' or ISO datetime – frontend formats)",
+              "engagement": "enum: high, medium, low",
+              "notifications": "number (pending notification count)",
+              "joinedDate": "string (e.g., 'Jan 2024')"
+            }
+          ],
+          "pagination": {
+            "currentPage": "number",
+            "totalPages": "number",
+            "totalItems": "number",
+            "itemsPerPage": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "parents": [
+            {
+              "id": 1,
+              "name": "Rajesh Sharma",
+              "email": "rajesh.sharma@gmail.com",
+              "phone": "+91 98765 43210",
+              "location": "Salt Lake, Kolkata",
+              "avatarInitials": "RS",
+              "children": [
+                {
+                  "name": "Priya Sharma",
+                  "class": "Class 8-A",
+                  "rfid": "RFID-2341",
+                  "attendance": 94,
+                  "status": "present"
+                }
+              ],
+              "lastSeen": "2 min ago",
+              "engagement": "high",
+              "notifications": 12,
+              "joinedDate": "Jan 2024"
+            }
+          ],
+          "pagination": { "currentPage": 1, "totalPages": 1, "totalItems": 6, "itemsPerPage": 20 }
+        }
+      }
+    },
+    "getParentById": {
+      "method": "GET",
+      "path": "/api/parents/:id",
+      "description": "Get full details of a single parent (used for the detail panel). Response includes same fields as getParents plus optional recent notifications.",
+      "pathParams": { "id": "string or number" },
+      "response": {
+        "success": true,
+        "data": {
+          "parent": {
+            "id": "number",
+            "name": "string",
+            "email": "string",
+            "phone": "string",
+            "location": "string",
+            "avatarInitials": "string",
+            "children": [
+              {
+                "name": "string",
+                "class": "string",
+                "rfid": "string",
+                "attendance": "number",
+                "status": "enum: present, absent, late"
+              }
+            ],
+            "lastSeen": "string",
+            "engagement": "enum: high, medium, low",
+            "notifications": "number",
+            "joinedDate": "string",
+            "recentNotifications": [
+              {
+                "message": "string",
+                "time": "string (ISO or relative)",
+                "type": "enum: attendance, announcement, report"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/parents/filter-options",
+      "description": "Available engagement levels for filter dropdown (based on actual data or static).",
+      "response": {
+        "success": true,
+        "data": {
+          "engagementLevels": ["high", "medium", "low"]
+        }
+      }
+    },
+    "exportParents": {
+      "method": "GET",
+      "path": "/api/parents/export",
+      "description": "Export filtered parent list as CSV (same query params as getParents, no pagination).",
+      "queryParams": "Same as getParents (page/limit ignored)",
+      "response": "CSV file download with columns: name, email, phone, location, linkedChildren, avgAttendance, engagement, pendingNotifications, joinedDate"
+    }
+  },
+  "enums": {
+    "EngagementLevel": ["high", "medium", "low"],
+    "ChildStatus": ["present", "absent", "late"]
+  },
+  "fieldNotes": {
+    "avatarColor": "Frontend typically computes deterministic color based on parent name or ID; backend may ignore or return a CSS class name.",
+    "lastSeen": "Backend may return ISO datetime; frontend formats as relative time (e.g., '2 min ago').",
+    "joinedDate": "Month and year string (e.g., 'Jan 2024') – backend can send a formatted date or ISO from which frontend extracts month/year.",
+    "recentNotifications": "Only returned in detail endpoint; includes a short list of latest notifications for the parent (max 5).",
+    "averageAttendance": "Computed as average of attendance percentages of all linked children; returned in stats endpoint as string with '%'."
+  }
+}

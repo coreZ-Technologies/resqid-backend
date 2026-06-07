@@ -28,16 +28,16 @@ export const createParentSchema = z.object({
 =======
 // =============================================================================
 // modules/parents/parent.validation.js — RESQID
-// Zod schemas for parent module endpoints.
-// 🔧 Flat schemas for use with validate() middleware.
 // =============================================================================
 
 import { z } from 'zod';
 
 const cuid = z.string().min(1, 'Invalid ID format');
+const phoneRegex = /^[6-9]\d{9}$/;
 
-// ─── Profile ──────────────────────────────────────────────────────────────────
+// ─── Create Parent ───────────────────────────────────────────────────────────
 
+<<<<<<< HEAD
 export const parentProfileSchema = z.object({
   name: z
     .string()
@@ -85,60 +85,83 @@ export const sendMessageSchema = z.object({
 =======
 export const updateVisibilitySchema = z.object({
   visibility: z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']),
+=======
+export const createParentSchema = z.object({
+  firstName: z.string().min(1, 'First name is required').max(100),
+  lastName: z.string().min(1, 'Last name is required').max(100),
+  phone: z.string().regex(phoneRegex, 'Invalid Indian phone number'),
+  email: z.string().email().max(254).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  pincode: z.string().max(10).optional().nullable(),
+  occupation: z.string().max(200).optional().nullable(),
+  photoUrl: z.string().url().optional().nullable(),
+  canCall: z.boolean().default(true),
+  canWhatsapp: z.boolean().default(true),
+  canEmail: z.boolean().default(true),
+  canSMS: z.boolean().default(true),
+  childIds: z.array(z.string()).optional().default([]), // Student IDs to link
 });
 
-// ─── Notification Preferences ─────────────────────────────────────────────────
+// ─── Update Parent (School Admin) ────────────────────────────────────────────
 
-export const updateNotificationsSchema = z.object({
-  pushEnabled: z.boolean().optional(),
-  smsEnabled: z.boolean().optional(),
-  emailEnabled: z.boolean().optional(),
-  onScan: z.boolean().optional(),
-  onAttendance: z.boolean().optional(),
-  onEmergency: z.boolean().optional(),
-  onAnnouncement: z.boolean().optional(),
+export const updateParentSchema = z.object({
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  email: z.string().email().max(254).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  pincode: z.string().max(10).optional().nullable(),
+  occupation: z.string().max(200).optional().nullable(),
+  canCall: z.boolean().optional(),
+  canWhatsapp: z.boolean().optional(),
+  canEmail: z.boolean().optional(),
+  canSMS: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+>>>>>>> 29c3ec21ee207f590fb533e851f49fc2e7b35588
 });
 
-// ─── Device Token ─────────────────────────────────────────────────────────────
+// ─── Update Own Profile (Parent self) ────────────────────────────────────────
 
-export const registerDeviceTokenSchema = z.object({
-  token: z.string().min(10, 'Token is required'),
-  platform: z.enum(['IOS', 'ANDROID', 'WEB']),
-  deviceName: z.string().max(100).optional(),
-  deviceModel: z.string().max(100).optional(),
-  osVersion: z.string().max(50).optional(),
+export const updateOwnProfileSchema = z.object({
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  email: z.string().email().max(254).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  pincode: z.string().max(10).optional().nullable(),
+  occupation: z.string().max(200).optional().nullable(),
+  photoUrl: z.string().url().optional().nullable(),
+  canCall: z.boolean().optional(),
+  canWhatsapp: z.boolean().optional(),
+  canEmail: z.boolean().optional(),
+  canSMS: z.boolean().optional(),
 });
 
-// ─── Link Card (Add Child) ───────────────────────────────────────────────────
+// ─── List Query ───────────────────────────────────────────────────────────────
 
-export const linkCardSchema = z.object({
-  cardNumber: z
-    .string()
-    .trim()
-    .min(5)
-    .max(20)
-    .transform((v) => v.toUpperCase().replace(/[^A-Z0-9-]/g, '')),
+export const parentListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().optional(),
+  isActive: z.coerce.boolean().optional(),
+  sortBy: z.enum(['name', 'phone', 'createdAt']).default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
-// ─── Set Active Student ──────────────────────────────────────────────────────
+// ─── Params ───────────────────────────────────────────────────────────────────
 
-export const setActiveStudentSchema = z.object({
-  studentId: cuid,
-});
+export const parentIdParamsSchema = z.object({ id: cuid });
 
-// ─── Photo Upload ────────────────────────────────────────────────────────────
+// ─── Export Query ─────────────────────────────────────────────────────────────
 
-export const generateUploadUrlSchema = z.object({
-  contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
-  fileSize: z
-    .number()
-    .int()
-    .positive()
-    .max(5 * 1024 * 1024, 'Max 5MB'),
-});
-
-export const confirmUploadSchema = z.object({
-  key: z.string().min(10),
-  nonce: z.string().min(10),
+export const parentExportQuerySchema = z.object({
+  grade: z.string().optional(),
+  section: z.string().optional(),
+  isActive: z.coerce.boolean().optional(),
+  format: z.enum(['csv', 'xlsx']).default('csv'),
 });
 >>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd

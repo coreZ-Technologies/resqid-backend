@@ -1,0 +1,223 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Billing & Subscription page – current plan, payment method, invoices, and plan management actions.",
+  "endpoints": {
+    "getCurrentPlan": {
+      "method": "GET",
+      "path": "/api/billing/plan",
+      "description": "Get current subscription plan details (name, price, limits, features, renewal date, status).",
+      "response": {
+        "success": true,
+        "data": {
+          "name": "string (e.g., 'Pro School Plan')",
+          "price": "number (e.g., 99.00)",
+          "period": "enum: month, year",
+          "studentsLimit": "number",
+          "staffLimit": "number",
+          "storage": "number (GB)",
+          "features": ["string (list of feature descriptions)"],
+          "renewalDate": "date (YYYY-MM-DD)",
+          "status": "enum: active, cancelled, past_due, trialing"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "name": "Pro School Plan",
+          "price": 99.00,
+          "period": "month",
+          "studentsLimit": 500,
+          "staffLimit": 50,
+          "storage": 100,
+          "features": [
+            "Unlimited attendance tracking",
+            "Advanced analytics & reports",
+            "Emergency SOS alerts",
+            "Parent communication portal",
+            "24/7 priority support",
+            "Custom branding"
+          ],
+          "renewalDate": "2025-07-15",
+          "status": "active"
+        }
+      }
+    },
+    "getBillingStats": {
+      "method": "GET",
+      "path": "/api/billing/stats",
+      "description": "Get summary statistics for billing header (monthly cost, total paid year‑to‑date, next due amount, renewal date display).",
+      "queryParams": {
+        "year": "number (optional, default current year)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "monthlyCost": "number (e.g., 99.00)",
+          "totalPaidYTD": "number (sum of paid invoices in current year)",
+          "nextDueAmount": "number (next pending invoice amount or plan price)",
+          "nextDueDate": "date (YYYY-MM-DD, renewal or invoice due date)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "monthlyCost": 99.00,
+          "totalPaidYTD": 297.00,
+          "nextDueAmount": 99.00,
+          "nextDueDate": "2025-07-15"
+        }
+      }
+    },
+    "getInvoices": {
+      "method": "GET",
+      "path": "/api/billing/invoices",
+      "description": "Get list of invoices (billing history) with pagination and filtering.",
+      "queryParams": {
+        "limit": "number (default 10)",
+        "offset": "number (default 0)",
+        "status": "enum: all, paid, pending, overdue (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "invoices": [
+            {
+              "id": "string (e.g., 'INV-2025-001')",
+              "date": "date (YYYY-MM-DD)",
+              "amount": "number",
+              "status": "enum: paid, pending, overdue"
+            }
+          ],
+          "pagination": {
+            "total": "number",
+            "limit": "number",
+            "offset": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "invoices": [
+            { "id": "INV-2025-001", "date": "2025-04-01", "amount": 99.00, "status": "paid" },
+            { "id": "INV-2025-002", "date": "2025-05-01", "amount": 99.00, "status": "paid" },
+            { "id": "INV-2025-003", "date": "2025-06-01", "amount": 99.00, "status": "paid" },
+            { "id": "INV-2025-004", "date": "2025-07-01", "amount": 99.00, "status": "pending" }
+          ],
+          "pagination": { "total": 4, "limit": 10, "offset": 0 }
+        }
+      }
+    },
+    "getPaymentMethod": {
+      "method": "GET",
+      "path": "/api/billing/payment-method",
+      "description": "Get saved payment method details (masked).",
+      "response": {
+        "success": true,
+        "data": {
+          "brand": "enum: visa, mastercard, amex, discover",
+          "last4": "string (last 4 digits)",
+          "expiry": "string (MM/YYYY)",
+          "name": "string (cardholder name or school name)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "brand": "visa",
+          "last4": "4242",
+          "expiry": "08/2027",
+          "name": "Springdale School"
+        }
+      }
+    },
+    "updatePaymentMethod": {
+      "method": "POST",
+      "path": "/api/billing/payment-method",
+      "description": "Update or add a new payment method (returns setup intent or confirmation).",
+      "requestBody": {
+        "paymentMethodId": "string (token from Stripe/PayPal)",
+        "setAsDefault": "boolean (default true)"
+      },
+      "response": {
+        "success": true,
+        "message": "Payment method updated"
+      }
+    },
+    "upgradePlan": {
+      "method": "POST",
+      "path": "/api/billing/upgrade",
+      "description": "Upgrade to a higher plan (pro, enterprise). Typically redirects to checkout.",
+      "requestBody": {
+        "planId": "string (required, e.g., 'pro_annual')",
+        "billingPeriod": "enum: month, year (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "checkoutUrl": "string (URL to payment gateway)"
+        }
+      }
+    },
+    "changePlan": {
+      "method": "POST",
+      "path": "/api/billing/change-plan",
+      "description": "Change to a different plan (downgrade or switch).",
+      "requestBody": {
+        "planId": "string (required)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "message": "Plan changed successfully, prorated credit applied"
+        }
+      }
+    },
+    "cancelSubscription": {
+      "method": "POST",
+      "path": "/api/billing/cancel",
+      "description": "Cancel the current subscription (may cancel at end of period).",
+      "requestBody": {
+        "reason": "string (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "message": "Subscription will end on {renewalDate}"
+        }
+      }
+    },
+    "downloadInvoice": {
+      "method": "GET",
+      "path": "/api/billing/invoices/:invoiceId/download",
+      "description": "Download invoice as PDF file.",
+      "pathParams": { "invoiceId": "string" },
+      "response": "PDF file (binary)"
+    },
+    "previewInvoice": {
+      "method": "GET",
+      "path": "/api/billing/invoices/:invoiceId/preview",
+      "description": "Get a preview URL or HTML for the invoice (for inline viewing).",
+      "response": {
+        "success": true,
+        "data": {
+          "pdfUrl": "string (temporary URL)",
+          "html": "string (optional)"
+        }
+      }
+    }
+  },
+  "enums": {
+    "BillingPeriod": ["month", "year"],
+    "SubscriptionStatus": ["active", "cancelled", "past_due", "trialing"],
+    "InvoiceStatus": ["paid", "pending", "overdue"],
+    "CardBrand": ["visa", "mastercard", "amex", "discover"]
+  },
+  "fieldNotes": {
+    "totalPaidYTD": "Sum of invoice amounts with status = 'paid' in the current calendar year.",
+    "nextDueAmount": "If there is a pending invoice, return its amount; otherwise return the next recurring plan price.",
+    "renewalDate": "Date when the next automatic payment will be charged (end of current billing cycle).",
+    "storage": "Cloud storage limit in gigabytes.",
+    "features": "Array of strings describing plan inclusions; frontend renders as checklist."
+  }
+}

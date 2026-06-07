@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { Router } from 'express';
 import notificationRoutes from '../modules/share/notification/notification.router.js';
 
@@ -17,3 +18,6 @@ router.use('/notifications', notificationRoutes);
 export default router;
 =======
 >>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
+=======
+// SCHOOLADMIN
+>>>>>>> 29c3ec21ee207f590fb533e851f49fc2e7b35588

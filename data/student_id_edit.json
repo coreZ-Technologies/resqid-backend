@@ -1,0 +1,203 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Edit Student page – fetch student data, update all sections (personal, academic, contact, parents, emergency, medical, fees, documents).",
+  "endpoints": {
+    "getStudentById": {
+      "method": "GET",
+      "path": "/api/students/:studentId",
+      "description": "Fetch full student profile for editing.",
+      "response": {
+        "success": true,
+        "data": {
+          "firstName": "string",
+          "lastName": "string",
+          "gender": "enum: MALE, FEMALE, OTHER",
+          "dateOfBirth": "date (YYYY-MM-DD)",
+          "bloodGroup": "string (e.g., 'O+')",
+          "photo": "string (URL) or null",
+          "class": "string (e.g., '10')",
+          "section": "string (A-D)",
+          "rollNumber": "string",
+          "admissionYear": "number",
+          "status": "enum: Active, Inactive, Graduated, Transferred",
+          "previousSchool": "string or null",
+          "transferCertificate": "boolean",
+          "email": "string (email)",
+          "phone": "string",
+          "address": "string",
+          "city": "string",
+          "state": "string",
+          "pincode": "string",
+          "emergencyVisibility": "enum: PUBLIC, MINIMAL, HIDDEN",
+          "parents": [
+            {
+              "id": "string",
+              "name": "string",
+              "relationship": "enum: Father, Mother, Guardian, Other",
+              "phone": "string",
+              "email": "string",
+              "occupation": "string or null",
+              "isPrimary": "boolean",
+              "canCall": "boolean",
+              "canWhatsapp": "boolean"
+            }
+          ],
+          "emergencyContacts": [
+            {
+              "id": "string",
+              "name": "string",
+              "relationship": "string",
+              "phone": "string",
+              "priority": "number"
+            }
+          ],
+          "medicalInfo": {
+            "allergies": ["string"],
+            "conditions": ["string"],
+            "medications": ["string"],
+            "doctorName": "string or null",
+            "doctorSpecialization": "string or null",
+            "doctorPhone": "string or null",
+            "doctorClinic": "string or null",
+            "doctorAddress": "string or null",
+            "hospitalName": "string or null",
+            "hospitalPhone": "string or null",
+            "hospitalAddress": "string or null",
+            "insuranceProvider": "string or null",
+            "insurancePolicyNumber": "string or null",
+            "insuranceValidUntil": "date or null",
+            "notes": "string or null",
+            "lastCheckup": "date or null",
+            "emergencyInstructions": "string or null"
+          },
+          "academicInfo": {
+            "subjects": [
+              {
+                "name": "string",
+                "code": "string",
+                "teacher": "string"
+              }
+            ],
+            "achievements": ["string"],
+            "remarks": "string or null"
+          },
+          "documents": [
+            {
+              "id": "string",
+              "name": "string",
+              "type": "string (e.g., 'PDF')",
+              "size": "string (e.g., '1.2 MB')",
+              "uploadedAt": "datetime (ISO)"
+            }
+          ],
+          "feeDetails": {
+            "totalFees": "number",
+            "paid": "number",
+            "pending": "number",
+            "lastPayment": "date or null",
+            "nextDueDate": "date or null"
+          }
+        }
+      }
+    },
+    "updateStudent": {
+      "method": "PUT",
+      "path": "/api/students/:studentId",
+      "description": "Update student record (full update; partial allowed via PATCH semantics). Use same request body structure as GET response, but all fields are optional (partial update).",
+      "requestBody": "Partial student object (any fields from GET response, except id/studentId). Arrays can be replaced entirely.",
+      "response": {
+        "success": true,
+        "data": "Updated student object (same as GET)"
+      }
+    },
+    "uploadStudentPhoto": {
+      "method": "POST",
+      "path": "/api/students/:studentId/photo",
+      "description": "Upload profile photo (image).",
+      "requestBody": "multipart/form-data with field 'photo' (image file, max 2MB, formats JPG/PNG)",
+      "response": {
+        "success": true,
+        "data": {
+          "photoUrl": "string"
+        }
+      }
+    },
+    "uploadDocument": {
+      "method": "POST",
+      "path": "/api/students/:studentId/documents",
+      "description": "Upload a document (PDF, image, etc.)",
+      "requestBody": "multipart/form-data with field 'document' (file) and optional 'name'",
+      "response": {
+        "success": true,
+        "data": "Document object (id, name, type, size, uploadedAt)"
+      }
+    },
+    "deleteDocument": {
+      "method": "DELETE",
+      "path": "/api/students/:studentId/documents/:documentId",
+      "description": "Delete a document.",
+      "response": {
+        "success": true,
+        "message": "Document deleted"
+      }
+    },
+    "getDropdownOptions": {
+      "method": "GET",
+      "path": "/api/students/dropdowns",
+      "description": "Get all static dropdown lists needed for the form.",
+      "response": {
+        "success": true,
+        "data": {
+          "classes": ["Nursery","LKG","UKG","1","2","3","4","5","6","7","8","9","10","11","12"],
+          "sections": ["A","B","C","D"],
+          "bloodGroups": ["A+","A-","B+","B-","O+","O-","AB+","AB-"],
+          "genders": ["MALE","FEMALE","OTHER"],
+          "relationships": ["Father","Mother","Guardian","Other"],
+          "statuses": ["Active","Inactive","Graduated","Transferred"],
+          "emergencyVisibilities": ["PUBLIC","MINIMAL","HIDDEN"]
+        }
+      }
+    },
+    "checkEmailAvailability": {
+      "method": "GET",
+      "path": "/api/students/check-email",
+      "description": "Check if email is already used by another student (exclude current student).",
+      "queryParams": {
+        "email": "string (required)",
+        "excludeStudentId": "string (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": { "available": "boolean" }
+      }
+    },
+    "checkPhoneAvailability": {
+      "method": "GET",
+      "path": "/api/students/check-phone",
+      "description": "Check if phone number is already used by another student.",
+      "queryParams": {
+        "phone": "string (required)",
+        "excludeStudentId": "string (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": { "available": "boolean" }
+      }
+    }
+  },
+  "enums": {
+    "Gender": ["MALE", "FEMALE", "OTHER"],
+    "StudentStatus": ["Active", "Inactive", "Graduated", "Transferred"],
+    "EmergencyVisibility": ["PUBLIC", "MINIMAL", "HIDDEN"],
+    "Relationship": ["Father", "Mother", "Guardian", "Other"]
+  },
+  "fieldNotes": {
+    "photo": "Backend may store a URL; frontend sends file to upload endpoint separately.",
+    "parents": "Minimum one parent required; isPrimary flag indicates the main contact.",
+    "emergencyContacts": "Optional list; priority determines order in case of emergency.",
+    "medicalInfo": "Arrays (allergies, conditions, medications) are free‑text tags.",
+    "academicInfo.subjects": "Array of subject objects; can be empty.",
+    "documents": "Array of uploaded documents; each has metadata and backend storage URL.",
+    "feeDetails": "Financial fields; pending = totalFees - paid (can be auto-calculated)."
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Reports page (Attendance, Scan Logs, Students, Sessions)",
+  "endpoints": {
+    "getStats": {
+      "method": "GET",
+      "path": "/api/v1/reports/stats",
+      "description": "Summary statistics for the top card row (total students, present today, absent today, attendance rate).",
+      "queryParams": {
+        "date": "string (optional, e.g., YYYY-MM-DD, default today)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "totalStudents": "number",
+          "presentToday": "number",
+          "absentToday": "number",
+          "attendanceRate": "number (percentage, 0-100)",
+          "rateChange": "number (percentage point change vs previous period, can be negative)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalStudents": 2100,
+          "presentToday": 1786,
+          "absentToday": 118,
+          "attendanceRate": 85,
+          "rateChange": 3
+        }
+      }
+    },
+    "getAttendanceReport": {
+      "method": "GET",
+      "path": "/api/v1/reports/attendance",
+      "description": "Fetch attendance records for the report table.",
+      "queryParams": {
+        "dateRange": "enum: Today, ThisWeek, ThisMonth, LastMonth, Custom (or use fromDate/toDate)",
+        "fromDate": "date (YYYY-MM-DD, required if dateRange=Custom)",
+        "toDate": "date (YYYY-MM-DD, required if dateRange=Custom)",
+        "class": "string (optional, full class name e.g., 'Cls 5' or 'All Classes')",
+        "search": "string (optional, searches class+section)",
+        "limit": "number (default 100)",
+        "offset": "number (default 0)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "records": [
+            {
+              "id": "string (unique)",
+              "date": "string (DD/MM/YYYY format, or ISO)",
+              "class": "string (e.g., 'Cls 1')",
+              "section": "string (A-D)",
+              "totalStudents": "number",
+              "present": "number",
+              "absent": "number",
+              "late": "number",
+              "attendanceRate": "number (percentage)"
+            }
+          ],
+          "pagination": {
+            "total": "number",
+            "limit": "number",
+            "offset": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "records": [
+            {
+              "id": "r1",
+              "date": "30/5/2026",
+              "class": "Cls 1",
+              "section": "A",
+              "totalStudents": 35,
+              "present": 35,
+              "absent": 0,
+              "late": 0,
+              "attendanceRate": 100
+            }
+          ],
+          "pagination": { "total": 25, "limit": 100, "offset": 0 }
+        }
+      }
+    },
+    "getScanLogsReport": {
+      "method": "GET",
+      "path": "/api/v1/reports/scan-logs",
+      "description": "Fetch scan logs (RFID/QR check-ins/outs) for the report table.",
+      "queryParams": {
+        "dateRange": "enum: Today, ThisWeek, ThisMonth, LastMonth, Custom",
+        "fromDate": "date (YYYY-MM-DD, required if Custom)",
+        "toDate": "date (YYYY-MM-DD, required if Custom)",
+        "class": "string (optional)",
+        "search": "string (optional, searches student name or class)",
+        "limit": "number (default 100)",
+        "offset": "number (default 0)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "records": [
+            {
+              "id": "string",
+              "date": "string (DD/MM/YYYY)",
+              "time": "string (HH:MM AM/PM)",
+              "studentName": "string",
+              "class": "string (e.g., 'Cls 5')",
+              "result": "enum: SUCCESS, INVALID, REVOKED, EXPIRED",
+              "device": "string (e.g., 'Chrome/Android')",
+              "responseTimeMs": "number (milliseconds)"
+            }
+          ],
+          "pagination": { "total": "number", "limit": "number", "offset": "number" }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "records": [
+            {
+              "id": "sc1",
+              "date": "30/5/2026",
+              "time": "08:02 AM",
+              "studentName": "Aarav Sharma",
+              "class": "Cls 5",
+              "result": "SUCCESS",
+              "device": "Chrome/Android",
+              "responseTimeMs": 92
+            }
+          ],
+          "pagination": { "total": 30, "limit": 100, "offset": 0 }
+        }
+      }
+    },
+    "getStudentsReport": {
+      "method": "GET",
+      "path": "/api/v1/reports/students",
+      "description": "(Placeholder) Detailed student demographics / enrollment report.",
+      "response": { "success": true, "data": { "message": "Not implemented" } }
+    },
+    "getSessionsReport": {
+      "method": "GET",
+      "path": "/api/v1/reports/sessions",
+      "description": "(Placeholder) Report on user/login sessions.",
+      "response": { "success": true, "data": { "message": "Not implemented" } }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/v1/reports/filter-options",
+      "description": "Available classes and sections for filter dropdowns (based on actual data).",
+      "response": {
+        "success": true,
+        "data": {
+          "classes": ["string (class names, e.g., 'Cls 1', 'Cls 2', ...)"],
+          "sections": ["A","B","C","D"]
+        }
+      }
+    },
+    "exportReport": {
+      "method": "GET",
+      "path": "/api/v1/reports/export",
+      "description": "Export filtered report data in CSV or PDF format (or print-friendly).",
+      "queryParams": {
+        "type": "enum: attendance, scan_logs, students, sessions (required)",
+        "format": "enum: csv, pdf, print (optional, default csv)",
+        "dateRange": "... same as getAttendanceReport / getScanLogsReport",
+        "class": "string (optional)",
+        "search": "string (optional)",
+        "fromDate": "date (if Custom)",
+        "toDate": "date"
+      },
+      "response": "File download (CSV or PDF) or HTML for print."
+    }
+  },
+  "fieldNotes": {
+    "attendance.attendanceRate": "Calculated as (present / totalStudents) * 100, rounded.",
+    "scanLogs.result": "SUCCESS = valid scan; INVALID = card not recognised; REVOKED = card deactivated; EXPIRED = card expired.",
+    "scanLogs.responseTimeMs": "Time taken by scanner to process the card, used for performance monitoring.",
+    "stats.rateChange": "Percentage point difference compared to previous comparable period (e.g., yesterday for today's stats)."
+  },
+  "enumDefinitions": {
+    "DateRange": ["Today", "ThisWeek", "ThisMonth", "LastMonth", "Custom"],
+    "ScanResult": ["SUCCESS", "INVALID", "REVOKED", "EXPIRED"]
+  }
+}

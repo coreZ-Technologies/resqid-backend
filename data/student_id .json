@@ -1,0 +1,311 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Student Details page (view mode) – includes student profile, academic info, attendance, medical data, emergency contacts, documents, and quick actions.",
+  "endpoints": {
+    "getStudentDetails": {
+      "method": "GET",
+      "path": "/api/students/:studentId",
+      "description": "Fetch full student profile for the detail view page, including all sections (overview, academic, attendance, emergency, medical, documents).",
+      "response": {
+        "success": true,
+        "data": {
+          "id": "string",
+          "name": "string",
+          "firstName": "string",
+          "lastName": "string",
+          "gender": "enum: MALE, FEMALE, OTHER",
+          "dateOfBirth": "date (YYYY-MM-DD)",
+          "age": "number (optional, can be computed on frontend)",
+          "bloodGroup": "string (e.g., 'O+')",
+          "rollNumber": "string",
+          "class": "string (e.g., '10')",
+          "section": "string (A-D)",
+          "admissionYear": "number",
+          "enrollmentDate": "date (YYYY-MM-DD)",
+          "status": "enum: Active, Inactive, Graduated, Transferred",
+          "qrCodeId": "string",
+          "email": "string",
+          "phone": "string",
+          "address": "string",
+          "city": "string",
+          "state": "string",
+          "pincode": "string",
+          "emergencyVisibility": "enum: PUBLIC, MINIMAL, HIDDEN",
+          "parents": [
+            {
+              "id": "string",
+              "name": "string",
+              "relationship": "enum: Father, Mother, Guardian, Other",
+              "phone": "string",
+              "email": "string",
+              "occupation": "string or null",
+              "isPrimary": "boolean",
+              "canCall": "boolean",
+              "canWhatsapp": "boolean"
+            }
+          ],
+          "emergencyContacts": [
+            {
+              "id": "string",
+              "name": "string",
+              "relationship": "string",
+              "phone": "string",
+              "priority": "number"
+            }
+          ],
+          "medicalInfo": {
+            "bloodGroup": "string",
+            "allergies": ["string"],
+            "conditions": ["string"],
+            "medications": ["string"],
+            "doctor": {
+              "name": "string",
+              "specialization": "string",
+              "clinic": "string",
+              "phone": "string",
+              "address": "string"
+            },
+            "hospital": {
+              "name": "string",
+              "phone": "string",
+              "address": "string"
+            },
+            "insurance": {
+              "provider": "string",
+              "policyNumber": "string",
+              "validUntil": "date"
+            },
+            "notes": "string",
+            "lastCheckup": "date",
+            "emergencyInstructions": "string"
+          },
+          "academicInfo": {
+            "subjects": [
+              {
+                "name": "string",
+                "code": "string",
+                "teacher": "string"
+              }
+            ],
+            "previousSchool": "string",
+            "transferCertificate": "string (e.g., 'Yes' / 'No')",
+            "achievements": ["string"],
+            "remarks": "string"
+          },
+          "attendance": {
+            "present": "number",
+            "total": "number",
+            "percentage": "number",
+            "monthly": [
+              {
+                "month": "string (e.g., 'Jan')",
+                "present": "number",
+                "total": "number",
+                "percentage": "number"
+              }
+            ],
+            "recentAbsences": [
+              {
+                "date": "date",
+                "reason": "string",
+                "approved": "boolean"
+              }
+            ]
+          },
+          "recentActivity": [
+            {
+              "action": "string",
+              "date": "datetime",
+              "status": "string"
+            }
+          ],
+          "documents": [
+            {
+              "id": "string",
+              "name": "string",
+              "type": "string",
+              "size": "string",
+              "uploadedAt": "datetime"
+            }
+          ],
+          "feeDetails": {
+            "totalFees": "number",
+            "paid": "number",
+            "pending": "number",
+            "lastPayment": "date or null",
+            "nextDueDate": "date or null"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "id": "STU-001",
+          "name": "Aarav Sharma",
+          "firstName": "Aarav",
+          "lastName": "Sharma",
+          "gender": "MALE",
+          "dateOfBirth": "2010-05-15",
+          "age": 14,
+          "bloodGroup": "O+",
+          "rollNumber": "24",
+          "class": "10",
+          "section": "A",
+          "admissionYear": 2024,
+          "enrollmentDate": "2024-01-15",
+          "status": "Active",
+          "qrCodeId": "RESQID-STU-2024-001234",
+          "email": "aarav.sharma@springdale.edu.in",
+          "phone": "+91 98765 43210",
+          "address": "42, Park Street, Kolkata, West Bengal - 700016",
+          "city": "Kolkata",
+          "state": "West Bengal",
+          "pincode": "700016",
+          "emergencyVisibility": "PUBLIC",
+          "parents": [
+            {
+              "id": "parent1",
+              "name": "Rajesh Sharma",
+              "relationship": "Father",
+              "phone": "+91 98765 43210",
+              "email": "rajesh.sharma@example.com",
+              "occupation": "Businessman",
+              "isPrimary": true,
+              "canCall": true,
+              "canWhatsapp": true
+            }
+          ],
+          "emergencyContacts": [
+            {
+              "id": "emergency1",
+              "name": "Rajesh Sharma",
+              "relationship": "Father",
+              "phone": "+91 98765 43210",
+              "priority": 1
+            }
+          ],
+          "medicalInfo": {
+            "bloodGroup": "O+",
+            "allergies": ["Peanuts", "Dust Mites", "Penicillin"],
+            "conditions": ["Asthma", "Mild Allergy to Dairy"],
+            "medications": ["Inhaler (Salbutamol) - As needed", "Cetirizine - 10mg for allergies"],
+            "doctor": {
+              "name": "Dr. Anjali Mehta",
+              "specialization": "Pediatrician",
+              "clinic": "Mehta Child Care Clinic",
+              "phone": "+91 98765 43213",
+              "address": "15, Lake View Road, Kolkata"
+            },
+            "hospital": {
+              "name": "Apollo Gleneagles Hospital",
+              "phone": "+91 33 2320 3040",
+              "address": "58, Canal Circular Road, Kolkata"
+            },
+            "insurance": {
+              "provider": "Star Health Insurance",
+              "policyNumber": "SHI/2024/123456",
+              "validUntil": "2026-12-31"
+            },
+            "notes": "Student has mild asthma. Inhaler is kept in the school medical room. Parents informed about condition.",
+            "lastCheckup": "2024-10-15",
+            "emergencyInstructions": "In case of asthma attack, use inhaler immediately and contact parents. For severe reactions, rush to nearest hospital."
+          },
+          "academicInfo": {
+            "subjects": [
+              { "name": "Mathematics", "code": "MAT101", "teacher": "Mr. Sharma" },
+              { "name": "Science", "code": "SCI101", "teacher": "Ms. Gupta" }
+            ],
+            "previousSchool": "Delhi Public School",
+            "transferCertificate": "Yes",
+            "achievements": ["1st Prize in Science Fair 2024", "School Cricket Team Captain"],
+            "remarks": "Excellent academic performance, needs encouragement in Mathematics"
+          },
+          "attendance": {
+            "present": 85,
+            "total": 90,
+            "percentage": 94.44,
+            "monthly": [
+              { "month": "Jan", "present": 22, "total": 24, "percentage": 91.67 },
+              { "month": "Feb", "present": 20, "total": 22, "percentage": 90.91 }
+            ],
+            "recentAbsences": [
+              { "date": "2024-12-10", "reason": "Fever", "approved": true }
+            ]
+          },
+          "recentActivity": [
+            { "action": "Attendance Marked", "date": "2024-12-20T09:30:00Z", "status": "Present" }
+          ],
+          "documents": [
+            { "id": "doc1", "name": "Birth Certificate", "type": "PDF", "size": "1.2 MB", "uploadedAt": "2024-01-20T00:00:00Z" }
+          ],
+          "feeDetails": {
+            "totalFees": 85000,
+            "paid": 75000,
+            "pending": 10000,
+            "lastPayment": "2024-12-05",
+            "nextDueDate": "2025-01-15"
+          }
+        }
+      }
+    },
+    "updateEmergencyVisibility": {
+      "method": "PATCH",
+      "path": "/api/students/:studentId/emergency-visibility",
+      "description": "Update the emergency QR profile visibility setting (PUBLIC, MINIMAL, HIDDEN).",
+      "requestBody": {
+        "visibility": "enum: PUBLIC, MINIMAL, HIDDEN (required)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "emergencyVisibility": "string"
+        }
+      }
+    },
+    "downloadQrCode": {
+      "method": "GET",
+      "path": "/api/students/:studentId/qr",
+      "description": "Download the student's QR code image (PNG).",
+      "response": "PNG image file (binary) or redirect to signed URL."
+    },
+    "generateReportCard": {
+      "method": "POST",
+      "path": "/api/students/:studentId/report-card",
+      "description": "Trigger generation of student's report card (PDF). Returns job ID or direct download.",
+      "response": {
+        "success": true,
+        "data": {
+          "jobId": "string",
+          "downloadUrl": "string (optional, if ready)"
+        }
+      }
+    },
+    "sendMessageToParents": {
+      "method": "POST",
+      "path": "/api/students/:studentId/message",
+      "description": "Send a message to all primary contacts of the student (SMS/email/push).",
+      "requestBody": {
+        "subject": "string (optional)",
+        "message": "string (required)",
+        "channel": "enum: email, sms, push (optional, default email)"
+      },
+      "response": {
+        "success": true,
+        "message": "Message sent"
+      }
+    }
+  },
+  "enums": {
+    "Gender": ["MALE", "FEMALE", "OTHER"],
+    "StudentStatus": ["Active", "Inactive", "Graduated", "Transferred"],
+    "EmergencyVisibility": ["PUBLIC", "MINIMAL", "HIDDEN"],
+    "Relationship": ["Father", "Mother", "Guardian", "Other"]
+  },
+  "fieldNotes": {
+    "age": "Can be computed from dateOfBirth on frontend; optional in API response.",
+    "qrCodeId": "Unique identifier for the student's QR code; used in emergency profile display.",
+    "emergencyVisibility": "Determines what information is shown when the student's QR code is scanned in an emergency.",
+    "recentActivity.status": "Free-text status (e.g., 'Present', 'Pending', 'Completed') used for display.",
+    "documents.size": "Human-readable file size (e.g., '1.2 MB')."
+  }
+}

@@ -1,0 +1,152 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Anomalies / Security Alerts page – provides statistics, anomaly list with filters, and status update capabilities.",
+  "endpoints": {
+    "getStats": {
+      "method": "GET",
+      "path": "/api/v1/anomalies/stats",
+      "description": "Get KPI statistics for anomalies dashboard.",
+      "response": {
+        "success": true,
+        "data": {
+          "totalAnomalies": "number (total anomalies in current period)",
+          "openCount": "number (status = open)",
+          "resolvedToday": "number (status changed to resolved today)",
+          "highSeverityCount": "number (severity = high)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalAnomalies": 24,
+          "openCount": 7,
+          "resolvedToday": 5,
+          "highSeverityCount": 3
+        }
+      }
+    },
+    "getAnomalies": {
+      "method": "GET",
+      "path": "/api/v1/anomalies",
+      "description": "Fetch paginated list of anomalies with filters. Frontend uses infinite scroll or pagination; here we assume page/limit.",
+      "queryParams": {
+        "page": "number (default 1)",
+        "limit": "number (default 20)",
+        "status": "string (optional, values: open, investigating, resolved)",
+        "severity": "string (optional, values: high, medium, low)",
+        "search": "string (optional, searches student name, studentId, description, anomalyId)",
+        "sortBy": "string (optional, default time desc, e.g., time, severity)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "anomalies": [
+            {
+              "id": "string (e.g., ANO-001)",
+              "type": "enum: duplicate_scan, unknown_card, outside_hours, multiple_exits, suspicious_timing",
+              "severity": "enum: high, medium, low",
+              "status": "enum: open, investigating, resolved",
+              "student": {
+                "name": "string",
+                "studentId": "string (optional, null if unknown)",
+                "class": "string (e.g., Class 8-A or '—')",
+                "avatarInitials": "string (first letters, e.g., PS)",
+                "avatarColor": "string (optional, backend may not store; frontend computes from type/severity)"
+              },
+              "description": "string (detailed explanation)",
+              "location": "string (e.g., 'Gate A → Gate C')",
+              "time": "datetime (ISO 8601)",
+              "detectedBy": "string (e.g., 'Auto-detection' or 'Gate Scanner #1')"
+            }
+          ],
+          "pagination": {
+            "currentPage": 1,
+            "totalPages": 3,
+            "totalItems": 45,
+            "itemsPerPage": 20
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "anomalies": [
+            {
+              "id": "ANO-001",
+              "type": "duplicate_scan",
+              "severity": "high",
+              "status": "open",
+              "student": {
+                "name": "Priya Sharma",
+                "studentId": "STU-2341",
+                "class": "Class 8-A",
+                "avatarInitials": "PS"
+              },
+              "description": "QR card scanned twice within 4 minutes at two different gates",
+              "location": "Gate A → Gate C",
+              "time": "2026-05-24T08:02:00",
+              "detectedBy": "Auto-detection"
+            }
+          ],
+          "pagination": {
+            "currentPage": 1,
+            "totalPages": 2,
+            "totalItems": 24,
+            "itemsPerPage": 20
+          }
+        }
+      }
+    },
+    "getAnomalyById": {
+      "method": "GET",
+      "path": "/api/v1/anomalies/:id",
+      "description": "Get full details of a single anomaly (for detail panel). Response is same as item in anomalies array.",
+      "response": {
+        "success": true,
+        "data": "Anomaly object (same as above)"
+      }
+    },
+    "updateAnomalyStatus": {
+      "method": "PATCH",
+      "path": "/api/v1/anomalies/:id/status",
+      "description": "Update the status of an anomaly (open → investigating → resolved).",
+      "requestBody": {
+        "status": "enum: open, investigating, resolved"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "id": "string",
+          "status": "string",
+          "updatedAt": "datetime"
+        }
+      }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/v1/anomalies/filter-options",
+      "description": "Get available filter values for dropdowns and tabs (statuses, severities, types) based on existing data.",
+      "response": {
+        "success": true,
+        "data": {
+          "statuses": ["open", "investigating", "resolved"],
+          "severities": ["high", "medium", "low"],
+          "types": ["duplicate_scan", "unknown_card", "outside_hours", "multiple_exits", "suspicious_timing"]
+        }
+      }
+    },
+    "exportAnomalies": {
+      "method": "GET",
+      "path": "/api/v1/anomalies/export",
+      "description": "Export filtered anomalies as CSV (same query params as getAnomalies but without pagination).",
+      "queryParams": "Same as getAnomalies (page, limit ignored)",
+      "response": "CSV file download with columns: id, type, severity, status, studentName, studentId, class, description, location, time, detectedBy"
+    }
+  },
+  "fieldNotes": {
+    "avatarColor": "Frontend calculates color based on type, severity, or student initials. Backend does not need to store this.",
+    "time": "ISO 8601 datetime. Frontend converts to relative time (e.g., '2h ago') and full locale string.",
+    "student.avatarInitials": "Can be computed by backend or frontend; either is fine.",
+    "student.studentId": "May be null for 'unknown' anomalies."
+  }
+}

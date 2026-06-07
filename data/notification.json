@@ -1,0 +1,216 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Notifications page – sending, tracking, filtering, and managing notifications (email, SMS, push, WhatsApp).",
+  "endpoints": {
+    "getNotifications": {
+      "method": "GET",
+      "path": "/api/notifications",
+      "description": "Fetch paginated list of sent notifications with filtering and search.",
+      "queryParams": {
+        "page": "number (default 1)",
+        "limit": "number (default 10)",
+        "search": "string (optional, searches title and message)",
+        "type": "enum: ANNOUNCEMENT, EMERGENCY, REMINDER, EVENT, ATTENDANCE, GENERAL (optional)",
+        "status": "enum: sent, delivered, read, failed (optional)",
+        "fromDate": "date (YYYY-MM-DD, optional)",
+        "toDate": "date (YYYY-MM-DD, optional)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "notifications": [
+            {
+              "id": "string",
+              "title": "string",
+              "message": "string (or body)",
+              "type": "string (one of NOTIFICATION_TYPES keys)",
+              "channel": "enum: email, sms, push, whatsapp",
+              "status": "enum: sent, delivered, read, failed",
+              "priority": "enum: normal, high",
+              "sentBy": "string (user name or 'System')",
+              "sentAt": "datetime (ISO)",
+              "createdAt": "datetime (ISO)",
+              "scheduledFor": "datetime (ISO, nullable)",
+              "recipients": {
+                "total": "number",
+                "delivered": "number",
+                "read": "number",
+                "failed": "number"
+              }
+            }
+          ],
+          "pagination": {
+            "currentPage": "number",
+            "totalPages": "number",
+            "totalItems": "number",
+            "itemsPerPage": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "notifications": [
+            {
+              "id": "notif_001",
+              "title": "Annual Sports Day",
+              "message": "Annual Sports Day will be held on 10th June.",
+              "type": "ANNOUNCEMENT",
+              "channel": "email",
+              "status": "delivered",
+              "priority": "normal",
+              "sentBy": "Admin",
+              "sentAt": "2026-05-30T08:00:00Z",
+              "createdAt": "2026-05-30T08:00:00Z",
+              "scheduledFor": null,
+              "recipients": { "total": 847, "delivered": 800, "read": 620, "failed": 47 }
+            }
+          ],
+          "pagination": { "currentPage": 1, "totalPages": 5, "totalItems": 50, "itemsPerPage": 10 }
+        }
+      }
+    },
+    "getNotificationStats": {
+      "method": "GET",
+      "path": "/api/notifications/stats",
+      "description": "Get aggregated statistics (total sent, delivered, read, open rate) for dashboard cards.",
+      "response": {
+        "success": true,
+        "data": {
+          "totalSent": "number (sum of recipients.total across all notifications)",
+          "totalDelivered": "number (sum of recipients.delivered)",
+          "totalRead": "number (sum of recipients.read)",
+          "openRate": "number (percentage, totalRead / totalDelivered * 100)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalSent": 12800,
+          "totalDelivered": 11520,
+          "totalRead": 9216,
+          "openRate": 80
+        }
+      }
+    },
+    "sendNotification": {
+      "method": "POST",
+      "path": "/api/notifications",
+      "description": "Send a new notification (immediately or schedule for later).",
+      "requestBody": {
+        "title": "string (required)",
+        "message": "string (required)",
+        "type": "enum: ANNOUNCEMENT, EMERGENCY, REMINDER, EVENT, ATTENDANCE, GENERAL (required)",
+        "channels": ["array of strings, at least one: email, sms, push, whatsapp"],
+        "recipientType": "enum: all, class, section, individual (required)",
+        "selectedClass": "string (required if recipientType = class)",
+        "selectedSection": "string (optional, default all sections)",
+        "selectedParents": ["array of parent/user ids (required if recipientType = individual)"],
+        "scheduleLater": "boolean (default false)",
+        "scheduledTime": "datetime (ISO, required if scheduleLater = true)",
+        "priority": "enum: normal, high (default normal)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "id": "string",
+          "status": "scheduled or sent",
+          "scheduledFor": "datetime (if scheduled)",
+          "message": "Notification queued successfully"
+        }
+      }
+    },
+    "resendNotification": {
+      "method": "POST",
+      "path": "/api/notifications/:id/resend",
+      "description": "Resend a failed notification to the original recipients.",
+      "pathParams": { "id": "string" },
+      "response": {
+        "success": true,
+        "data": {
+          "id": "string",
+          "status": "sent",
+          "message": "Resend queued"
+        }
+      }
+    },
+    "deleteNotification": {
+      "method": "DELETE",
+      "path": "/api/notifications/:id",
+      "description": "Delete a notification (soft delete recommended, or hard delete for draft/scheduled).",
+      "pathParams": { "id": "string" },
+      "response": { "success": true, "message": "Notification deleted" }
+    },
+    "markNotificationRead": {
+      "method": "POST",
+      "path": "/api/notifications/:id/read",
+      "description": "Mark a specific notification as read (for tracking read receipts per user; but in admin panel, this marks the admin's own read status?).",
+      "pathParams": { "id": "string" },
+      "response": { "success": true, "data": { "read": true } }
+    },
+    "markAllNotificationsRead": {
+      "method": "POST",
+      "path": "/api/notifications/mark-all-read",
+      "description": "Mark all notifications as read for the current admin user.",
+      "response": { "success": true, "message": "All notifications marked as read" }
+    },
+    "getUnreadCount": {
+      "method": "GET",
+      "path": "/api/notifications/unread-count",
+      "description": "Get number of unread notifications for the current admin (for bell badge).",
+      "response": { "success": true, "data": { "unreadCount": "number" } }
+    },
+    "getNotificationPreferences": {
+      "method": "GET",
+      "path": "/api/notifications/preferences",
+      "description": "Get notification delivery preferences for the school (channels enabled, default settings).",
+      "response": {
+        "success": true,
+        "data": {
+          "enabledChannels": ["email", "sms", "push", "whatsapp"],
+          "defaultRecipientType": "all",
+          "allowScheduling": true
+        }
+      }
+    },
+    "updateNotificationPreferences": {
+      "method": "PUT",
+      "path": "/api/notifications/preferences",
+      "description": "Update school notification preferences (e.g., default channels).",
+      "requestBody": {
+        "enabledChannels": ["array of strings (optional)"],
+        "defaultRecipientType": "string (optional)"
+      },
+      "response": { "success": true, "data": "Updated preferences object" }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/notifications/filter-options",
+      "description": "Available types, statuses, recipient types for dropdowns.",
+      "response": {
+        "success": true,
+        "data": {
+          "types": ["ANNOUNCEMENT", "EMERGENCY", "REMINDER", "EVENT", "ATTENDANCE", "GENERAL"],
+          "statuses": ["sent", "delivered", "read", "failed"],
+          "recipientTypes": ["all", "class", "section", "individual"],
+          "channels": ["email", "sms", "push", "whatsapp"],
+          "priority": ["normal", "high"]
+        }
+      }
+    }
+  },
+  "enums": {
+    "NotificationType": ["ANNOUNCEMENT", "EMERGENCY", "REMINDER", "EVENT", "ATTENDANCE", "GENERAL"],
+    "Channel": ["email", "sms", "push", "whatsapp"],
+    "NotificationStatus": ["sent", "delivered", "read", "failed"],
+    "Priority": ["normal", "high"],
+    "RecipientType": ["all", "class", "section", "individual"]
+  },
+  "fieldNotes": {
+    "channels": "Array of selected channels; at least one must be provided.",
+    "recipients": "Statistics object returned in getNotifications; backend should track delivery and read status via webhooks or polling.",
+    "scheduledFor": "ISO datetime; if null, notification was sent immediately.",
+    "markNotificationRead": "For admin panel, this marks that the admin has seen the notification (not the parent’s read status). Parent read status is tracked separately in recipients.read.",
+    "getUnreadCount": "Count of notifications where admin has not yet viewed the details (separate from recipient read stats)."
+  }
+}
