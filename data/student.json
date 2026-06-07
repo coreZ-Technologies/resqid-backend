@@ -1,0 +1,48 @@
+{
+  "apiEndpoint": "/api/v1/students",
+  "method": "GET",
+  "description": "Response data used by the frontend Students page",
+  "responseData": {
+    "students": [
+      {
+        "id": "STU00001",
+        "name": "Aarav Sharma",
+        "rollNumber": "12",
+        "class": "6",
+        "section": "A",
+        "parentName": "Rajesh Sharma",
+        "parentPhone": "+91 9876543210",
+        "email": "aarav@school.com",
+        "status": "Active",
+        "photo": null,
+        "initials": "AS"
+      }
+    ],
+    "pagination": {
+      "currentPage": 1,
+      "totalPages": 17,
+      "totalItems": 250,
+      "itemsPerPage": 15,
+      "startItem": 1,
+      "endItem": 15
+    },
+    "filterOptions": {
+      "classes": ["Nursery", "LKG", "UKG", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
+      "sections": ["A", "B", "C", "D"]
+    }
+  },
+  "statsEndpoint": "/api/v1/students/stats",
+  "statsResponse": {
+    "totalStudents": 250,
+    "totalClasses": 15,
+    "activeStudents": 238,
+    "totalSections": 4
+  },
+  "notes": [
+    "initials can be computed on frontend from name, but backend may provide it for consistency",
+    "photo is optional URL or null",
+    "status is either 'Active' or 'Inactive'",
+    "filterOptions.classes should be derived from actual student data (distinct classes)",
+    "filterOptions.sections can be static or derived from data"
+  ]
+}

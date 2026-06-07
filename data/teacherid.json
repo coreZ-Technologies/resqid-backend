@@ -1,0 +1,112 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Add Teacher page – multi-step form: personal info, teaching details, access credentials.",
+  "endpoints": {
+    "createTeacher": {
+      "method": "POST",
+      "path": "/api/teachers",
+      "description": "Create a new teacher record. Includes personal info, teaching details, and portal credentials. Password will be hashed before storage.",
+      "requestBody": {
+        "salutation": "enum: Mr., Ms., Mrs., Dr. (optional, default 'Mr.')",
+        "firstName": "string (required, max 50)",
+        "lastName": "string (required, max 50)",
+        "email": "string (required, unique, valid email format)",
+        "phone": "string (required, unique, phone number regex)",
+        "dateOfBirth": "date (YYYY-MM-DD, optional)",
+        "gender": "enum: Male, Female, Other (optional)",
+        "address": "string (optional, max 500)",
+        "subject": "string (required, primary subject – must be in the allowed list)",
+        "qualification": "enum (required, must be one of predefined qualifications)",
+        "experience": "string (optional, e.g., '5 years')",
+        "joiningDate": "date (YYYY-MM-DD, optional)",
+        "assignedClasses": ["array of strings (required, at least one, each class name must exist in system)"],
+        "employeeId": "string (optional, unique if provided)",
+        "password": "string (required, min 8 chars, strength validated frontend)",
+        "confirmPassword": "string (required, must match password – validated frontend only)",
+        "role": "enum: Teacher, Class Teacher (optional, default 'Teacher')"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "id": "string (auto-generated teacher ID)",
+          "message": "Teacher created successfully"
+        }
+      },
+      "errorResponses": {
+        "400": { "message": "Validation error – missing required fields or invalid data" },
+        "409": { "message": "Email or phone number already registered" },
+        "404": { "message": "One or more assigned classes not found" }
+      }
+    },
+    "checkEmailAvailability": {
+      "method": "GET",
+      "path": "/api/teachers/check-email",
+      "description": "Check if an email address is already used by any teacher.",
+      "queryParams": {
+        "email": "string (required)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "available": "boolean"
+        }
+      }
+    },
+    "checkPhoneAvailability": {
+      "method": "GET",
+      "path": "/api/teachers/check-phone",
+      "description": "Check if a phone number is already used by any teacher.",
+      "queryParams": {
+        "phone": "string (required)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "available": "boolean"
+        }
+      }
+    },
+    "getDropdownOptions": {
+      "method": "GET",
+      "path": "/api/teachers/dropdowns",
+      "description": "Fetch all static dropdown data needed for the form: subjects, classes, qualifications, salutations.",
+      "response": {
+        "success": true,
+        "data": {
+          "subjects": ["string"],
+          "classes": ["string (e.g., 'Class 5-A')"],
+          "qualifications": ["string"],
+          "salutations": ["Mr.", "Ms.", "Mrs.", "Dr."]
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "subjects": ["Mathematics", "English", "Science", "History", "Geography", "Computer Science", "Art & Craft", "Physical Education", "Hindi", "Bengali"],
+          "classes": ["Class 5-A", "Class 5-B", "Class 6-A", "Class 6-B", "Class 7-A", "Class 7-B", "Class 8-A", "Class 8-B", "Class 9-A", "Class 9-B", "Class 10-A", "Class 10-B"],
+          "qualifications": ["B.Ed", "M.Ed", "B.Sc + B.Ed", "M.Sc", "M.A", "B.Tech", "M.Tech", "B.P.Ed", "B.F.A", "Other"],
+          "salutations": ["Mr.", "Ms.", "Mrs.", "Dr."]
+        }
+      }
+    }
+  },
+  "enums": {
+    "Salutation": ["Mr.", "Ms.", "Mrs.", "Dr."],
+    "Gender": ["Male", "Female", "Other"],
+    "TeacherRole": ["Teacher", "Class Teacher"],
+    "Qualification": ["B.Ed", "M.Ed", "B.Sc + B.Ed", "M.Sc", "M.A", "B.Tech", "M.Tech", "B.P.Ed", "B.F.A", "Other"]
+  },
+  "fieldNotes": {
+    "firstName": "Required, trimmed, at least 1 character.",
+    "lastName": "Required, trimmed, at least 1 character.",
+    "email": "Required, must be unique across teachers. Will be used for portal login.",
+    "phone": "Required, must be unique across teachers. Format should be validated on backend (e.g., Indian +91 10-digit).",
+    "subject": "Must match one of the predefined subjects. Primary subject for the teacher.",
+    "qualification": "Must be one of the predefined qualifications.",
+    "assignedClasses": "Array of class-section strings (e.g., 'Class 5-A'). Each must correspond to an existing class in the school.",
+    "employeeId": "Optional but must be unique if provided. Useful for HR integration.",
+    "password": "Will be hashed (bcrypt) before storing. Minimum 8 characters, no other restrictions enforced by backend – frontend shows strength meter.",
+    "confirmPassword": "Not sent to backend; validated only on frontend.",
+    "role": "Determines permissions in the teacher portal. 'Class Teacher' may have additional access."
+  }
+}

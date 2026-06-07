@@ -1,0 +1,266 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Substitutions page – manage teacher absences, substitute assignments, stats, filtering, and notifications.",
+  "endpoints": {
+    "getStats": {
+      "method": "GET",
+      "path": "/api/substitutions/stats",
+      "description": "Get summary statistics for the dashboard cards (today's substitutions, teachers absent, covered periods, pending coverage).",
+      "queryParams": {
+        "date": "string (optional, YYYY-MM-DD, default today)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "todaySubstitutions": "number (total substitution periods today)",
+          "teachersAbsent": "number (distinct absent teachers today)",
+          "coveredPeriods": "number (substitutions with status = confirmed today)",
+          "pendingCoverage": "number (substitutions with status = pending today)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "todaySubstitutions": 4,
+          "teachersAbsent": 3,
+          "coveredPeriods": 11,
+          "pendingCoverage": 2
+        }
+      }
+    },
+    "getAbsentTeachers": {
+      "method": "GET",
+      "path": "/api/substitutions/absent-teachers",
+      "description": "Get list of teachers marked absent today (with status = absent).",
+      "queryParams": {
+        "date": "string (optional, YYYY-MM-DD, default today)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "teachers": [
+            {
+              "id": "string",
+              "name": "string",
+              "subject": "string",
+              "avatarInitials": "string (e.g., 'AD')",
+              "avatarColor": "string (CSS class or color hint)"
+            }
+          ]
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "teachers": [
+            {
+              "id": "TCH-003",
+              "name": "Mr. A. Das",
+              "subject": "Science",
+              "avatarInitials": "AD",
+              "avatarColor": "bg-emerald-500"
+            }
+          ]
+        }
+      }
+    },
+    "getSubstitutions": {
+      "method": "GET",
+      "path": "/api/substitutions",
+      "description": "Fetch paginated list of substitutions with filters (date range, status, search).",
+      "queryParams": {
+        "page": "number (default 1)",
+        "limit": "number (default 20)",
+        "dateRange": "enum: All, Today, Yesterday, ThisWeek (optional)",
+        "status": "enum: All, confirmed, pending, completed (optional)",
+        "search": "string (optional, searches class name, subject, teacher names)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "substitutions": [
+            {
+              "id": "string",
+              "date": "string (display label, e.g., 'Today', 'Yesterday', '2 days ago', or ISO date)",
+              "period": "string (e.g., 'P3')",
+              "time": "string (e.g., '9:45 – 10:30')",
+              "class": "string",
+              "subject": "string",
+              "absentTeacher": {
+                "id": "string",
+                "name": "string",
+                "avatarInitials": "string",
+                "avatarColor": "string"
+              },
+              "substituteTeacher": "object (teacher details) or null",
+              "status": "enum: confirmed, pending, completed",
+              "reason": "string (reason for absence)",
+              "notifiedParents": "boolean"
+            }
+          ],
+          "pagination": {
+            "currentPage": "number",
+            "totalPages": "number",
+            "totalItems": "number",
+            "itemsPerPage": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "substitutions": [
+            {
+              "id": "SUB-001",
+              "date": "Today",
+              "period": "P3",
+              "time": "9:45 – 10:30",
+              "class": "Class 8-A",
+              "subject": "Science",
+              "absentTeacher": {
+                "id": "TCH-003",
+                "name": "Mr. A. Das",
+                "avatarInitials": "AD",
+                "avatarColor": "bg-emerald-500"
+              },
+              "substituteTeacher": {
+                "id": "TCH-007",
+                "name": "Mr. D. Verma",
+                "avatarInitials": "DV",
+                "avatarColor": "bg-indigo-500"
+              },
+              "status": "confirmed",
+              "reason": "Medical leave",
+              "notifiedParents": true
+            }
+          ],
+          "pagination": { "currentPage": 1, "totalPages": 3, "totalItems": 25, "itemsPerPage": 20 }
+        }
+      }
+    },
+    "getSubstitutionById": {
+      "method": "GET",
+      "path": "/api/substitutions/:id",
+      "description": "Get full details of a single substitution (same as item in list).",
+      "pathParams": { "id": "string" },
+      "response": {
+        "success": true,
+        "data": "Substitution object (same as above)"
+      }
+    },
+    "assignSubstitute": {
+      "method": "POST",
+      "path": "/api/substitutions/:id/assign",
+      "description": "Assign a substitute teacher to a pending substitution. Updates status to 'confirmed'.",
+      "pathParams": { "id": "string" },
+      "requestBody": {
+        "teacherId": "string (required, ID of substitute teacher)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "substitution": "Updated substitution object",
+          "message": "Substitute assigned successfully"
+        }
+      },
+      "errorResponses": {
+        "404": { "message": "Teacher not found or unavailable" },
+        "409": { "message": "Substitution already assigned or not pending" }
+      }
+    },
+    "updateSubstitution": {
+      "method": "PATCH",
+      "path": "/api/substitutions/:id",
+      "description": "Update substitution details (e.g., change substitute, mark as completed, update reason).",
+      "pathParams": { "id": "string" },
+      "requestBody": {
+        "substituteTeacherId": "string (optional)",
+        "status": "enum: confirmed, pending, completed (optional)",
+        "reason": "string (optional)",
+        "notifiedParents": "boolean (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": "Updated substitution object"
+      }
+    },
+    "deleteSubstitution": {
+      "method": "DELETE",
+      "path": "/api/substitutions/:id",
+      "description": "Remove a substitution record (e.g., if the absent teacher returns or it was created by mistake).",
+      "pathParams": { "id": "string" },
+      "response": {
+        "success": true,
+        "message": "Substitution deleted"
+      }
+    },
+    "notifyParents": {
+      "method": "POST",
+      "path": "/api/substitutions/:id/notify",
+      "description": "Send notification to parents of the affected class about the substitution.",
+      "pathParams": { "id": "string" },
+      "response": {
+        "success": true,
+        "data": {
+          "notifiedParents": true,
+          "message": "Notification sent to parents"
+        }
+      }
+    },
+    "getAvailableTeachers": {
+      "method": "GET",
+      "path": "/api/substitutions/available-teachers",
+      "description": "Get list of teachers available to substitute on a given date/period (used in assign modal).",
+      "queryParams": {
+        "date": "string (optional, YYYY-MM-DD, default today)",
+        "period": "string (optional, period identifier, e.g., 'P3')",
+        "excludeTeacherId": "string (optional, exclude the absent teacher)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "teachers": [
+            {
+              "id": "string",
+              "name": "string",
+              "subject": "string",
+              "avatarInitials": "string",
+              "avatarColor": "string",
+              "available": "boolean"
+            }
+          ]
+        }
+      }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/substitutions/filter-options",
+      "description": "Available date ranges, statuses, etc. for filter dropdowns.",
+      "response": {
+        "success": true,
+        "data": {
+          "dateRanges": ["All", "Today", "Yesterday", "ThisWeek"],
+          "statuses": ["All", "confirmed", "pending", "completed"]
+        }
+      }
+    },
+    "exportSubstitutions": {
+      "method": "GET",
+      "path": "/api/substitutions/export",
+      "description": "Export filtered substitutions as CSV (same query params as getSubstitutions, pagination ignored).",
+      "queryParams": "Same as getSubstitutions (page/limit ignored)",
+      "response": "CSV file download with columns: id, date, period, time, class, subject, absentTeacher, substituteTeacher, status, reason, notifiedParents"
+    }
+  },
+  "enums": {
+    "SubstitutionStatus": ["confirmed", "pending", "completed"],
+    "DateRange": ["All", "Today", "Yesterday", "ThisWeek"]
+  },
+  "fieldNotes": {
+    "date": "The frontend displays strings like 'Today', 'Yesterday', or '2 days ago' but backend can send an ISO date and let frontend format; however for simplicity the contract allows a string label. Recommend backend return a formatted date string or ISO with a separate relative display field.",
+    "avatarColor": "Frontend may compute deterministic color based on teacher ID; backend can ignore or provide a CSS class name.",
+    "substituteTeacher": "Null until assigned. When assigned, status typically becomes 'confirmed'.",
+    "notifiedParents": "Indicates whether parents have been notified about the substitution (via push/SMS/email).",
+    "reason": "Free text explaining the absence (e.g., 'Medical leave', 'Training')."
+  }
+}

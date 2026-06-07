@@ -1,265 +1,137 @@
-// modules/students/student.validation.js
+// =============================================================================
+// modules/students/student.validation.js — RESQID
+// =============================================================================
+
 import { z } from 'zod';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+const cuid = z.string().min(1, 'Invalid ID format');
 
-const CLASSES = [
-  'Nursery',
-  'LKG',
-  'UKG',
-  '1',
-  '2',
-  '3',
-  '4',
-  '5',
-  '6',
-  '7',
-  '8',
-  '9',
-  '10',
-  '11',
-  '12',
-];
+// ─── Enums ────────────────────────────────────────────────────────────────────
 
-const SECTIONS = ['A', 'B', 'C', 'D'];
+const bloodGroupEnum = z.enum([
+  'A_POSITIVE',
+  'A_NEGATIVE',
+  'B_POSITIVE',
+  'B_NEGATIVE',
+  'AB_POSITIVE',
+  'AB_NEGATIVE',
+  'O_POSITIVE',
+  'O_NEGATIVE',
+  'UNKNOWN',
+]);
+const genderEnum = z.enum(['MALE', 'FEMALE', 'OTHER']);
+const statusEnum = z.enum(['ACTIVE', 'INACTIVE', 'GRADUATED', 'TRANSFERRED', 'SUSPENDED']);
+const visibilityEnum = z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']);
+const relationshipEnum = z.enum([
+  'FATHER',
+  'MOTHER',
+  'GUARDIAN',
+  'GRANDPARENT',
+  'SIBLING',
+  'OTHER',
+]);
 
-const GENDERS = ['MALE', 'FEMALE', 'OTHER'];
+// ─── Parent Contact ───────────────────────────────────────────────────────────
 
-const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+const parentSchema = z.object({
+  name: z.string().min(1).max(200),
+  relationship: relationshipEnum.default('GUARDIAN'),
+  phone: z.string().min(10).max(20),
+  email: z.string().email().max(254).optional().nullable(),
+  occupation: z.string().max(200).optional().nullable(),
+  isPrimary: z.boolean().default(false),
+  canCall: z.boolean().default(true),
+  canWhatsapp: z.boolean().default(true),
+});
 
-const RELATIONSHIPS = ['FATHER', 'MOTHER', 'GUARDIAN', 'GRANDPARENT', 'SIBLING', 'OTHER'];
+// ─── Emergency Contact ────────────────────────────────────────────────────────
 
-const STUDENT_STATUSES = [
-  'ACTIVE',
-  'INACTIVE',
-  'GRADUATED',
-  'TRANSFERRED',
-  'SUSPENDED',
-  'WITHDRAWN',
-];
+const emergencyContactSchema = z.object({
+  name: z.string().min(1).max(200),
+  relationship: z.string().max(50).optional(),
+  phone: z.string().min(10).max(20),
+  priority: z.number().int().min(1).max(10).default(1),
+});
 
-// ─── Schemas ──────────────────────────────────────────────────────────────────
+// ─── Medical Info ─────────────────────────────────────────────────────────────
 
-/**
- * Create Student Schema
- */
+const medicalInfoSchema = z.object({
+  allergies: z.array(z.string().max(200)).max(20).optional().default([]),
+  conditions: z.array(z.string().max(200)).max(20).optional().default([]),
+  medications: z.array(z.string().max(200)).max(20).optional().default([]),
+  doctorName: z.string().max(200).optional().nullable(),
+  doctorSpecialization: z.string().max(200).optional().nullable(),
+  doctorPhone: z.string().max(20).optional().nullable(),
+  doctorClinic: z.string().max(500).optional().nullable(),
+  doctorAddress: z.string().max(500).optional().nullable(),
+  hospitalName: z.string().max(200).optional().nullable(),
+  hospitalPhone: z.string().max(20).optional().nullable(),
+  hospitalAddress: z.string().max(500).optional().nullable(),
+  insuranceProvider: z.string().max(200).optional().nullable(),
+  insurancePolicyNumber: z.string().max(100).optional().nullable(),
+  insuranceValidUntil: z.string().optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+  lastCheckup: z.string().optional().nullable(),
+  emergencyInstructions: z.string().max(2000).optional().nullable(),
+});
+
+// ─── Create Student ───────────────────────────────────────────────────────────
+
 export const createStudentSchema = z.object({
-  // Personal Information (Required)
-  firstName: z
-    .string()
-    .min(2, 'First name must be at least 2 characters')
-    .max(50, 'First name must be less than 50 characters')
-    .trim(),
-
-  lastName: z
-    .string()
-    .min(2, 'Last name must be at least 2 characters')
-    .max(50, 'Last name must be less than 50 characters')
-    .trim(),
-
-  dateOfBirth: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)')
-    .refine((date) => {
-      const dob = new Date(date);
-      const now = new Date();
-      const age = now.getFullYear() - dob.getFullYear();
-      return age >= 2 && age <= 25;
-    }, 'Student age must be between 2 and 25 years'),
-
-  gender: z.enum(GENDERS, {
-    errorMap: () => ({ message: 'Gender must be MALE, FEMALE, or OTHER' }),
-  }),
-
-  // Academic Information (Required)
-  class: z.enum(CLASSES, {
-    errorMap: () => ({ message: 'Invalid class' }),
-  }),
-
-  section: z.enum(SECTIONS, {
-    errorMap: () => ({ message: 'Section must be A, B, C, or D' }),
-  }),
-
-  // Optional Personal Information
-  bloodGroup: z.enum(BLOOD_GROUPS).optional(),
-  photoUrl: z.string().url('Invalid photo URL').optional(),
-  email: z.string().email('Invalid email').optional().or(z.literal('')),
-  phone: z
-    .string()
-    .regex(/^\+?[\d\s-]{10,15}$/, 'Invalid phone number')
-    .optional()
-    .or(z.literal('')),
-  address: z.string().max(200).optional(),
-  city: z.string().max(50).optional(),
-  state: z.string().max(50).optional(),
-  pincode: z
-    .string()
-    .regex(/^\d{6}$/, 'Invalid pincode')
-    .optional(),
-
-  // Academic Optional
-  rollNumber: z.string().max(20).optional(),
-  admissionYear: z.number().int().min(2000).max(new Date().getFullYear()).optional(),
-  previousSchool: z.string().max(100).optional(),
-  transferCertificate: z.boolean().optional(),
-
-  // Medical Quick Info
-  allergies: z.array(z.string()).optional(),
-  conditions: z.array(z.string()).optional(),
-  medications: z.array(z.string()).optional(),
-
-  // Parents (At least one required)
+  firstName: z.string().min(1, 'First name is required').max(100),
+  lastName: z.string().min(1, 'Last name is required').max(100),
+  gender: genderEnum.optional(),
+  dateOfBirth: z.string().optional(),
+  bloodGroup: bloodGroupEnum.optional(),
+  grade: z.string().min(1, 'Class is required').max(10),
+  section: z.string().min(1, 'Section is required').max(5),
+  rollNumber: z.string().max(50).optional(),
+  email: z.string().email().max(254).optional().nullable(),
+  phone: z.string().max(20).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  pincode: z.string().max(10).optional().nullable(),
+  status: statusEnum.optional().default('ACTIVE'),
+  emergencyVisibility: visibilityEnum.optional().default('PUBLIC'),
+  rfidTagNumber: z.string().max(100).optional(),
+  classGroupId: z.string().optional(),
   parents: z
-    .array(
-      z.object({
-        parentId: z.string().optional(), // If existing parent
-        firstName: z.string().min(2).max(50).optional(),
-        lastName: z.string().min(2).max(50).optional(),
-        phone: z
-          .string()
-          .regex(/^\+?[\d\s-]{10,15}$/, 'Invalid phone number')
-          .optional(),
-        email: z.string().email().optional().or(z.literal('')),
-        relationship: z.enum(RELATIONSHIPS),
-        isPrimary: z.boolean().optional().default(false),
-        occupation: z.string().optional(),
-        address: z.string().optional(),
-      })
-    )
-    .min(1, 'At least one parent is required'),
-
-  // Emergency Contacts
-  emergencyContacts: z
-    .array(
-      z.object({
-        name: z.string().min(2).max(100),
-        phone: z.string().regex(/^\+?[\d\s-]{10,15}$/, 'Invalid phone number'),
-        relation: z.string().max(50),
-        isPrimary: z.boolean().optional().default(false),
-        priority: z.number().int().min(0).max(10).optional().default(0),
-      })
-    )
+    .array(parentSchema)
+    .min(1, 'At least one parent is required')
+    .max(4)
     .optional()
     .default([]),
-
-  // Card Visibility
-  cardVisibility: z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']).optional().default('PUBLIC'),
-
-  // Metadata
-  metadata: z.record(z.any()).optional(),
+  emergencyContacts: z.array(emergencyContactSchema).max(10).optional().default([]),
+  medicalInfo: medicalInfoSchema.optional().default({}),
+  previousSchool: z.string().max(200).optional().nullable(),
 });
 
-/**
- * Update Student Schema (All fields optional)
- */
+// ─── Update Student ───────────────────────────────────────────────────────────
+
 export const updateStudentSchema = createStudentSchema.partial();
 
-/**
- * Bulk Import Schema
- */
-export const bulkImportSchema = z.object({
-  students: z
-    .array(createStudentSchema)
-    .min(1, 'At least one student is required')
-    .max(5000, 'Maximum 5000 students per batch'),
+// ─── Bulk Create ──────────────────────────────────────────────────────────────
+
+export const bulkCreateStudentSchema = z.object({
+  students: z.array(createStudentSchema).min(1).max(500),
 });
 
-/**
- * Student Query Schema (For filtering/searching)
- */
-export const studentQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).optional().default(1),
-  limit: z.coerce.number().int().min(1).max(100).optional().default(15),
+// ─── List Query ───────────────────────────────────────────────────────────────
+
+export const studentListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
-  class: z.enum(CLASSES).optional(),
-  section: z.enum(SECTIONS).optional(),
-  status: z.enum(STUDENT_STATUSES).optional(),
-  gender: z.enum(GENDERS).optional(),
-  bloodGroup: z.enum(BLOOD_GROUPS).optional(),
+  grade: z.string().optional(),
+  section: z.string().optional(),
+  status: statusEnum.optional(),
   sortBy: z
-    .enum(['firstName', 'lastName', 'class', 'createdAt', 'status'])
-    .optional()
-    .default('createdAt'),
-  sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
-  parentPhone: z.string().optional(),
-  admissionYear: z.coerce.number().int().optional(),
+    .enum(['firstName', 'lastName', 'grade', 'createdAt', 'rollNumber'])
+    .default('firstName'),
+  sortOrder: z.enum(['asc', 'desc']).default('asc'),
 });
 
-/**
- * Student ID Param Schema
- */
-export const studentIdSchema = z.object({
-  studentId: z.string().min(1, 'Student ID is required'),
-});
+// ─── Params ───────────────────────────────────────────────────────────────────
 
-/**
- * Add Parent to Student Schema
- */
-export const addParentSchema = z.object({
-  parentId: z.string().optional(),
-  firstName: z.string().min(2).max(50).optional(),
-  lastName: z.string().min(2).max(50).optional(),
-  phone: z.string().regex(/^\+?[\d\s-]{10,15}$/, 'Invalid phone number'),
-  email: z.string().email().optional(),
-  relationship: z.enum(RELATIONSHIPS),
-  isPrimary: z.boolean().optional().default(false),
-  occupation: z.string().optional(),
-});
-
-/**
- * Update Medical Info Schema
- */
-export const medicalInfoSchema = z.object({
-  bloodGroup: z.enum(BLOOD_GROUPS).optional(),
-  allergies: z.array(z.string()).optional(),
-  conditions: z.array(z.string()).optional(),
-  medications: z.array(z.string()).optional(),
-  doctorName: z.string().optional(),
-  doctorPhone: z.string().optional(),
-  doctorSpecialization: z.string().optional(),
-  doctorClinic: z.string().optional(),
-  doctorAddress: z.string().optional(),
-  hospitalName: z.string().optional(),
-  hospitalPhone: z.string().optional(),
-  hospitalAddress: z.string().optional(),
-  insuranceProvider: z.string().optional(),
-  insurancePolicyNumber: z.string().optional(),
-  insuranceValidUntil: z.string().optional(),
-  notes: z.string().optional(),
-  emergencyInstructions: z.string().optional(),
-});
-
-/**
- * Document Upload Schema
- */
-export const documentSchema = z.object({
-  name: z.string().min(2).max(100),
-  type: z.enum([
-    'BIRTH_CERTIFICATE',
-    'TRANSFER_CERTIFICATE',
-    'MEDICAL_REPORT',
-    'IMMUNIZATION_RECORD',
-    'ID_PROOF',
-    'PASSPORT',
-    'AADHAR_CARD',
-    'PARENT_ID',
-    'PHOTO',
-    'OTHER',
-  ]),
-  file: z.any(), // Will be validated by multer
-});
-
-// ─── Exports ──────────────────────────────────────────────────────────────────
-
-export const studentValidation = {
-  createStudent: createStudentSchema,
-  updateStudent: updateStudentSchema,
-  bulkImport: bulkImportSchema,
-  queryStudents: studentQuerySchema,
-  studentId: studentIdSchema,
-  addParent: addParentSchema,
-  medicalInfo: medicalInfoSchema,
-  document: documentSchema,
-};
-
-export default studentValidation;
+export const studentIdParamsSchema = z.object({ id: cuid });

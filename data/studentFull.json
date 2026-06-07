@@ -1,0 +1,131 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Students page (list view) – stats, search, filters, pagination, export, and delete.",
+  "endpoints": {
+    "getStats": {
+      "method": "GET",
+      "path": "/api/students/stats",
+      "description": "Get summary statistics for the dashboard cards: total students, total classes, active students, number of sections.",
+      "response": {
+        "success": true,
+        "data": {
+          "totalStudents": "number",
+          "totalClasses": "number (distinct class names, e.g., '1', '2', etc.)",
+          "activeStudents": "number (status = 'Active')",
+          "sections": "number (e.g., 4 for A-D)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalStudents": 250,
+          "totalClasses": 15,
+          "activeStudents": 238,
+          "sections": 4
+        }
+      }
+    },
+    "getStudents": {
+      "method": "GET",
+      "path": "/api/students",
+      "description": "Fetch paginated list of students with filtering and search.",
+      "queryParams": {
+        "page": "number (default 1)",
+        "limit": "number (default 15, max 100)",
+        "search": "string (optional, searches student name, id, parent name, roll number)",
+        "class": "string (optional, exact class name e.g., '5')",
+        "section": "string (optional, exact section A-D)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "students": [
+            {
+              "id": "string",
+              "name": "string",
+              "rollNumber": "string",
+              "class": "string",
+              "section": "string",
+              "parentName": "string",
+              "parentPhone": "string",
+              "email": "string",
+              "status": "enum: Active, Inactive",
+              "photo": "string (URL or null)"
+            }
+          ],
+          "pagination": {
+            "currentPage": "number",
+            "totalPages": "number",
+            "totalItems": "number",
+            "itemsPerPage": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "students": [
+            {
+              "id": "STU00001",
+              "name": "Aarav Sharma",
+              "rollNumber": "12",
+              "class": "5",
+              "section": "A",
+              "parentName": "Rajesh Sharma",
+              "parentPhone": "+91 9876543210",
+              "email": "parent@example.com",
+              "status": "Active",
+              "photo": null
+            }
+          ],
+          "pagination": {
+            "currentPage": 1,
+            "totalPages": 17,
+            "totalItems": 250,
+            "itemsPerPage": 15
+          }
+        }
+      }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/students/filter-options",
+      "description": "Get available class names and sections for filter dropdowns (based on actual student data).",
+      "response": {
+        "success": true,
+        "data": {
+          "classes": ["Nursery","LKG","UKG","1","2","3","4","5","6","7","8","9","10","11","12"],
+          "sections": ["A","B","C","D"]
+        }
+      }
+    },
+    "deleteStudent": {
+      "method": "DELETE",
+      "path": "/api/students/:id",
+      "description": "Delete a student record (hard delete).",
+      "pathParams": {
+        "id": "string"
+      },
+      "response": {
+        "success": true,
+        "message": "Student deleted successfully"
+      }
+    },
+    "exportStudents": {
+      "method": "GET",
+      "path": "/api/students/export",
+      "description": "Export filtered student list as CSV (same query params as getStudents, pagination ignored).",
+      "queryParams": "Same as getStudents (page/limit ignored)",
+      "response": "CSV file download with columns: id, name, rollNumber, class, section, parentName, parentPhone, email, status"
+    }
+  },
+  "enums": {
+    "StudentStatus": ["Active", "Inactive"]
+  },
+  "fieldNotes": {
+    "photo": "Optional profile photo URL; frontend displays initials if null.",
+    "pagination": "Frontend uses itemsPerPage = 15; backend may support custom limit.",
+    "search": "Case‑insensitive substring search across name, id, parentName, rollNumber.",
+    "classes": "The order of classes in filter options should follow academic order (Nursery to 12)."
+  }
+}

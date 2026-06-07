@@ -1,0 +1,230 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Staff Management page – list, filter, search, pagination, CRUD, stats, and file upload.",
+  "endpoints": {
+    "getStats": {
+      "method": "GET",
+      "path": "/api/staff/stats",
+      "description": "Get summary statistics for dashboard cards (total staff, teaching staff, active staff, unique departments).",
+      "response": {
+        "success": true,
+        "data": {
+          "totalStaff": "number",
+          "teachingStaff": "number (staff with department = 'Teaching')",
+          "activeStaff": "number (status = 'Active')",
+          "uniqueDepartments": "number (count of distinct departments)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalStaff": 150,
+          "teachingStaff": 89,
+          "activeStaff": 142,
+          "uniqueDepartments": 12
+        }
+      }
+    },
+    "getStaff": {
+      "method": "GET",
+      "path": "/api/staff",
+      "description": "Fetch paginated list of staff members with filtering and search.",
+      "queryParams": {
+        "page": "number (default 1)",
+        "limit": "number (default 15, max 100)",
+        "search": "string (optional, searches name, id, designation, department, email)",
+        "department": "string (optional, full department name)",
+        "status": "enum: Active, Inactive (optional)",
+        "designation": "string (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "staff": [
+            {
+              "id": "string (e.g., STF0001)",
+              "name": "string",
+              "email": "string",
+              "phone": "string",
+              "designation": "string",
+              "department": "string",
+              "qualification": "string",
+              "subjects": ["string"],
+              "experience": "string (e.g., '5 Years')",
+              "joiningDate": "date (YYYY-MM-DD)",
+              "dateOfBirth": "date (YYYY-MM-DD)",
+              "address": "string",
+              "emergencyContact": "string",
+              "bloodGroup": "string (e.g., 'A+')",
+              "status": "enum: Active, Inactive",
+              "salary": "number (annual)",
+              "gender": "enum: Male, Female",
+              "photo": "string (URL or null)",
+              "isClassTeacher": "boolean",
+              "classAssigned": "string or null",
+              "qualifications": [
+                {
+                  "degree": "string",
+                  "university": "string",
+                  "year": "number"
+                }
+              ],
+              "certifications": ["string"],
+              "achievements": ["string"]
+            }
+          ],
+          "pagination": {
+            "currentPage": "number",
+            "totalPages": "number",
+            "totalItems": "number",
+            "itemsPerPage": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "staff": [
+            {
+              "id": "STF0001",
+              "name": "Amit Sharma",
+              "email": "amit.sharma@school.edu",
+              "phone": "+91 9876543210",
+              "designation": "Teacher",
+              "department": "Teaching",
+              "qualification": "B.Ed",
+              "subjects": ["Mathematics"],
+              "experience": "5 Years",
+              "joiningDate": "2021-04-01",
+              "dateOfBirth": "1990-05-15",
+              "address": "123 Staff Colony, Educational District, City",
+              "emergencyContact": "+91 9876543211",
+              "bloodGroup": "O+",
+              "status": "Active",
+              "salary": 50000,
+              "gender": "Male",
+              "photo": null,
+              "isClassTeacher": true,
+              "classAssigned": "10-A",
+              "qualifications": [
+                { "degree": "B.Ed", "university": "Delhi University", "year": 2015 },
+                { "degree": "M.Sc", "university": "Mumbai University", "year": 2017 }
+              ],
+              "certifications": ["Google Certified Educator"],
+              "achievements": ["Best Teacher Award 2023"]
+            }
+          ],
+          "pagination": { "currentPage": 1, "totalPages": 10, "totalItems": 150, "itemsPerPage": 15 }
+        }
+      }
+    },
+    "getStaffById": {
+      "method": "GET",
+      "path": "/api/staff/:id",
+      "description": "Get full details of a single staff member.",
+      "pathParams": { "id": "string" },
+      "response": {
+        "success": true,
+        "data": "Staff object (same as in getStaff)"
+      }
+    },
+    "createStaff": {
+      "method": "POST",
+      "path": "/api/staff",
+      "description": "Add a new staff member. If a photo is uploaded, it should be handled via multipart/form-data.",
+      "requestBody": {
+        "name": "string (required)",
+        "email": "string (required, unique)",
+        "phone": "string (required)",
+        "designation": "string (required)",
+        "department": "string (required)",
+        "qualification": "string (optional)",
+        "subjects": ["string (optional)"],
+        "experience": "string (optional)",
+        "joiningDate": "date (YYYY-MM-DD, optional)",
+        "dateOfBirth": "date (optional)",
+        "address": "string (optional)",
+        "emergencyContact": "string (optional)",
+        "bloodGroup": "string (optional)",
+        "gender": "enum: Male, Female (required)",
+        "salary": "number (optional)",
+        "isClassTeacher": "boolean (default false)",
+        "classAssigned": "string (optional)",
+        "photo": "file (optional, image upload)"
+      },
+      "response": {
+        "success": true,
+        "data": "Created staff object (with generated id)"
+      }
+    },
+    "updateStaff": {
+      "method": "PUT",
+      "path": "/api/staff/:id",
+      "description": "Update an existing staff member (partial updates allowed via PATCH semantics).",
+      "pathParams": { "id": "string" },
+      "requestBody": "Partial staff object (any fields allowed)",
+      "response": {
+        "success": true,
+        "data": "Updated staff object"
+      }
+    },
+    "deleteStaff": {
+      "method": "DELETE",
+      "path": "/api/staff/:id",
+      "description": "Delete a staff member (or soft delete by setting status = 'Inactive').",
+      "pathParams": { "id": "string" },
+      "response": {
+        "success": true,
+        "message": "Staff member deleted"
+      }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/staff/filter-options",
+      "description": "Available departments, designations, and statuses for filter dropdowns (based on existing data).",
+      "response": {
+        "success": true,
+        "data": {
+          "departments": ["Teaching", "Administration", "Sports", "Arts", "Science Lab", "Computer Lab", "Library", "Counseling", "Medical", "Security", "Transport", "Maintenance"],
+          "designations": ["string (all designations that exist in staff data)"],
+          "statuses": ["Active", "Inactive"]
+        }
+      }
+    },
+    "uploadStaffPhoto": {
+      "method": "POST",
+      "path": "/api/staff/:id/photo",
+      "description": "Upload a profile photo for a staff member.",
+      "pathParams": { "id": "string" },
+      "requestBody": "multipart/form-data with field 'photo' (image file, max 2MB, formats JPG/PNG)",
+      "response": {
+        "success": true,
+        "data": {
+          "photoUrl": "string (URL to uploaded image)"
+        }
+      }
+    },
+    "exportStaff": {
+      "method": "GET",
+      "path": "/api/staff/export",
+      "description": "Export filtered staff list as CSV (same query params as getStaff, pagination ignored).",
+      "queryParams": "Same as getStaff (page/limit ignored)",
+      "response": "CSV file download with columns: id, name, email, phone, designation, department, qualification, experience, joiningDate, status, salary, gender, isClassTeacher, classAssigned, bloodGroup, emergencyContact, address"
+    }
+  },
+  "enums": {
+    "Gender": ["Male", "Female"],
+    "Status": ["Active", "Inactive"],
+    "Department": ["Teaching", "Administration", "Sports", "Arts", "Science Lab", "Computer Lab", "Library", "Counseling", "Medical", "Security", "Transport", "Maintenance"],
+    "BloodGroup": ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"],
+    "ExperienceLevel": ["Fresher", "1-2 Years", "3-5 Years", "6-10 Years", "10+ Years"]
+  },
+  "fieldNotes": {
+    "photo": "Optional; if provided, backend should store the file and return a public URL.",
+    "qualifications": "Array of education qualifications; can be extended in future.",
+    "certifications": "Array of certification strings.",
+    "achievements": "Array of achievement strings.",
+    "salary": "Annual salary in Indian Rupees.",
+    "classAssigned": "Only relevant if isClassTeacher = true."
+  }
+}
