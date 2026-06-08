@@ -1,7 +1,7 @@
 // orchestrator/queues/queue.manager.js — RESQID
 //
-// Manages all BullMQ queues + QueueEvents for cross-process monitoring.
-// Handles job lifecycle, progress tracking, and admin utilities.
+// Central queue manager — initializes, monitors, and manages all BullMQ queues.
+// Provides admin utilities for the super admin dashboard.
 
 import { QueueEvents } from 'bullmq';
 import { prisma } from '#config/prisma.js';
@@ -15,15 +15,14 @@ import {
   emergencyAlertsQueue,
   notificationsQueue,
   attendanceBulkQueue,
-  generateQueue,
+  timetableQueue,
   crisisQueue,
   validateQueue,
   swapQueue,
   bulkUploadQueue,
-  pipelineJobsQueue,
 } from './queue.config.js';
 
-// RE-EXPORT ALL QUEUES
+// ── RE-EXPORT ALL QUEUES ────────────────────────────────────────────────────
 
 export {
   allQueues,
@@ -32,23 +31,19 @@ export {
   emergencyAlertsQueue,
   notificationsQueue,
   attendanceBulkQueue,
-  generateQueue,
+  timetableQueue,
   crisisQueue,
   validateQueue,
   swapQueue,
   bulkUploadQueue,
-  pipelineJobsQueue,
 };
 
-// QUEUE EVENTS REGISTRY
+// ── QUEUE EVENTS REGISTRY ──────────────────────────────────────────────────
 
 const _queueEvents = [];
 
-// PUBLIC API
+// ── PUBLIC API ─────────────────────────────────────────────────────────────
 
-/**
- * Get a queue by name.
- */
 export function getQueue(name) {
   return getQueueByName(name);
 }
@@ -57,10 +52,10 @@ export function getQueue(name) {
  * Initialize all queues and set up event handlers.
  */
 export function initQueues() {
-  const queueCount = Object.keys(allQueues).length;
+  const queueNames = Object.keys(allQueues);
   logger.info(
-    { count: queueCount, queues: Object.keys(allQueues) },
-    '[queue.manager] Queues initialized'
+    { count: queueNames.length, queues: queueNames },
+    '[queue.manager] Initializing queues'
   );
 
   for (const [name, queue] of Object.entries(allQueues)) {
@@ -85,88 +80,68 @@ export async function closeAllQueues() {
 
   // Close all queues
   await _closeAllQueues();
+  logger.info('[queue.manager] All queues closed');
 }
 
-// EVENT HANDLERS
+// ── EVENT HANDLERS ─────────────────────────────────────────────────────────
 
 function setupQueueEventHandlers(queue, queueName) {
-  // ─── Queue-level events ───
+  // Queue-level events
   queue.on('error', (err) => {
-    logger.error({ queue: queueName, err: err.message }, '[queue.manager] Queue error');
+    logger.error({ queue: queueName, err: err.message }, '[queue] Queue error');
   });
 
   queue.on('paused', () => {
-    logger.warn({ queue: queueName }, '[queue.manager] Queue paused');
+    logger.warn({ queue: queueName }, '[queue] Paused');
   });
 
   queue.on('resumed', () => {
-    logger.info({ queue: queueName }, '[queue.manager] Queue resumed');
+    logger.info({ queue: queueName }, '[queue] Resumed');
   });
 
   queue.on('drained', () => {
-    logger.debug({ queue: queueName }, '[queue.manager] Queue drained');
+    logger.debug({ queue: queueName }, '[queue] Drained');
   });
 
-  // ─── QueueEvents for cross-process monitoring ───
+  // Cross-process event monitoring
   const qe = new QueueEvents(queueName, {
     connection: getQueueConnection(),
     autorun: true,
   });
 
-  // ─── Job failed ───
+  // ── Job Failed ──
   qe.on('failed', async ({ jobId, failedReason }) => {
-    logger.error({ queue: queueName, jobId, failedReason }, '[queue.manager] Job failed');
+    logger.error({ queue: queueName, jobId, reason: failedReason }, '[job] Failed');
 
     const job = await queue.getJob(jobId);
     if (!job) return;
 
-    const isFinalFailure = job.attemptsMade >= (job.opts?.attempts ?? 3);
+    const isFinal = job.attemptsMade >= (job.opts?.attempts ?? 3);
+    const status = isFinal ? 'FAILED' : 'RETRYING';
 
-    // Update timetable job record
-    if (job.data?.schoolId) {
-      try {
-        await prisma.timetableJob.update({
-          where: { id: jobId },
-          data: {
-            status: isFinalFailure ? 'FAILED' : 'PROCESSING',
-            error: failedReason,
-            completedAt: isFinalFailure ? new Date() : null,
-          },
-        });
-      } catch (dbErr) {
-        logger.error({ jobId, err: dbErr.message }, '[queue.manager] Failed to update job record');
-      }
-    }
+    // Update all tracked job types in database
+    await updateJobInDB(jobId, {
+      status,
+      error: failedReason,
+      completedAt: isFinal ? new Date() : null,
+    });
   });
 
-  // ─── Job completed ───
+  // ── Job Completed ──
   qe.on('completed', async ({ jobId, returnvalue }) => {
-    logger.info({ queue: queueName, jobId }, '[queue.manager] Job completed');
+    logger.info({ queue: queueName, jobId }, '[job] Completed');
 
     const job = await queue.getJob(jobId);
     if (!job) return;
 
-    // Update timetable job record
-    if (job.data?.schoolId) {
-      try {
-        await prisma.timetableJob.update({
-          where: { id: jobId },
-          data: {
-            status: 'COMPLETED',
-            output: returnvalue ?? null,
-            progressPercent: 100,
-            completedAt: new Date(),
-          },
-        });
-      } catch (dbErr) {
-        logger.error(
-          { jobId, err: dbErr.message },
-          '[queue.manager] Failed to update job completion'
-        );
-      }
-    }
+    await updateJobInDB(jobId, {
+      status: 'COMPLETED',
+      output: returnvalue ?? null,
+      progressPercent: 100,
+      completedAt: new Date(),
+    });
 
-    // Update crisis event if linked
+    // Resolve crisis events
     if (job.data?.crisisEventId) {
       try {
         await prisma.crisisEvent.update({
@@ -177,70 +152,79 @@ function setupQueueEventHandlers(queue, queueName) {
             resolution: returnvalue,
           },
         });
-      } catch (dbErr) {
+      } catch (err) {
         logger.error(
-          { crisisEventId: job.data.crisisEventId, err: dbErr.message },
-          '[queue.manager] Failed to update crisis event'
+          { crisisEventId: job.data.crisisEventId, err: err.message },
+          '[job] Failed to update crisis event'
         );
       }
     }
   });
 
-  // ─── Job stalled ───
+  // ── Job Stalled ──
   qe.on('stalled', async ({ jobId }) => {
-    logger.warn({ queue: queueName, jobId }, '[queue.manager] Job stalled — re-queuing');
-
-    // Update job status if tracked
-    try {
-      await prisma.timetableJob.updateMany({
-        where: { id: jobId },
-        data: { status: 'PROCESSING', statusMessage: 'Job stalled, re-queued' },
-      });
-    } catch (dbErr) {
-      // Job might not exist in our table — that's ok
-    }
+    logger.warn({ queue: queueName, jobId }, '[job] Stalled — re-queuing');
+    await updateJobInDB(jobId, { status: 'PROCESSING', statusMessage: 'Job stalled, re-queued' });
   });
 
-  // ─── Job progress (timetable-specific) ───
+  // ── Job Progress (timetable, bulk upload, crisis) ──
   qe.on('progress', async ({ jobId, data }) => {
-    if (
+    const isTracked =
       queueName.includes('timetable') ||
-      queueName.includes('generate') ||
-      queueName.includes('crisis')
-    ) {
-      logger.info({ queue: queueName, jobId, progress: data }, '[queue.manager] Job progress');
+      queueName.includes('crisis') ||
+      queueName.includes('bulk-upload');
 
-      // Update progress in database
-      try {
-        await prisma.timetableJob.update({
-          where: { id: jobId },
-          data: {
-            progressPercent: data?.progress ? Math.round(data.progress * 100) : undefined,
-            statusMessage: data?.message || data?.phase || undefined,
-          },
-        });
-      } catch (dbErr) {
-        // Non-critical — progress update can fail silently
-      }
+    if (isTracked) {
+      logger.info({ queue: queueName, jobId, progress: data }, '[job] Progress');
+      await updateJobInDB(jobId, {
+        progressPercent: data?.progress ? Math.round(data.progress * 100) : undefined,
+        statusMessage: data?.message || data?.phase || undefined,
+      });
     }
   });
 
-  // ─── Job waiting/active for monitoring ───
+  // ── Waiting / Active (debug only) ──
   qe.on('waiting', ({ jobId }) => {
-    logger.debug({ queue: queueName, jobId }, '[queue.manager] Job waiting');
+    logger.debug({ queue: queueName, jobId }, '[job] Waiting');
   });
 
   qe.on('active', ({ jobId }) => {
-    logger.debug({ queue: queueName, jobId }, '[queue.manager] Job active');
+    logger.debug({ queue: queueName, jobId }, '[job] Active');
   });
 
   return qe;
 }
 
-// ADMIN UTILITIES
+// ── HELPER: Update job in database ─────────────────────────────────────────
+
+async function updateJobInDB(jobId, data) {
+  try {
+    // Try TimetableJob table
+    const existing = await prisma.timetableJob.findUnique({ where: { id: jobId } });
+    if (existing) {
+      await prisma.timetableJob.update({ where: { id: jobId }, data });
+      return;
+    }
+  } catch {
+    // Table might not exist or job not found — that's fine
+  }
+
+  try {
+    // Try BulkUploadJob table
+    const existing = await prisma.bulkUploadJob.findUnique({ where: { id: jobId } });
+    if (existing) {
+      await prisma.bulkUploadJob.update({ where: { id: jobId }, data });
+      return;
+    }
+  } catch {
+    // Table might not exist
+  }
+}
+
+// ── ADMIN UTILITIES ────────────────────────────────────────────────────────
 
 /**
- * Drain (remove) a dead/failed job.
+ * Remove a dead/failed job from any queue.
  */
 export async function drainDeadJob(jobId, queueName = null) {
   let job = null;
@@ -248,7 +232,6 @@ export async function drainDeadJob(jobId, queueName = null) {
   if (queueName && allQueues[queueName]) {
     job = await allQueues[queueName].getJob(jobId);
   } else {
-    // Search all queues
     for (const [, queue] of Object.entries(allQueues)) {
       job = await queue.getJob(jobId);
       if (job) break;
@@ -256,23 +239,14 @@ export async function drainDeadJob(jobId, queueName = null) {
   }
 
   if (!job) {
-    logger.warn({ jobId }, '[queue.manager] Job not found for drain');
+    logger.warn({ jobId }, '[admin] Job not found for drain');
     return false;
   }
 
   await job.remove();
-  logger.info({ jobId }, '[queue.manager] Dead job drained');
+  logger.info({ jobId }, '[admin] Job drained');
 
-  // Also update database
-  try {
-    await prisma.timetableJob.update({
-      where: { id: jobId },
-      data: { status: 'CANCELLED', statusMessage: 'Drained by admin' },
-    });
-  } catch (dbErr) {
-    // May not exist in our table
-  }
-
+  await updateJobInDB(jobId, { status: 'CANCELLED', statusMessage: 'Drained by admin' });
   return true;
 }
 
@@ -281,27 +255,20 @@ export async function drainDeadJob(jobId, queueName = null) {
  */
 export async function retryJob(jobId, queueName) {
   const queue = getQueue(queueName);
+  if (!queue) throw new Error(`[admin] Queue ${queueName} not found`);
+
   const job = await queue.getJob(jobId);
-  if (!job) throw new Error(`[queue.manager] Job ${jobId} not found in ${queueName}`);
+  if (!job) throw new Error(`[admin] Job ${jobId} not found in ${queueName}`);
 
   await job.retry();
-  logger.info({ jobId, queueName }, '[queue.manager] Job retried');
+  logger.info({ jobId, queueName }, '[admin] Job retried');
 
-  // Update database
-  try {
-    await prisma.timetableJob.update({
-      where: { id: jobId },
-      data: { status: 'QUEUED', attempts: { increment: 1 }, error: null },
-    });
-  } catch (dbErr) {
-    // May not exist
-  }
-
+  await updateJobInDB(jobId, { status: 'QUEUED', error: null });
   return job;
 }
 
 /**
- * Get queue health metrics.
+ * Get queue health metrics for all queues.
  */
 export async function getQueueHealth() {
   return getAllQueueMetrics();
@@ -327,12 +294,12 @@ export async function cleanOldJobs(olderThanDays = 7) {
         delayed: delayed.length,
       };
     } catch (err) {
-      logger.error({ queue: name, err: err.message }, '[queue.manager] Clean failed');
+      logger.error({ queue: name, err: err.message }, '[admin] Clean failed');
       results[name] = { error: err.message };
     }
   }
 
-  logger.info({ olderThanDays, results }, '[queue.manager] Cleaned old jobs');
+  logger.info({ olderThanDays, results }, '[admin] Cleaned old jobs');
   return results;
 }
 
@@ -342,7 +309,7 @@ export async function cleanOldJobs(olderThanDays = 7) {
 export async function pauseAllQueues() {
   for (const [name, queue] of Object.entries(allQueues)) {
     await queue.pause();
-    logger.info({ queue: name }, '[queue.manager] Queue paused');
+    logger.info({ queue: name }, '[admin] Paused');
   }
 }
 
@@ -352,12 +319,12 @@ export async function pauseAllQueues() {
 export async function resumeAllQueues() {
   for (const [name, queue] of Object.entries(allQueues)) {
     await queue.resume();
-    logger.info({ queue: name }, '[queue.manager] Queue resumed');
+    logger.info({ queue: name }, '[admin] Resumed');
   }
 }
 
 /**
- * Get pending job count across all queues.
+ * Get total pending job count across all queues.
  */
 export async function getPendingCount() {
   let total = 0;
@@ -365,7 +332,7 @@ export async function getPendingCount() {
     try {
       total += await queue.getWaitingCount();
       total += await queue.getDelayedCount();
-    } catch (err) {
+    } catch {
       // Queue might be unavailable
     }
   }

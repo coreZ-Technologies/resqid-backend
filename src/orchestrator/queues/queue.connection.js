@@ -25,9 +25,19 @@ export const getQueueConnection = () => {
     enableReadyCheck: false,
     lazyConnect: false,
 
+    // Connection name for debugging/monitoring
+    connectionName: `resqid-${ENV.NODE_ENV || 'dev'}`,
+
+    // Force IPv4 (some Redis hosts have IPv6 issues)
+    family: 4,
+
     // Retry strategy with exponential backoff
     retryStrategy: (times) => {
       const delay = Math.min(times * 100, 3000);
+      if (times > 10) {
+        logger.error({ attempts: times }, '[queue.connection] Redis retry exhausted');
+        return undefined; // Stop retrying
+      }
       logger.debug({ attempt: times, delayMs: delay }, '[queue.connection] Redis retry');
       return delay;
     },
@@ -39,9 +49,8 @@ export const getQueueConnection = () => {
     // Keep alive
     keepAlive: 300000, // 5 minutes
 
-    // Connection pool (production optimization)
+    // Production optimizations
     ...(isProduction && {
-      maxRetriesPerRequest: null,
       enableOfflineQueue: true,
       enableAutoPipelining: true,
     }),
@@ -57,23 +66,33 @@ export const getQueueConnection = () => {
 
 /**
  * Check Redis connectivity.
+ * Returns health status for the super admin dashboard.
  */
 export const checkRedisHealth = async () => {
   try {
-    const { Redis } = await import('ioredis');
+    const { default: Redis } = await import('ioredis');
     const redis = new Redis(ENV.REDIS_URL, {
       maxRetriesPerRequest: 1,
       connectTimeout: 5000,
-      lazyConnect: true,
+      lazyConnect: false, // Direct connection for health check
+      family: 4,
+      ...(ENV.REDIS_TLS === 'true' && {
+        tls: { rejectUnauthorized: false },
+      }),
     });
 
-    await redis.connect();
     const ping = await redis.ping();
+    const info = await redis.info('server');
     await redis.quit();
+
+    // Extract Redis version from info
+    const versionMatch = info.match(/redis_version:(\S+)/);
+    const version = versionMatch ? versionMatch[1] : 'unknown';
 
     return {
       status: 'ok',
       ping,
+      version,
     };
   } catch (err) {
     logger.error({ error: err.message }, '[queue.connection] Redis health check failed');
@@ -86,9 +105,10 @@ export const checkRedisHealth = async () => {
 
 /**
  * No-op — BullMQ manages its own connections.
+ * Called during graceful shutdown for consistency.
  */
 export const closeQueueConnection = async () => {
-  logger.info('[queue.connection] Connection lifecycle managed by BullMQ');
+  logger.info('[queue.connection] Connection lifecycle managed by BullMQ — no manual close needed');
 };
 
 export default {
