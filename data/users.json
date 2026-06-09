@@ -1,0 +1,260 @@
+{
+  "moduleName": "Users Management & Dashboard Overview",
+  "description": "User management (CRUD, permissions, password reset) and school dashboard with attendance analytics, notifications, timetable preview, and plan-based module locking.",
+  "dataModels": {
+    "user": {
+      "id": "string",
+      "name": "string",
+      "email": "string",
+      "phone": "string",
+      "role": "string (Super Admin, School Admin, Teacher, Staff)",
+      "status": "string (Active, Inactive, Suspended)",
+      "avatar": "string (initials)",
+      "color": "string (Tailwind bg class)",
+      "lastLogin": "string (relative time)",
+      "joined": "string (YYYY-MM-DD)",
+      "permissions": "array of strings (emergency, attendance, timetable, communication)"
+    },
+    "dashboardStats": {
+      "students": "number",
+      "teachers": "number",
+      "attendancePct": "number",
+      "anomalies": "number"
+    },
+    "attendanceToday": {
+      "totalStudents": "number",
+      "present": "number",
+      "absent": "number",
+      "classes": "array of class objects"
+    },
+    "weeklyTrend": "array of { day: string, pct: number }",
+    "recentActivity": {
+      "id": "number",
+      "name": "string",
+      "cls": "string",
+      "rfid": "string",
+      "type": "string (check_in, absent, late)",
+      "time": "string",
+      "avatar": "string",
+      "color": "string"
+    },
+    "lowAttendance": "array of { name, pct, avatar, color }",
+    "notification": {
+      "id": "number",
+      "type": "string (alert, info, warning, success)",
+      "msg": "string",
+      "time": "string",
+      "read": "boolean"
+    },
+    "todayPeriod": {
+      "period": "string",
+      "time": "string",
+      "subject": "string",
+      "teacher": "string",
+      "status": "string (done, ongoing, upcoming)"
+    },
+    "quickAction": {
+      "icon": "string",
+      "label": "string",
+      "href": "string",
+      "color": "string",
+      "module": "string"
+    }
+  },
+  "keyMetrics": {
+    "userManagement": {
+      "totalUsers": "number (from MOCK_USERS list)",
+      "activeUsers": "number (status='Active')",
+      "adminCount": "number (Super Admin + School Admin)",
+      "suspendedCount": "number"
+    },
+    "dashboard": {
+      "totalStudents": 342,
+      "totalTeachers": 28,
+      "attendancePercentage": 91,
+      "anomaliesCount": 3,
+      "presentToday": "from MOCK_ATTENDANCE_TODAY.present",
+      "absentToday": "from MOCK_ATTENDANCE_TODAY.absent"
+    },
+    "plans": {
+      "currentPlan": "standard",
+      "moduleAccess": {
+        "students": true,
+        "teachers": true,
+        "attendance": true,
+        "reports": true,
+        "emergency": false,
+        "timetable": false,
+        "communication": false
+      },
+      "lockedModulesCount": 3
+    }
+  },
+  "uiComponents": {
+    "pages": [
+      "/school/users/page.jsx",
+      "/school/users/add/page.jsx",
+      "/school/users/edit/page.jsx",
+      "/school/users/[userId]/page.jsx",
+      "/school/users/[userId]/permissions/page.jsx",
+      "/school/users/[userId]/reset-password/page.jsx",
+      "/school/page.jsx (dashboard)",
+      "/school/layout.jsx"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "StatusBadge",
+      "ConfirmDialog",
+      "KpiCard"
+    ],
+    "moduleComponents": [
+      "DashboardKpi",
+      "AttendanceOverview",
+      "WeeklyTrend",
+      "RecentActivity",
+      "LowAttendanceAlert",
+      "TodaySchedule",
+      "NotificationsPanel",
+      "PlanBanner"
+    ],
+    "customHooks": ["useConfirmDialog"],
+    "iconsUsed": [
+      "Plus", "Edit2", "Trash2", "Key", "Shield", "UserCheck", "UserX", "Search",
+      "ArrowLeft", "Mail", "Phone", "Calendar", "Activity", "Loader2", "Eye", "EyeOff",
+      "UserPlus", "UsersRound", "CalendarCheck", "BarChart2", "Bell", "Lock"
+    ]
+  },
+  "actionsAndRoutes": {
+    "userList": {
+      "addUser": "/school/users/add",
+      "editUser": "/school/users/edit?id={id}",
+      "resetPassword": "/school/users/{id}/reset-password",
+      "viewUser": "/school/users/{id}",
+      "deleteUser": "confirm dialog (Super Admin not deletable)",
+      "filter": "by role (All, School Admin, Teacher, Staff), status (All, Active, Inactive, Suspended), search (name/email)",
+      "refresh": "console log (mock)",
+      "export": "console log (mock)"
+    },
+    "userDetail": {
+      "resetPassword": "/school/users/{id}/reset-password",
+      "managePermissions": "/school/users/{id}/permissions"
+    },
+    "permissions": {
+      "toggleModule": "emergency, attendance, timetable, communication",
+      "save": "POST /api/users/:id/permissions (mock)"
+    },
+    "resetPassword": {
+      "setPassword": "POST /api/users/:id/reset-password (mock)"
+    },
+    "dashboard": {
+      "viewAttendance": "/school/attendance",
+      "viewReports": "/school/attendance/reports",
+      "addStudent": "/school/students/add",
+      "addTeacher": "/school/teachers/add",
+      "quickActions": "based on plan access"
+    }
+  },
+  "dependencies": {
+    "mockDataFiles": ["@/lib/mock-data"],
+    "mockDataExports": ["MOCK_ATTENDANCE_TODAY", "MOCK_CLASSES"],
+    "constantsFiles": [],
+    "utilityLibraries": ["@/lib/utils (cn)", "next/navigation (useRouter, useParams, useSearchParams)"],
+    "reactHooks": ["useState", "useEffect", "useMemo"]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "User Management",
+        "metrics": ["Total Users", "Active Users", "Admins", "Suspended"]
+      },
+      {
+        "type": "table",
+        "title": "Recently Added Users (last 7 days)",
+        "columns": ["Name", "Email", "Role", "Status", "Joined"]
+      },
+      {
+        "type": "kpi",
+        "title": "Dashboard Health",
+        "metrics": ["Students", "Teachers", "Attendance %", "Anomalies"]
+      },
+      {
+        "type": "alert",
+        "title": "User Alerts",
+        "conditions": [
+          "Suspended users count > 5",
+          "Super Admin role changed (security alert)",
+          "User deleted without replacement"
+        ]
+      },
+      {
+        "type": "moduleAccessChart",
+        "title": "Plan Coverage",
+        "dataSource": "MODULES_BY_PLAN[PLAN]",
+        "display": "Used vs Locked modules"
+      },
+      {
+        "type": "trendChart",
+        "title": "Weekly Attendance Trend",
+        "dataSource": "WEEKLY_TREND"
+      }
+    ],
+    "alertTriggers": [
+      "Failed login attempts for any user (track from login API)",
+      "Password reset requested for high-privilege account (Super Admin, School Admin)",
+      "Module permissions changed for admin user",
+      "Attendance drops below 85% for the day"
+    ],
+    "realTimeNeeds": [
+      "Live attendance counts (RFID tap events) to update dashboard KPIs",
+      "Real-time notification panel updates via SSE/WebSocket"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/users/page.jsx",
+      "app/(school)/school/users/[userId]/page.jsx",
+      "app/(school)/school/users/[userId]/permissions/page.jsx",
+      "app/(school)/school/users/add/page.jsx",
+      "app/(school)/school/users/edit/page.jsx",
+      "app/(school)/school/page.jsx",
+      "components/modules/dashboard/DashboardKpi.jsx",
+      "components/modules/dashboard/AttendanceOverview.jsx",
+      "components/modules/dashboard/WeeklyTrend.jsx",
+      "components/modules/dashboard/RecentActivity.jsx",
+      "components/modules/dashboard/LowAttendanceAlert.jsx",
+      "components/modules/dashboard/TodaySchedule.jsx",
+      "components/modules/dashboard/NotificationsPanel.jsx",
+      "components/modules/dashboard/PlanBanner.jsx",
+      "components/shared/ConfirmDialog.jsx",
+      "components/shared/StatusBadge.jsx",
+      "components/shared/KpiCard.jsx",
+      "lib/mock-data.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/users",
+        "GET /api/users/:id",
+        "POST /api/users",
+        "PUT /api/users/:id",
+        "DELETE /api/users/:id",
+        "POST /api/users/:id/reset-password",
+        "GET /api/users/:id/permissions",
+        "PUT /api/users/:id/permissions",
+        "GET /api/dashboard/stats",
+        "GET /api/dashboard/attendance-today",
+        "GET /api/dashboard/weekly-trend",
+        "GET /api/dashboard/recent-activity",
+        "GET /api/dashboard/low-attendance",
+        "GET /api/dashboard/notifications",
+        "GET /api/dashboard/today-schedule"
+      ],
+      "webhooks": [
+        "User role changed → update permission sets and menu visibility",
+        "Password reset request → trigger email notification"
+      ]
+    }
+  }
+}

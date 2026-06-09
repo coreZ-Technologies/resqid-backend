@@ -1,0 +1,194 @@
+{
+  "componentName": "ActivityLogPage",
+  "description": "Full audit trail of all user and system actions for school admin dashboard",
+  "dataSchema": {
+    "logEntry": {
+      "id": "number",
+      "actor": "string",
+      "role": "string (School Admin, Teacher, System)",
+      "avatar": "string (initials)",
+      "action": "string (description of action)",
+      "module": "string (Auth, Attendance, Students, Reports, Communication, Timetable, Settings, System, Billing)",
+      "type": "string (create, update, delete, export, login, view, system)",
+      "severity": "string (info, warning)",
+      "ip": "string",
+      "device": "string (desktop, mobile, server)",
+      "time": "string (ISO datetime)",
+      "status": "string (success, failed)"
+    }
+  },
+  "mockLogs": [
+    {
+      "id": 1,
+      "actor": "Animesh Karan",
+      "role": "School Admin",
+      "avatar": "AK",
+      "action": "Exported attendance report",
+      "module": "Reports",
+      "type": "export",
+      "severity": "info",
+      "ip": "192.168.1.12",
+      "device": "desktop",
+      "time": "2026-06-07T08:47:43",
+      "status": "success"
+    },
+    {
+      "id": 2,
+      "actor": "Priya Nair",
+      "role": "Teacher",
+      "avatar": "PN",
+      "action": "Marked attendance for Class 6-A",
+      "module": "Attendance",
+      "type": "update",
+      "severity": "info",
+      "ip": "192.168.1.34",
+      "device": "mobile",
+      "time": "2026-06-07T08:31:10",
+      "status": "success"
+    },
+    {
+      "id": 3,
+      "actor": "Animesh Karan",
+      "role": "School Admin",
+      "avatar": "AK",
+      "action": "Sent notification to all parents",
+      "module": "Communication",
+      "type": "create",
+      "severity": "info",
+      "ip": "192.168.1.12",
+      "device": "desktop",
+      "time": "2026-06-07T08:15:00",
+      "status": "success"
+    },
+    {
+      "id": 4,
+      "actor": "Rajan Mehta",
+      "role": "Teacher",
+      "avatar": "RM",
+      "action": "Failed login attempt",
+      "module": "Auth",
+      "type": "login",
+      "severity": "warning",
+      "ip": "203.0.113.45",
+      "device": "desktop",
+      "time": "2026-06-07T07:58:22",
+      "status": "failed"
+    },
+    {
+      "id": 5,
+      "actor": "Animesh Karan",
+      "role": "School Admin",
+      "avatar": "AK",
+      "action": "Added new student: Aryan Gupta",
+      "module": "Students",
+      "type": "create",
+      "severity": "info",
+      "ip": "192.168.1.12",
+      "device": "desktop",
+      "time": "2026-06-07T07:44:05",
+      "status": "success"
+    },
+    {
+      "id": 6,
+      "actor": "System",
+      "role": "System",
+      "avatar": "SY",
+      "action": "Automated backup completed",
+      "module": "System",
+      "type": "system",
+      "severity": "info",
+      "ip": "internal",
+      "device": "server",
+      "time": "2026-06-07T05:00:00",
+      "status": "success"
+    },
+    {
+      "id": 7,
+      "actor": "Animesh Karan",
+      "role": "School Admin",
+      "avatar": "AK",
+      "action": "Updated school profile settings",
+      "module": "Settings",
+      "type": "update",
+      "severity": "info",
+      "ip": "192.168.1.12",
+      "device": "desktop",
+      "time": "2026-06-07T04:40:18",
+      "status": "success"
+    },
+    {
+      "id": 8,
+      "actor": "System",
+      "role": "System",
+      "avatar": "SY",
+      "action": "Push notification delivery failed",
+      "module": "Communication",
+      "type": "system",
+      "severity": "warning",
+      "ip": "internal",
+      "device": "server",
+      "time": "2026-06-07T04:10:00",
+      "status": "failed"
+    }
+  ],
+  "filterOptions": {
+    "actionTypes": ["All Types", "create", "update", "delete", "export", "login", "view", "system"],
+    "moduleColors": {
+      "Auth": "bg-slate-100 text-slate-600",
+      "Attendance": "bg-blue-50 text-blue-700",
+      "Students": "bg-indigo-50 text-indigo-700",
+      "Reports": "bg-violet-50 text-violet-700",
+      "Communication": "bg-sky-50 text-sky-700",
+      "Timetable": "bg-cyan-50 text-cyan-700",
+      "Settings": "bg-slate-100 text-slate-600",
+      "System": "bg-orange-50 text-orange-600",
+      "Billing": "bg-emerald-50 text-emerald-700"
+    },
+    "typeIcons": {
+      "create": { "icon": "Plus", "color": "text-blue-500", "bg": "bg-blue-50" },
+      "update": { "icon": "Edit3", "color": "text-indigo-500", "bg": "bg-indigo-50" },
+      "delete": { "icon": "Trash2", "color": "text-red-500", "bg": "bg-red-50" },
+      "export": { "icon": "Download", "color": "text-violet-500", "bg": "bg-violet-50" },
+      "login": { "icon": "LogIn", "color": "text-emerald-500", "bg": "bg-emerald-50" },
+      "view": { "icon": "Eye", "color": "text-sky-500", "bg": "bg-sky-50" },
+      "system": { "icon": "Zap", "color": "text-orange-500", "bg": "bg-orange-50" }
+    }
+  },
+  "pagination": {
+    "pageSize": 10,
+    "pageControl": "Previous/Next buttons with current page display"
+  },
+  "uiStructure": {
+    "layout": "max-w-[1300px] mx-auto space-y-6",
+    "breadcrumb": ["Dashboard", "Activity Log"],
+    "pageHeader": {
+      "title": "Activity Log",
+      "description": "Full audit trail of all user and system actions",
+      "toolbarActions": ["onRefresh", "onExport"]
+    },
+    "filters": {
+      "search": "Search by actor, action, or module",
+      "actionTypeButtons": "List of action types with active state styling"
+    },
+    "tableColumns": ["", "Action & Actor", "Module", "Status", "Time", "Device"],
+    "expandableRow": "Click row to expand (currently expansion logic but no expanded content shown in snippet)",
+    "deviceIcons": {
+      "mobile": "Smartphone",
+      "server": "Globe",
+      "desktop": "Monitor"
+    },
+    "statusIndicators": {
+      "success": "CheckCircle2 icon with 'Success' text (emerald)",
+      "failed": "XCircle icon with 'Failed' text (red)"
+    }
+  },
+  "dependencies": {
+    "lucide-react": ["Activity", "Search", "Download", "RefreshCw", "UserCheck", "Users", "AlertTriangle", "Plus", "Edit3", "Trash2", "Eye", "LogIn", "LogOut", "Zap", "ChevronLeft", "ChevronRight", "CheckCircle2", "XCircle", "Smartphone", "Globe", "Monitor"],
+    "custom": ["PageBreadcrumb", "PageHeader", "ToolbarActions", "cn"]
+  },
+  "monitoringNotes": {
+    "displayedMetrics": ["Total events count", "Filtered events count", "Page position"],
+    "keyEventsToHighlight": ["failed login", "push notification failure", "backup completion"],
+    "realTimePotential": "Can be adapted to use WebSocket/SSE for live logs (currently mock data)"
+  }
+}

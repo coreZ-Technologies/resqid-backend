@@ -1,0 +1,178 @@
+{
+  "moduleName": "QR Scans (Emergency & Attendance)",
+  "description": "Track and manage QR code scan events, especially for emergency profiles. View today's scans, detailed scan logs, and alert delivery status.",
+  "dataModels": {
+    "scan": {
+      "id": "string",
+      "studentName": "string",
+      "studentId": "string (optional)",
+      "class": "string",
+      "date": "string (e.g., 'Today', 'Yesterday', or 'DD MMM YYYY')",
+      "time": "string (HH:MM AM/PM)",
+      "location": "string",
+      "scannedBy": "string (teacher, staff, security)",
+      "device": "string (iOS, Android, etc.)",
+      "emergencyType": "string (emergency, test, unknown)",
+      "alertStatus": "string (delivered, failed)",
+      "parentResponded": "boolean",
+      "notes": "string (optional)"
+    },
+    "scanStats": {
+      "totalScans": "number",
+      "uniqueStudents": "number",
+      "alertsSent": "number",
+      "alertsFailed": "number"
+    }
+  },
+  "keyMetrics": {
+    "todayScans": {
+      "totalScans": "number (from MOCK_EMERGENCY_SCANS_TODAY.totalScans)",
+      "uniqueStudents": "number",
+      "alertsSent": "number",
+      "alertsFailed": "number"
+    },
+    "allScans": "total count (MOCK_EMERGENCY_SCANS.length)",
+    "filteredScans": "dynamic count based on search/type/alert filters",
+    "alertSuccessRate": "alertsSent / totalScans * 100%"
+  },
+  "uiComponents": {
+    "pages": [
+      "/school/scans/page.jsx",
+      "/school/scans/[scanId]/page.jsx",
+      "/school/scans/logs/page.jsx"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "StatusBadge"
+    ],
+    "moduleComponents": [
+      "EmergencyScanStats",
+      "EmergencyScanTable",
+      "EmergencyScanFilters"
+    ],
+    "iconsUsed": [
+      "Eye", "Download", "ArrowLeft", "User", "MapPin", "Clock", "Smartphone",
+      "AlertTriangle", "Bell", "BellOff", "X"
+    ]
+  },
+  "actionsAndRoutes": {
+    "mainPage": {
+      "refresh": "reload mock data",
+      "export": "export today's scans (mock)",
+      "viewAllLogs": "/school/scans/logs"
+    },
+    "logsPage": {
+      "search": "filter by student, location, scannedBy, notes",
+      "typeFilter": "All, emergency, test, unknown",
+      "alertFilter": "All, delivered, failed",
+      "pagination": "15 items per page with prev/next",
+      "export": "export filtered logs (mock)",
+      "viewScanDetail": "/school/scans/{scanId}"
+    },
+    "detailPage": {
+      "back": "go back to previous page",
+      "viewStudentEmergencyProfile": "/school/students/{studentId}",
+      "resendAlert": "trigger alert again (mock)"
+    }
+  },
+  "dependencies": {
+    "mockDataFiles": ["@/lib/mock-data"],
+    "mockDataExports": [
+      "MOCK_EMERGENCY_SCANS",
+      "MOCK_EMERGENCY_SCANS_TODAY"
+    ],
+    "utilityLibraries": ["@/lib/utils (cn)", "next/navigation (useRouter, useParams)"],
+    "reactHooks": ["useState", "useEffect", "useMemo"]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Today's QR Scans",
+        "metrics": ["Total Scans", "Unique Students", "Alerts Sent", "Failed Alerts"]
+      },
+      {
+        "type": "table",
+        "title": "Recent Emergency Scans (Today)",
+        "columns": ["Student", "Class", "Time", "Location", "Alert Status"],
+        "dataSource": "MOCK_EMERGENCY_SCANS filtered by date='Today'"
+      },
+      {
+        "type": "trendChart",
+        "title": "QR Scans Over Last 7 Days",
+        "chartType": "line",
+        "dataSource": "aggregate from scan logs (requires backend aggregation)"
+      },
+      {
+        "type": "alert",
+        "title": "Failed Alert Notifications",
+        "condition": "alertStatus = 'failed'",
+        "action": "Highlight in table and trigger admin review"
+      },
+      {
+        "type": "pieChart",
+        "title": "Scan Type Distribution",
+        "dataSource": "breakdown by emergencyType (emergency, test, unknown)"
+      }
+    ],
+    "alertTriggers": [
+      "More than 5 emergency scans in 10 minutes (potential mass incident)",
+      "Alert delivery failure for any emergency scan",
+      "Scan from unknown QR code (student not found)",
+      "Same student scanned multiple times within 1 hour for emergency (duplicate alerts)"
+    ],
+    "realTimeNeeds": [
+      "Live scan events via WebSocket to update today's table instantly",
+      "Real-time alert delivery status updates"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/scans/page.jsx",
+      "app/(school)/school/scans/logs/page.jsx",
+      "app/(school)/school/scans/[scanId]/page.jsx",
+      "components/modules/scans/EmergencyScanStats.jsx",
+      "components/modules/scans/EmergencyScanTable.jsx",
+      "components/modules/scans/EmergencyScanFilters.jsx",
+      "lib/mock-data.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/scans?date=today",
+        "GET /api/scans?page=1&limit=15&type=emergency&alert=failed",
+        "GET /api/scans/:id",
+        "POST /api/scans/:id/resend-alert"
+      ],
+      "webhooks": [
+        "QR code scan event from gate scanner → store and trigger parent notification",
+        "Alert delivery status callback from SMS/email provider"
+      ]
+    }
+  },
+  "sampleMockDataStructures": {
+    "MOCK_EMERGENCY_SCANS_TODAY": {
+      "totalScans": 12,
+      "uniqueStudents": 8,
+      "alertsSent": 11,
+      "alertsFailed": 1
+    },
+    "MOCK_EMERGENCY_SCANS": [
+      {
+        "id": "scan_001",
+        "studentName": "Aarav Sharma",
+        "class": "Class 9A",
+        "date": "Today",
+        "time": "8:47 AM",
+        "location": "Gate A",
+        "scannedBy": "Mr. Suresh",
+        "device": "iPhone 12",
+        "emergencyType": "emergency",
+        "alertStatus": "delivered",
+        "parentResponded": true,
+        "notes": "Student had an asthma attack"
+      }
+    ]
+  }
+}

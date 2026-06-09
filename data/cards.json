@@ -1,0 +1,216 @@
+{
+  "moduleName": "ID Card Management",
+  "description": "Manage student RFID/QR cards, track status (active/lost/replaced/deactivated), generate QR codes, and handle replacements.",
+  "dataModels": {
+    "card": {
+      "id": "string",
+      "studentName": "string",
+      "class": "string (e.g., '6')",
+      "section": "string (e.g., 'A')",
+      "rollNo": "number",
+      "bloodGroup": "string",
+      "cardNumber": "string (e.g., 'RESQID-2024-1234')",
+      "qrCodeId": "string (unique QR identifier)",
+      "status": "string (active, lost, replaced, deactivated)",
+      "issuedDate": "string (YYYY-MM-DD)",
+      "lastPrinted": "string (YYYY-MM-DD)",
+      "printCount": "number",
+      "history": [
+        {
+          "date": "string (YYYY-MM-DD)",
+          "action": "string (issued, lost, replaced, deactivated)",
+          "note": "string"
+        }
+      ]
+    },
+    "classQRStatus": {
+      "grade": "string (e.g., 'Cls 6')",
+      "sections": [
+        {
+          "section": "string",
+          "total": "number",
+          "generated": "number",
+          "pending": "array of student names"
+        }
+      ]
+    }
+  },
+  "keyMetrics": {
+    "overview": {
+      "totalCards": "number",
+      "activeCards": "number",
+      "lostCards": "number",
+      "replacedCards": "number",
+      "needsAction": "number (lost cards with printCount < 2)"
+    },
+    "generationProgress": {
+      "totalStudents": "number",
+      "totalGenerated": "number",
+      "totalPending": "number"
+    },
+    "lostSummary": {
+      "lostPending": "number (status = 'lost')",
+      "replaced": "number (status = 'replaced')"
+    }
+  },
+  "uiComponents": {
+    "pages": [
+      "/school/cards/page.jsx",
+      "/school/cards/[cardId]/page.jsx",
+      "/school/cards/generate/page.jsx",
+      "/school/cards/lost/page.jsx",
+      "/school/cards/design/page.jsx (not provided)",
+      "/school/cards/print/page.jsx (not provided)"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "KpiCard",
+      "StatusBadge",
+      "EmptyState",
+      "ConfirmDialog",
+      "CardFilters"
+    ],
+    "customHooks": [
+      "useConfirmDialog"
+    ],
+    "iconsUsed": [
+      "CreditCard", "AlertTriangle", "RefreshCw", "Check", "Plus", "Eye",
+      "Download", "Printer", "Lock", "RotateCcw", "QrCode", "ArrowLeft",
+      "Zap", "Loader2", "Users", "ChevronDown", "ChevronRight", "Search",
+      "Shield", "Clock"
+    ]
+  },
+  "actionsAndRoutes": {
+    "listPage": {
+      "generateQR": "/school/cards/generate",
+      "lostCards": "/school/cards/lost",
+      "viewCard": "/school/cards/{cardId}",
+      "printCard": "window.print",
+      "reportLost": "inline status update",
+      "deactivate": "inline status update",
+      "replace": "inline status update"
+    },
+    "detailPage": {
+      "downloadQR": "download QR code image",
+      "printCard": "print dialog",
+      "reportLost": "update status to lost",
+      "deactivate": "update status to deactivated",
+      "issueReplacement": "update status to replaced, generate new cardNumber"
+    },
+    "generatePage": {
+      "searchStudents": "filter pending students",
+      "selectSection": "toggle entire section",
+      "selectStudent": "toggle individual student",
+      "selectAllPending": "select all sections with pending",
+      "clearSelection": "reset selection",
+      "generateQR": "POST /api/cards/generate (mock)"
+    },
+    "lostPage": {
+      "replace": "issue replacement card"
+    }
+  },
+  "dependencies": {
+    "mockDataFiles": [
+      "@/lib/mock-data"
+    ],
+    "mockDataExports": [
+      "MOCK_CARDS"
+    ],
+    "utilityLibraries": [
+      "@/lib/utils (cn)",
+      "next/navigation (useRouter, useParams)",
+      "react (useState, useEffect, useMemo)"
+    ]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Card Status Overview",
+        "metrics": ["Active", "Lost", "Replaced", "Needs Action (lost & not replaced)"]
+      },
+      {
+        "type": "progress",
+        "title": "QR Code Generation Progress",
+        "dataSource": "MOCK_CLASS_QR_STATUS",
+        "display": "Total students with QR / total students"
+      },
+      {
+        "type": "table",
+        "title": "Recently Lost Cards",
+        "source": "MOCK_CARDS filtered by status='lost'",
+        "columns": ["Student", "Class", "Card Number", "Lost Date"]
+      },
+      {
+        "type": "alert",
+        "title": "Critical Cards",
+        "conditions": [
+          "Cards lost > 7 days without replacement",
+          "Multiple lost cards for same student",
+          "Active cards with expired issuance (> 3 years)"
+        ]
+      },
+      {
+        "type": "chart",
+        "title": "Card Lifecycle",
+        "chartType": "sankey or stacked bar",
+        "states": ["Active → Lost → Replaced", "Active → Deactivated"]
+      }
+    ],
+    "alertTriggers": [
+      "Card reported lost → trigger replacement workflow",
+      "More than 5 cards lost in a single day (potential theft)",
+      "Student has > 2 replacement cards (flag for misuse)",
+      "Card printed more than 3 times (unusual activity)"
+    ],
+    "realTimeNeeds": [
+      "Live card scan events to update last used timestamp",
+      "Instant notification when a lost card is scanned (security alert)"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/cards/page.jsx",
+      "app/(school)/school/cards/[cardId]/page.jsx",
+      "app/(school)/school/cards/generate/page.jsx",
+      "app/(school)/school/cards/lost/page.jsx",
+      "components/modules/cards/CardFilters.jsx",
+      "components/shared/ConfirmDialog.jsx",
+      "lib/mock-data.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/cards",
+        "GET /api/cards/:id",
+        "POST /api/cards/generate",
+        "PATCH /api/cards/:id/status (lost, replaced, deactivate)",
+        "GET /api/cards/pending-generation",
+        "POST /api/cards/print/:id"
+      ],
+      "webhooks": [
+        "Card scanned after being reported lost → trigger security alert"
+      ]
+    }
+  },
+  "sampleMockDataStructures": {
+    "MOCK_CARD": {
+      "id": "card1",
+      "studentName": "Aarav Sharma",
+      "class": "6",
+      "section": "A",
+      "rollNo": 1,
+      "bloodGroup": "O+",
+      "cardNumber": "RESQID-2024-1234",
+      "qrCodeId": "QR-6A-001",
+      "status": "active",
+      "issuedDate": "2025-01-15",
+      "lastPrinted": "2025-06-01",
+      "printCount": 1,
+      "history": [
+        { "date": "2025-01-15", "action": "issued", "note": "Initial issue" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "moduleName": "Upgrade & Plans",
+  "description": "Plan selection and upgrade page showing available modules (Attendance, Emergency, Timetable, Communication, Performance) with pricing plans (Starter, Growth, Enterprise). Compares features per plan and displays current plan status.",
+  "dataModels": {
+    "module": {
+      "id": "string (attendance, emergency, timetable, communication, performance)",
+      "icon": "string (component name)",
+      "title": "string",
+      "description": "string",
+      "color": "string (blue)",
+      "plans": "array of strings (starter, growth, enterprise)",
+      "comingSoon": "boolean (optional)"
+    },
+    "plan": {
+      "id": "string (starter, growth, enterprise)",
+      "name": "string",
+      "price": "string (e.g., ₹2,999 or Custom)",
+      "period": "string (/mo or empty)",
+      "icon": "string (component name)",
+      "desc": "string",
+      "modules": "array of strings (module ids)",
+      "highlight": "boolean",
+      "cta": "string",
+      "badge": "string (optional)"
+    }
+  },
+  "keyMetrics": {
+    "currentPlan": "string (starter, growth, enterprise)",
+    "availablePlans": 3,
+    "totalModules": 5,
+    "modulesByPlan": {
+      "starter": 2,
+      "growth": 4,
+      "enterprise": 5
+    },
+    "modulesWithComingSoon": 1,
+    "lockedModulesForCurrentPlan": "number (modules in plan not included in current plan)"
+  },
+  "uiComponents": {
+    "mainComponent": "UpgradePage",
+    "subComponents": [],
+    "sharedComponentsUsed": [],
+    "iconsUsed": [
+      "UserCheck", "ShieldCheck", "CalendarClock", "MessageCircle",
+      "TrendingUp", "CheckCircle2", "Lock", "Zap", "Crown", "Building2",
+      "ArrowLeft", "Sparkles", "ChevronRight", "Star"
+    ],
+    "externalFonts": ["Nunito (Google Font)"]
+  },
+  "actionsAndRoutes": {
+    "backToDashboard": "/school",
+    "contactSales": "mailto:hello@getresqid.in",
+    "upgradeCta": "mapped to plan.cta (Get Starter, Get Growth, Contact Sales)",
+    "hoverPlan": "visual feedback only",
+    "currentPlanHighlight": "active badge + ring styling"
+  },
+  "dependencies": {
+    "mockData": "hardcoded MODULES and PLANS arrays inside component",
+    "utilityLibraries": ["next/link", "next/font/google"],
+    "reactHooks": ["useState"]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Upgrade Funnel",
+        "metrics": ["Current Plan", "Upgrade Views", "Conversion to Growth/Enterprise (track via events)"]
+      },
+      {
+        "type": "table",
+        "title": "Plan Comparison",
+        "columns": ["Plan", "Price", "Modules", "Highlight"]
+      },
+      {
+        "type": "alert",
+        "title": "Plan Expiry / Upgrade Reminder",
+        "condition": "Current plan nearing renewal or missing essential modules for school size",
+        "action": "Show upgrade prompt in dashboard"
+      },
+      {
+        "type": "chart",
+        "title": "Module Adoption vs Plan",
+        "dataSource": "usage analytics per module and plan"
+      }
+    ],
+    "alertTriggers": [
+      "School with >500 students still on Starter plan → suggest Growth",
+      "School with >1000 students on Growth → suggest Enterprise",
+      "Multiple contact sales clicks from same IP → follow-up lead"
+    ],
+    "realTimeNeeds": [
+      "Live plan update after purchase/upgrade via webhook refresh"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/upgrade/page.jsx",
+      "components/shared/PlanBadge.jsx (if used elsewhere, not shown)",
+      "lib/constants.js (could contain plan/module definitions)",
+      "lib/planGuard.js (middleware for module access)"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/plans",
+        "POST /api/plans/upgrade",
+        "GET /api/school/plan (current plan info)"
+      ],
+      "webhooks": [
+        "Plan upgrade → update feature flags and module permissions"
+      ]
+    }
+  }
+}

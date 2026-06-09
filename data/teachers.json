@@ -1,0 +1,221 @@
+{
+  "moduleName": "Teachers Management",
+  "description": "Manage teacher profiles, subjects, workload, weekly schedules, wellness leaves (maternity, medical, sabbatical, personal), and substitution assignments. Includes schedule grid, wellness leave management with auto-suggested replacements, and teacher list with filtering and status tracking.",
+  "dataModels": {
+    "teacher": {
+      "id": "string",
+      "name": "string",
+      "email": "string",
+      "phone": "string (optional)",
+      "employeeId": "string",
+      "subjects": "array of strings",
+      "qualification": "string (optional)",
+      "experience": "string (e.g., '8 years')",
+      "joiningDate": "string (YYYY-MM-DD)",
+      "status": "string (active, inactive, medical, maternity, sabbatical, personal)",
+      "currentLoad": "number (periods currently assigned)",
+      "maxLoad": "number (max periods per week)",
+      "maxPeriodsPerDay": "number",
+      "avatar": "string (initials)",
+      "avatarColor": "string (Tailwind bg class)",
+      "schedule": [
+        {
+          "day": "string (Mon, Tue, ...)",
+          "period": "number (1-8)",
+          "class": "string (e.g., '10-A')",
+          "subject": "string",
+          "room": "string",
+          "type": "string (regular, substitute)"
+        }
+      ],
+      "wellness": {
+        "type": "string (maternity, medical, sabbatical, personal)",
+        "startDate": "string (YYYY-MM-DD)",
+        "expectedEndDate": "string (YYYY-MM-DD)",
+        "notes": "string (optional)",
+        "requiresReplacement": "boolean"
+      },
+      "substituteFor": "array of teacher IDs (strings)",
+      "replacement": "string (teacher ID) (optional)"
+    },
+    "wellnessType": {
+      "value": "string (maternity, medical, sabbatical, personal)",
+      "label": "string",
+      "duration": "string (e.g., '6 months')",
+      "icon": "string (emoji)",
+      "color": "string (Tailwind classes)"
+    },
+    "scheduleSlot": {
+      "day": "string",
+      "period": "number",
+      "class": "string",
+      "subject": "string",
+      "room": "string",
+      "type": "string"
+    }
+  },
+  "keyMetrics": {
+    "totalTeachers": "number (MOCK_TEACHERS.length)",
+    "activeTeachers": "number (status='active')",
+    "teachersOnLeave": "number (wellness present)",
+    "teachersNeedingReplacement": "number (wellness.requiresReplacement = true and replacement not assigned)",
+    "substituteTeachersAvailable": "number (active teachers not on leave matching subjects)",
+    "averageWorkload": "number (average currentLoad across active teachers)",
+    "workloadDistribution": {
+      "<70%": "number",
+      "70-90%": "number",
+      ">90%": "number"
+    },
+    "leaveByType": "breakdown by wellness.type",
+    "schedulePeriodsCount": "total scheduled periods this week"
+  },
+  "uiComponents": {
+    "pages": [
+      "/school/teachers/page.jsx",
+      "/school/teachers/add/page.jsx",
+      "/school/teachers/edit/page.jsx",
+      "/school/teachers/[id]/page.jsx",
+      "/school/teachers/[id]/schedule/page.jsx",
+      "/school/teachers/[id]/wellness/page.jsx"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "EmptyState",
+      "StatusBadge",
+      "KpiCard",
+      "ConfirmDialog"
+    ],
+    "moduleComponents": [
+      "TeacherFilters",
+      "TeacherCard"
+    ],
+    "customHooks": ["useConfirmDialog"],
+    "iconsUsed": [
+      "Plus", "ArrowLeft", "BookOpen", "Clock", "Users", "Edit2", "Phone",
+      "Mail", "Calendar", "AlertCircle", "UserCheck", "GraduationCap",
+      "Briefcase", "Download", "Check", "Loader2", "X", "FileSpreadsheet",
+      "Trash2", "Upload", "FileText"
+    ]
+  },
+  "actionsAndRoutes": {
+    "listPage": {
+      "addTeacher": "/school/teachers/add",
+      "editTeacher": "/school/teachers/edit?id={id}",
+      "viewTeacher": "/school/teachers/{id}",
+      "deleteTeacher": "confirm dialog then remove",
+      "filter": "by status (active, on leave types), subject, search (name, ID, subject)",
+      "refresh": "console log (mock)",
+      "export": "console log (mock)"
+    },
+    "detailPage": {
+      "editTeacher": "/school/teachers/edit?id={id}",
+      "manageWellness": "/school/teachers/{id}/wellness",
+      "viewSchedule": "/school/teachers/{id}/schedule",
+      "kpiCards": "Subjects count, Classes count, Workload, Experience"
+    },
+    "schedulePage": {
+      "exportSchedule": "download schedule (mock)",
+      "visualGrid": "days × periods with slot details, highlighting regular vs substitute"
+    },
+    "wellnessPage": {
+      "setWellness": "select type, dates, notes, requires replacement, assign replacement from available teachers (subject match)",
+      "clearWellness": "remove wellness state",
+      "notifyAdmin": "boolean flag for notification"
+    },
+    "addPage": {
+      "singleMode": "form with name, email, phone, subjects, qualification, experience, joiningDate, employeeId",
+      "bulkMode": "CSV upload with preview, validation, import"
+    },
+    "editPage": {
+      "updateTeacher": "pre-populated form, save changes"
+    }
+  },
+  "dependencies": {
+    "mockDataFiles": ["@/lib/mock-data"],
+    "mockDataExports": ["MOCK_TEACHERS"],
+    "constantsFiles": ["@/lib/constants"],
+    "constantsExports": ["WELLNESS_TYPES", "DAYS_OF_WEEK", "PERIOD_TIMES"],
+    "utilityLibraries": ["@/lib/utils (cn)", "next/navigation (useRouter, useParams, useSearchParams)"],
+    "reactHooks": ["useState", "useEffect", "useMemo", "useRef"]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Teacher Overview",
+        "metrics": ["Total Teachers", "Active", "On Leave", "Needing Replacement"]
+      },
+      {
+        "type": "barChart",
+        "title": "Workload Distribution",
+        "dataSource": "currentLoad / maxLoad percentages across active teachers",
+        "chartType": "horizontal bar"
+      },
+      {
+        "type": "table",
+        "title": "Teachers on Leave (with replacement status)",
+        "columns": ["Name", "Leave Type", "Dates", "Replacement Assigned?"]
+      },
+      {
+        "type": "alert",
+        "title": "Teacher Alerts",
+        "conditions": [
+          "Wellness requires replacement but no replacement assigned (highlight in red)",
+          "Teacher workload > 90% (potential burnout)",
+          "Teacher covering more than 3 substitute periods per week"
+        ]
+      },
+      {
+        "type": "pieChart",
+        "title": "Leave Type Breakdown",
+        "dataSource": "wellness.type counts"
+      }
+    ],
+    "alertTriggers": [
+      "Teacher starts a wellness leave without replacement → trigger substitution assignment",
+      "Replacement teacher assigned but not confirmed (conflict with their own schedule)",
+      "Teacher workload exceeds maxLoad",
+      "Teacher on wellness leave returns but schedule not updated (auto-revert on end date)"
+    ],
+    "realTimeNeeds": [
+      "Push notification to admin when a teacher marks wellness leave",
+      "Live schedule updates when substitution is assigned"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/teachers/page.jsx",
+      "app/(school)/school/teachers/[id]/page.jsx",
+      "app/(school)/school/teachers/[id]/schedule/page.jsx",
+      "app/(school)/school/teachers/[id]/wellness/page.jsx",
+      "app/(school)/school/teachers/add/page.jsx",
+      "app/(school)/school/teachers/edit/page.jsx",
+      "components/modules/teachers/TeacherFilters.jsx",
+      "components/modules/teachers/TeacherCard.jsx",
+      "components/shared/ConfirmDialog.jsx",
+      "components/shared/KpiCard.jsx",
+      "lib/mock-data.js",
+      "lib/constants.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/teachers",
+        "GET /api/teachers/:id",
+        "POST /api/teachers",
+        "POST /api/teachers/bulk",
+        "PUT /api/teachers/:id",
+        "DELETE /api/teachers/:id",
+        "GET /api/teachers/:id/schedule",
+        "PUT /api/teachers/:id/wellness",
+        "DELETE /api/teachers/:id/wellness",
+        "GET /api/teachers/available-replacements?subject=...&excludeId=..."
+      ],
+      "webhooks": [
+        "Teacher schedule updated → refresh timetable for affected classes",
+        "Wellness leave recorded → trigger substitution workflow"
+      ]
+    }
+  }
+}

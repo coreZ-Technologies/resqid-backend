@@ -1,48 +1,287 @@
 {
-  "apiEndpoint": "/api/v1/students",
-  "method": "GET",
-  "description": "Response data used by the frontend Students page",
-  "responseData": {
-    "students": [
-      {
-        "id": "STU00001",
-        "name": "Aarav Sharma",
-        "rollNumber": "12",
-        "class": "6",
-        "section": "A",
-        "parentName": "Rajesh Sharma",
-        "parentPhone": "+91 9876543210",
-        "email": "aarav@school.com",
-        "status": "Active",
-        "photo": null,
-        "initials": "AS"
-      }
-    ],
-    "pagination": {
-      "currentPage": 1,
-      "totalPages": 17,
-      "totalItems": 250,
-      "itemsPerPage": 15,
-      "startItem": 1,
-      "endItem": 15
+  "moduleName": "Students Management",
+  "description": "Full student lifecycle management including listing, add (single/bulk), edit, detail view, emergency profile, attendance tracking, and end-of-year promotion.",
+  "dataModels": {
+    "studentList": {
+      "id": "string (e.g., STU00001)",
+      "name": "string",
+      "rollNumber": "string",
+      "class": "string (e.g., '10')",
+      "section": "string (A, B, C, D)",
+      "parentName": "string",
+      "parentPhone": "string",
+      "email": "string",
+      "status": "string (Active, Inactive)",
+      "gender": "string (Male, Female)"
     },
-    "filterOptions": {
-      "classes": ["Nursery", "LKG", "UKG", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
-      "sections": ["A", "B", "C", "D"]
+    "studentFull": {
+      "firstName": "string",
+      "lastName": "string",
+      "gender": "string (MALE, FEMALE, OTHER)",
+      "dateOfBirth": "string (YYYY-MM-DD)",
+      "bloodGroup": "string (A+, A-, B+, B-, O+, O-, AB+, AB-)",
+      "class": "string",
+      "section": "string",
+      "rollNumber": "string",
+      "admissionYear": "string",
+      "status": "string",
+      "email": "string",
+      "phone": "string",
+      "address": "string",
+      "city": "string",
+      "state": "string",
+      "pincode": "string",
+      "emergencyVisibility": "string (PUBLIC, MINIMAL, HIDDEN)",
+      "parents": [
+        {
+          "id": "string",
+          "name": "string",
+          "relationship": "string",
+          "phone": "string",
+          "email": "string",
+          "occupation": "string",
+          "isPrimary": "boolean",
+          "canCall": "boolean",
+          "canWhatsapp": "boolean"
+        }
+      ],
+      "emergencyContacts": [
+        {
+          "id": "string",
+          "name": "string",
+          "relationship": "string",
+          "phone": "string",
+          "priority": "number"
+        }
+      ],
+      "medicalInfo": {
+        "bloodGroup": "string",
+        "allergies": "array of strings",
+        "conditions": "array of strings",
+        "medications": "array of strings",
+        "doctorName": "string",
+        "doctorSpecialization": "string",
+        "doctorPhone": "string",
+        "doctorClinic": "string",
+        "hospitalName": "string",
+        "hospitalPhone": "string",
+        "insuranceProvider": "string",
+        "insurancePolicyNumber": "string",
+        "insuranceValidUntil": "string (YYYY-MM-DD)",
+        "notes": "string",
+        "lastCheckup": "string (YYYY-MM-DD)",
+        "emergencyInstructions": "string"
+      },
+      "academicInfo": {
+        "subjects": "array of { name, code, teacher }",
+        "achievements": "array of strings",
+        "remarks": "string"
+      },
+      "attendance": {
+        "present": "number",
+        "total": "number",
+        "percentage": "number",
+        "monthly": "array of { month, present, total, percentage }",
+        "recentAbsences": "array of { date, reason, approved }"
+      },
+      "documents": "array of { id, name, type, size, uploadedAt }",
+      "recentActivity": "array of { action, date, status }"
+    },
+    "promotionStudent": {
+      "id": "string",
+      "name": "string",
+      "currentClass": "string",
+      "currentSection": "string",
+      "currentRoll": "number",
+      "promoteTo": "string",
+      "newSection": "string",
+      "newRoll": "number",
+      "detain": "boolean",
+      "status": "string (promote, detain, graduate)"
     }
   },
-  "statsEndpoint": "/api/v1/students/stats",
-  "statsResponse": {
-    "totalStudents": 250,
-    "totalClasses": 15,
-    "activeStudents": 238,
-    "totalSections": 4
+  "keyMetrics": {
+    "totalStudents": "number (250 in mock)",
+    "activeStudents": "number (status='Active')",
+    "inactiveStudents": "number",
+    "studentsPerClass": "breakdown by class",
+    "studentsPerSection": "breakdown by section",
+    "averageAttendance": "computed from attendance data",
+    "promotionStats": {
+      "promoting": "number (students with status='promote')",
+      "graduating": "number (from Class 12)",
+      "detained": "number (students flagged for detention)"
+    },
+    "bulkImportStats": "number of students added via CSV"
   },
-  "notes": [
-    "initials can be computed on frontend from name, but backend may provide it for consistency",
-    "photo is optional URL or null",
-    "status is either 'Active' or 'Inactive'",
-    "filterOptions.classes should be derived from actual student data (distinct classes)",
-    "filterOptions.sections can be static or derived from data"
-  ]
+  "uiComponents": {
+    "pages": [
+      "/school/students/page.jsx",
+      "/school/students/add/page.jsx",
+      "/school/students/[studentId]/page.jsx",
+      "/school/students/[studentId]/edit/page.jsx",
+      "/school/students/promote/page.jsx"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "BulkImportButton",
+      "EmptyState",
+      "StatusBadge",
+      "ConfirmDialog",
+      "ShareButton",
+      "PrintStudentProfile"
+    ],
+    "moduleComponents": [
+      "EditPersonalSection",
+      "EditAcademicSection",
+      "EditParentsSection",
+      "EditEmergencySection",
+      "StudentHeader",
+      "ContactCard",
+      "EmergencyProfileCard",
+      "AttendanceCard",
+      "MedicalInfoCard",
+      "DocumentsCard"
+    ],
+    "iconsUsed": [
+      "Plus", "Upload", "Eye", "Edit2", "Trash2", "Mail", "Phone", "Search", "ArrowUp",
+      "ArrowLeft", "Save", "Loader2", "User", "GraduationCap", "Users", "AlertCircle",
+      "Heart", "FileText", "Calendar", "MessageCircle", "Bell", "FilePlus", "Activity",
+      "Printer", "Download", "RotateCcw", "ChevronLeft", "ChevronRight", "Check", "X",
+      "FileSpreadsheet", "AlertTriangle", "ArrowLeft"
+    ]
+  },
+  "actionsAndRoutes": {
+    "listPage": {
+      "addStudent": "/school/students/add",
+      "bulkImport": "/school/students/add?mode=bulk",
+      "promoteStudents": "/school/students/promote",
+      "viewStudent": "/school/students/{id}",
+      "editStudent": "/school/students/{id}/edit",
+      "deleteStudent": "inline confirmation",
+      "refresh": "reload mock data",
+      "export": "export filtered list",
+      "filter": "by class, section, search (name, ID, parent)",
+      "pagination": "15 per page with page numbers"
+    },
+    "addPage": {
+      "singleMode": "4-step form (Personal, Academic, Parents, Medical)",
+      "bulkMode": "upload CSV with validation, preview, import",
+      "downloadDemoCSV": "download template",
+      "success": "show success message with options to add another or view students"
+    },
+    "detailPage": {
+      "printProfile": "printStudentProfile function",
+      "share": "ShareButton component",
+      "edit": "/school/students/{id}/edit",
+      "toggleEmergencyVisibility": "PUBLIC/MINIMAL/HIDDEN",
+      "callParent": "tel: link",
+      "whatsapp": "open WhatsApp chat",
+      "tabs": "Overview, Attendance, Emergency, Medical, Documents"
+    },
+    "editPage": {
+      "sectionNav": "personal, academic, contact, parents, emergency, medical",
+      "save": "PUT /api/students/:id",
+      "validation": "required fields (firstName, lastName, class, section)"
+    },
+    "promotePage": {
+      "filter": "by class, section, search",
+      "individualEdits": "promoteTo, newSection, newRoll, detain flag",
+      "autoRollNumbers": "auto-assign sequential roll numbers per target class/section",
+      "promoteAll": "bulk update after confirmation",
+      "processing": "show progress",
+      "completion": "summary with download report"
+    }
+  },
+  "dependencies": {
+    "mockData": "generated internally (students, promotion data)",
+    "utilityLibraries": ["@/lib/utils (cn)", "next/navigation (useRouter, useParams, useSearchParams)"],
+    "reactHooks": ["useState", "useEffect", "useMemo", "useCallback", "useRef"]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Student Overview",
+        "metrics": ["Total Students", "Active Students", "Inactive Students", "Students with Missing Medical Info"]
+      },
+      {
+        "type": "barChart",
+        "title": "Students per Class",
+        "dataSource": "aggregate from student list",
+        "chartType": "horizontal bar"
+      },
+      {
+        "type": "table",
+        "title": "Recent Student Additions (last 7 days)",
+        "columns": ["Name", "Class", "Parent", "Phone", "Status"]
+      },
+      {
+        "type": "alert",
+        "title": "At-Risk Students (Low Attendance)",
+        "condition": "attendance.percentage < 75%",
+        "action": "Highlight in dashboard and notify parent"
+      },
+      {
+        "type": "progress",
+        "title": "Promotion Readiness",
+        "metrics": ["Promoting", "Graduating", "Detained"],
+        "dataSource": "promotion stats"
+      },
+      {
+        "type": "pieChart",
+        "title": "Medical Information Completion",
+        "dataSource": "students with allergies/conditions vs incomplete"
+      }
+    ],
+    "alertTriggers": [
+      "New student added without parent contact details",
+      "Student marked inactive for more than 30 days",
+      "Duplicate parent phone number across multiple students",
+      "Emergency visibility set to HIDDEN (requires admin review)",
+      "Promotion: more than 10% of students detained in a class",
+      "Bulk import attempted with more than 500 rows"
+    ],
+    "realTimeNeeds": [
+      "Live attendance updates reflected in student detail page",
+      "WebSocket for parent contact changes to sync with emergency module"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/students/page.jsx",
+      "app/(school)/school/students/add/page.jsx",
+      "app/(school)/school/students/[studentId]/page.jsx",
+      "app/(school)/school/students/[studentId]/edit/page.jsx",
+      "app/(school)/school/students/promote/page.jsx",
+      "components/modules/students/StudentHeader.jsx",
+      "components/modules/students/ContactCard.jsx",
+      "components/modules/students/EmergencyProfileCard.jsx",
+      "components/modules/students/AttendanceCard.jsx",
+      "components/modules/students/MedicalInfoCard.jsx",
+      "components/modules/students/DocumentsCard.jsx",
+      "components/shared/BulkImportButton.jsx",
+      "components/shared/PrintStudentProfile.jsx",
+      "components/shared/ShareButton.jsx",
+      "lib/utils.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/students",
+        "GET /api/students/:id",
+        "POST /api/students",
+        "POST /api/students/bulk",
+        "PUT /api/students/:id",
+        "DELETE /api/students/:id",
+        "POST /api/students/promote",
+        "GET /api/students/promotion/preview"
+      ],
+      "webhooks": [
+        "Student added → generate QR code (trigger card module)",
+        "Student deleted → deactivate linked RFID card"
+      ]
+    }
+  }
 }
