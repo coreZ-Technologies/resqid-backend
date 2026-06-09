@@ -1,0 +1,61 @@
+// orchestrator/registry/attendance.registry.js — RESQID
+//
+// Attendance-related notification types.
+
+export const ATTENDANCE_NOTIFICATIONS = {
+  ATTENDANCE_TAP_IN: {
+    id: 'attendance.tap_in',
+    label: 'Student Tap-In',
+    description: 'RFID card scanned at entry gate',
+    priority: 'normal',
+    channels: ['push', 'sms'],
+    template: 'attendance-tap-in',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 3, backoff: 'exponential', delay: 1000 },
+  },
+  ATTENDANCE_TAP_OUT: {
+    id: 'attendance.tap_out',
+    label: 'Student Tap-Out',
+    description: 'RFID card scanned at exit gate',
+    priority: 'normal',
+    channels: ['push'],
+    template: 'attendance-tap-out',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 1000 },
+  },
+  ATTENDANCE_ABSENT: {
+    id: 'attendance.absent',
+    label: 'Student Absent',
+    description: 'Student did not tap in by cutoff time',
+    priority: 'normal',
+    channels: ['push', 'sms'],
+    template: 'attendance-absent',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 3, backoff: 'exponential', delay: 2000 },
+  },
+  ATTENDANCE_LATE: {
+    id: 'attendance.late',
+    label: 'Student Late',
+    description: 'Student tapped in after cutoff time',
+    priority: 'normal',
+    channels: ['push'],
+    template: 'attendance-late',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 1000 },
+  },
+  ATTENDANCE_DAILY_SUMMARY: {
+    id: 'attendance.daily_summary',
+    label: 'Daily Attendance Summary',
+    description: 'End-of-day report for parent',
+    priority: 'low',
+    channels: ['push', 'email'],
+    template: 'attendance-daily-summary',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'fixed', delay: 5000 },
+  },
+};

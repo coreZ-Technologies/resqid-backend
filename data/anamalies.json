@@ -1,0 +1,213 @@
+{
+  "monitoringOverview": {
+    "title": "RESQID Frontend Monitor Extract",
+    "description": "Key data structures, metrics, UI components, and dependencies extracted from ActivityLog, Anomalies, and AnomalyDetail pages for real-time monitoring and system health tracking."
+  },
+  "dataModels": {
+    "logEntry": {
+      "id": "number",
+      "actor": "string",
+      "role": "string (School Admin, Teacher, System)",
+      "avatar": "string (initials)",
+      "action": "string",
+      "module": "string (Auth, Attendance, Students, Reports, Communication, Timetable, Settings, System, Billing)",
+      "type": "string (create, update, delete, export, login, view, system)",
+      "severity": "string (info, warning)",
+      "ip": "string",
+      "device": "string (desktop, mobile, server)",
+      "time": "string (ISO datetime)",
+      "status": "string (success, failed)"
+    },
+    "anomaly": {
+      "id": "string (e.g., ANO-1234)",
+      "type": "string (duplicate_scan, unknown_card, outside_hours, multiple_exits, suspicious_timing)",
+      "severity": "string (high, medium, low)",
+      "status": "string (open, investigating, resolved)",
+      "student": "string",
+      "studentId": "string (optional)",
+      "class": "string",
+      "avatar": "string (initials)",
+      "avatarColor": "string (Tailwind bg class)",
+      "description": "string",
+      "location": "string",
+      "time": "string (HH:MM AM/PM)",
+      "dateDisplay": "string (Today, Yesterday, X days ago, or formatted date)",
+      "createdAt": "string (ISO datetime)",
+      "detectedBy": "string (Auto-detection or Gate Scanner #X)"
+    },
+    "timelineEvent": {
+      "time": "string",
+      "action": "string",
+      "detail": "string",
+      "type": "string (system, admin)"
+    }
+  },
+  "keyMetrics": {
+    "activityLog": {
+      "totalEvents": "number (filtered count)",
+      "pageSize": 10,
+      "availableFilters": ["search", "actionType (All Types, create, update, delete, export, login, view, system)"]
+    },
+    "anomalies": {
+      "totalAnomalies": "number",
+      "openUnresolved": "number",
+      "resolvedToday": "number",
+      "highSeverityCount": "number",
+      "severityDistribution": { "high": "number", "medium": "number", "low": "number" },
+      "statusDistribution": { "open": "number", "investigating": "number", "resolved": "number" }
+    }
+  },
+  "uiComponents": {
+    "sharedComponents": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "StatusBadge"
+    ],
+    "customHooks": [],
+    "helperFunctions": [
+      "formatRelativeDate",
+      "generateId",
+      "formatTime",
+      "exportToCSV"
+    ],
+    "iconsUsed": [
+      "Activity", "Search", "Download", "RefreshCw", "UserCheck", "Users",
+      "AlertTriangle", "Plus", "Edit3", "Trash2", "Eye", "LogIn", "LogOut",
+      "Zap", "ChevronLeft", "ChevronRight", "CheckCircle2", "XCircle",
+      "Smartphone", "Globe", "Monitor", "Shield", "Clock", "Filter",
+      "MapPin", "User", "QrCode", "TrendingUp", "TrendingDown", "ScanLine",
+      "ArrowRight", "MoreHorizontal", "ShieldAlert", "ShieldCheck", "CalendarDays",
+      "ChevronDown", "Calendar", "Bell", "MessageCircle"
+    ]
+  },
+  "actions": {
+    "activityLog": {
+      "refresh": "function - triggers data reload",
+      "export": "function - exports filtered logs to CSV",
+      "search": "string - filters table",
+      "typeFilter": "string - one of ACTION_TYPES",
+      "pagination": "next/prev with page state"
+    },
+    "anomalies": {
+      "refresh": "regenerates mock anomalies",
+      "export": "exports filtered anomalies to CSV",
+      "filter": {
+        "status": "All, Open, Investigating, Resolved",
+        "severity": "All Severities, High, Medium, Low",
+        "search": "text on id, student, description",
+        "dateFrom": "YYYY-MM-DD",
+        "dateTo": "YYYY-MM-DD"
+      },
+      "clearFilters": "resets all filters",
+      "selectAnomaly": "sets selectedId to view details",
+      "resolveAction": "Mark as Resolved",
+      "investigateAction": "Mark as Investigating",
+      "notifyParents": "trigger notification",
+      "messageStaff": "trigger message"
+    },
+    "anomalyDetail": {
+      "back": "navigate back",
+      "viewStudentProfile": "navigate to /school/students/{studentId}",
+      "markResolved": "update status to resolved",
+      "markInvestigating": "update status to investigating",
+      "notifyParents": "send notification",
+      "messageStaff": "send message"
+    }
+  },
+  "dependencies": {
+    "dataSources": {
+      "mockDataFiles": [
+        "@/lib/mock-data"
+      ],
+      "mockDataExports": [
+        "MOCK_ANOMALIES",
+        "MOCK_SCAN_LOGS"
+      ]
+    },
+    "utilityLibraries": [
+      "@/lib/utils (cn)",
+      "next/navigation (useRouter, useParams)",
+      "react (useState, useEffect, useMemo, useCallback)"
+    ],
+    "externalPackages": [
+      "lucide-react"
+    ]
+  },
+  "importantFiles": {
+    "frontend": [
+      "app/(school)/school/activity-log/page.jsx",
+      "app/(school)/school/anomalies/page.jsx",
+      "app/(school)/school/anomalies/[anomalyId]/page.jsx",
+      "components/shared/Breadcrumb.jsx",
+      "components/shared/PageHeader.jsx",
+      "components/shared/ToolbarActions.jsx",
+      "components/shared/StatusBadge.jsx",
+      "lib/mock-data.js",
+      "lib/utils.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/activity-logs",
+        "GET /api/anomalies",
+        "GET /api/anomalies/:id",
+        "POST /api/anomalies/:id/resolve",
+        "POST /api/anomalies/:id/investigate",
+        "POST /api/notifications/parents",
+        "POST /api/notifications/staff"
+      ],
+      "realTimeNeeds": "SSE or WebSocket for live log updates (currently mock data)"
+    }
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Total Anomalies",
+        "valueKey": "totalAnomalies",
+        "trend": "weekly change"
+      },
+      {
+        "type": "kpi",
+        "title": "Open Anomalies",
+        "valueKey": "openUnresolved"
+      },
+      {
+        "type": "kpi",
+        "title": "Resolved Today",
+        "valueKey": "resolvedToday"
+      },
+      {
+        "type": "kpi",
+        "title": "High Severity",
+        "valueKey": "highSeverityCount"
+      },
+      {
+        "type": "table",
+        "title": "Recent Anomalies",
+        "columns": ["ID", "Student", "Type", "Severity", "Status", "Time"],
+        "dataSource": "anomalies"
+      },
+      {
+        "type": "table",
+        "title": "Activity Log (Critical Events)",
+        "columns": ["Actor", "Action", "Module", "Status", "Time"],
+        "filters": ["type=system,login", "status=failed"]
+      },
+      {
+        "type": "severityPieChart",
+        "title": "Anomalies by Severity"
+      },
+      {
+        "type": "statusStackedBar",
+        "title": "Anomaly Status Over Time"
+      }
+    ],
+    "alertTriggers": [
+      "High severity anomaly created",
+      "Failed login attempts (type: login, status: failed)",
+      "Multiple anomalies for same student within 1 hour",
+      "Anomaly remains 'open' for > 24 hours"
+    ]
+  }
+}

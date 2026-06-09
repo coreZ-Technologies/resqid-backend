@@ -1,156 +1,213 @@
 {
-  "version": "1.0.0",
-  "description": "Backend data contract for Classes page – manage class groups, sections, teachers, student counts, subjects, and room assignments.",
-  "endpoints": {
-    "getStats": {
-      "method": "GET",
-      "path": "/api/v1/classes/stats",
-      "description": "Get summary statistics for the top cards (total classes, total students, active classes, grade group count).",
-      "response": {
-        "success": true,
-        "data": {
-          "totalClasses": "number",
-          "totalStudents": "number",
-          "activeClasses": "number",
-          "gradeGroups": "number (fixed at 4: Primary, Middle, Secondary, Senior)"
-        }
-      },
-      "exampleResponse": {
-        "success": true,
-        "data": {
-          "totalClasses": 19,
-          "totalStudents": 2100,
-          "activeClasses": 18,
-          "gradeGroups": 4
-        }
-      }
+  "moduleName": "Classes Management",
+  "description": "Manage school classes including class details, students, teacher assignment, and bulk import via CSV.",
+  "dataModels": {
+    "class": {
+      "id": "string",
+      "grade": "string (e.g., 'Cls 6', 'Nursery')",
+      "section": "string (A, B, C, D, E)",
+      "classTeacher": "string (optional)",
+      "room": "string (optional)",
+      "status": "string (Active, Inactive)",
+      "subjects": "array of strings",
+      "students": "number (derived)"
     },
-    "getClasses": {
-      "method": "GET",
-      "path": "/api/v1/classes",
-      "description": "Fetch list of classes with optional filtering and search.",
-      "queryParams": {
-        "gradeGroup": "string (optional, values: All, Primary, Middle, Secondary, Senior)",
-        "status": "string (optional, values: All, Active, Inactive)",
-        "search": "string (optional, searches grade, section, classTeacher)",
-        "limit": "number (default 100)",
-        "offset": "number (default 0)"
-      },
-      "response": {
-        "success": true,
-        "data": {
-          "classes": [
-            {
-              "id": "string (e.g., c1)",
-              "grade": "string (e.g., 'Cls 1', 'Nursery', 'LKG', 'UKG', 'Cls 12')",
-              "section": "string (A-E)",
-              "classTeacher": "string (optional)",
-              "students": "number (enrolled students count)",
-              "subjects": ["string (subject names)"],
-              "room": "string (optional, e.g., 'R-01')",
-              "status": "enum: Active, Inactive"
-            }
-          ],
-          "pagination": {
-            "total": "number",
-            "limit": "number",
-            "offset": "number"
-          }
-        }
-      },
-      "exampleResponse": {
-        "success": true,
-        "data": {
-          "classes": [
-            {
-              "id": "c1",
-              "grade": "Nursery",
-              "section": "A",
-              "classTeacher": "Mrs. Meena Pillai",
-              "students": 30,
-              "subjects": ["English", "Hindi", "Maths"],
-              "room": "R-01",
-              "status": "Active"
-            }
-          ],
-          "pagination": { "total": 19, "limit": 100, "offset": 0 }
-        }
-      }
+    "studentInClass": {
+      "id": "string",
+      "name": "string",
+      "rollNo": "number",
+      "gender": "string",
+      "attendance": "number (percentage)",
+      "avatar": "string (initials)",
+      "avatarColor": "string (Tailwind bg class)",
+      "status": "string (present, absent, late)"
     },
-    "createClass": {
-      "method": "POST",
-      "path": "/api/v1/classes",
-      "description": "Create a new class (grade + section combination).",
-      "requestBody": {
-        "grade": "string (required, e.g., 'Cls 5')",
-        "section": "string (required, A-E)",
-        "classTeacher": "string (optional)",
-        "room": "string (optional)",
-        "status": "enum: Active, Inactive (default Active)"
-      },
-      "response": {
-        "success": true,
-        "data": "Class object (same as getClasses response item, with auto-generated id and students=0, subjects=[])"
-      }
-    },
-    "updateClass": {
-      "method": "PUT",
-      "path": "/api/v1/classes/:id",
-      "description": "Update an existing class. Partial updates allowed (PATCH semantics).",
-      "pathParams": { "id": "string (required)" },
-      "requestBody": {
-        "grade": "string (optional)",
-        "section": "string (optional)",
-        "classTeacher": "string (optional)",
-        "room": "string (optional)",
-        "status": "enum: Active, Inactive (optional)"
-      },
-      "response": {
-        "success": true,
-        "data": "Updated class object"
-      }
-    },
-    "deleteClass": {
-      "method": "DELETE",
-      "path": "/api/v1/classes/:id",
-      "description": "Delete a class (if no students are enrolled or system allows).",
-      "pathParams": { "id": "string" },
-      "response": {
-        "success": true,
-        "message": "Class deleted successfully"
-      }
-    },
-    "getFilterOptions": {
-      "method": "GET",
-      "path": "/api/v1/classes/filter-options",
-      "description": "Available grade groups and statuses for filter dropdowns.",
-      "response": {
-        "success": true,
-        "data": {
-          "gradeGroups": ["Primary", "Middle", "Secondary", "Senior"],
-          "statuses": ["Active", "Inactive"]
-        }
-      }
-    },
-    "exportClasses": {
-      "method": "GET",
-      "path": "/api/v1/classes/export",
-      "description": "Export filtered classes as CSV (same query params as getClasses, no pagination).",
-      "queryParams": "Same as getClasses (limit/offset ignored)",
-      "response": "CSV file download with columns: id, grade, section, classTeacher, students, subjects (comma separated), room, status"
+    "classActivity": {
+      "type": "string (attendance, message, edit, student)",
+      "text": "string",
+      "time": "string",
+      "date": "string"
     }
   },
-  "enums": {
-    "GradeGroup": ["Primary", "Middle", "Secondary", "Senior"],
-    "Status": ["Active", "Inactive"],
-    "Grade": ["Nursery","LKG","UKG","Cls 1","Cls 2","Cls 3","Cls 4","Cls 5","Cls 6","Cls 7","Cls 8","Cls 9","Cls 10","Cls 11","Cls 12"],
-    "Section": ["A","B","C","D","E"]
+  "keyMetrics": {
+    "overview": {
+      "totalClasses": "number (MOCK_CLASSES length)",
+      "activeClasses": "number (status = 'Active')",
+      "inactiveClasses": "number"
+    },
+    "classDetail": {
+      "totalStudents": "number",
+      "presentToday": "number",
+      "absentToday": "number",
+      "lateToday": "number",
+      "attendanceRate": "string (percentage)"
+    }
   },
-  "fieldNotes": {
-    "grade": "Must be one of the Grade enum values. Frontend maps 'Cls 1' to 'Cls 1', etc.",
-    "classTeacher": "Optional; can be null or empty string.",
-    "subjects": "Array of subject names (e.g., ['Mathematics','English']). Returned from backend; edit/update of subjects is not in this version of the UI.",
-    "students": "Dynamic count of enrolled students; backend may compute or accept as part of create/update.",
-    "room": "Optional room identifier."
+  "uiComponents": {
+    "pages": [
+      "/school/classes/page.jsx",
+      "/school/classes/[id]/page.jsx",
+      "/school/classes/add/page.jsx",
+      "/school/classes/edit/page.jsx"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "KpiCard",
+      "StatusBadge",
+      "EmptyState",
+      "ConfirmDialog",
+      "AvatarWithStatus",
+      "Skeleton"
+    ],
+    "moduleComponents": [
+      "ClassFilters",
+      "ClassCard"
+    ],
+    "customHooks": [
+      "useConfirmDialog"
+    ],
+    "iconsUsed": [
+      "Plus", "ArrowLeft", "Users", "UserCheck", "LayoutGrid", "BookOpen",
+      "Edit2", "MessageCircle", "Download", "Phone", "Mail", "ChevronRight",
+      "Clock", "CalendarDays", "Check", "X", "GraduationCap", "DoorOpen",
+      "MoreHorizontal", "Upload", "FileText", "AlertCircle", "FileSpreadsheet",
+      "Trash2", "Loader2"
+    ]
+  },
+  "actionsAndRoutes": {
+    "listPage": {
+      "addClass": "/school/classes/add",
+      "editClass": "/school/classes/edit?id={classId}",
+      "viewClass": "/school/classes/{classId}",
+      "deleteClass": "inline confirmation & state update",
+      "refresh": "reload mock data",
+      "export": "export filtered classes"
+    },
+    "detailPage": {
+      "editClass": "/school/classes/edit?id={classId}",
+      "messageTeacher": "open message modal (mock)",
+      "viewStudent": "/school/students/{studentId}",
+      "addStudent": "/school/students/add?class={classId}",
+      "exportStudents": "export student list",
+      "callTeacher": "mock phone action",
+      "emailTeacher": "mock email action"
+    },
+    "addPage": {
+      "singleMode": "add one class via form",
+      "bulkMode": "upload CSV file to add multiple classes",
+      "downloadDemoCSV": "download sample CSV",
+      "cancel": "go back",
+      "successModal": "shows added count, options to add more or view all"
+    },
+    "editPage": {
+      "updateClass": "submit updated class details",
+      "cancel": "go back"
+    }
+  },
+  "dependencies": {
+    "mockDataFiles": [
+      "@/lib/mock-data"
+    ],
+    "mockDataExports": [
+      "MOCK_CLASSES"
+    ],
+    "constantsFiles": [
+      "@/lib/constants"
+    ],
+    "constantsExports": [
+      "GRADE_GROUP_MAP",
+      "GROUP_COLORS",
+      "GRADES"
+    ],
+    "utilityLibraries": [
+      "@/lib/utils (cn)",
+      "next/navigation (useRouter, useParams, useSearchParams)",
+      "react (useState, useEffect, useMemo, useRef)"
+    ]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Class Overview",
+        "metrics": ["Total Classes", "Active Classes", "Inactive Classes"]
+      },
+      {
+        "type": "table",
+        "title": "Class List (Quick View)",
+        "columns": ["Class", "Teacher", "Students", "Status"],
+        "dataSource": "MOCK_CLASSES"
+      },
+      {
+        "type": "chart",
+        "title": "Students per Grade Group",
+        "chartType": "bar",
+        "dataSource": "aggregated from MOCK_CLASSES + student counts"
+      },
+      {
+        "type": "alert",
+        "title": "Low Attendance Classes",
+        "condition": "Class attendance rate < 75%",
+        "action": "Highlight in dashboard"
+      },
+      {
+        "type": "recentActivity",
+        "title": "Recent Class Changes",
+        "dataSource": "MOCK_ACTIVITY per class"
+      }
+    ],
+    "alertTriggers": [
+      "Class teacher missing (classTeacher empty)",
+      "Class has no students assigned",
+      "Class status inactive for > 30 days",
+      "Multiple sections with same teacher (potential overload)"
+    ],
+    "realTimeNeeds": [
+      "Live updates when a student is added/removed from class",
+      "Push notification when class teacher is changed"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/classes/page.jsx",
+      "app/(school)/school/classes/[id]/page.jsx",
+      "app/(school)/school/classes/add/page.jsx",
+      "app/(school)/school/classes/edit/page.jsx",
+      "components/modules/classes/ClassFilters.jsx",
+      "components/modules/classes/ClassCard.jsx",
+      "components/shared/ConfirmDialog.jsx",
+      "components/shared/Avatar.jsx",
+      "lib/mock-data.js",
+      "lib/constants.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/classes",
+        "GET /api/classes/:id",
+        "POST /api/classes",
+        "POST /api/classes/bulk",
+        "PUT /api/classes/:id",
+        "DELETE /api/classes/:id",
+        "GET /api/classes/:id/students"
+      ],
+      "webhooks": [
+        "Class created/updated → refresh timetable generator",
+        "Student enrolled/unenrolled → update class count"
+      ]
+    }
+  },
+  "sampleMockDataStructures": {
+    "MOCK_CLASS": {
+      "id": "c7",
+      "grade": "Cls 6",
+      "section": "A",
+      "classTeacher": "Mrs. Kavita Reddy",
+      "room": "R-10",
+      "status": "Active",
+      "students": 45,
+      "subjects": ["Mathematics", "Science", "English", "Social Studies", "Hindi"]
+    }
   }
 }

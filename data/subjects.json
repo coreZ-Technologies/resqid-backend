@@ -1,0 +1,165 @@
+{
+  "moduleName": "Subjects Management",
+  "description": "Manage school subjects, including core and elective subjects, class assignments (grade/section/teachers), periods per week, and bulk import via CSV.",
+  "dataModels": {
+    "subject": {
+      "id": "string",
+      "name": "string",
+      "code": "string",
+      "category": "string (Core, Language, Science, Mathematics, Social Studies, Arts, Physical Education, Elective, Vocational)",
+      "description": "string (optional)",
+      "periodsPerWeek": "number",
+      "status": "string (Active, Inactive)",
+      "mappings": [
+        {
+          "grade": "string",
+          "section": "string",
+          "teachers": "array of strings"
+        }
+      ]
+    }
+  },
+  "keyMetrics": {
+    "totalSubjects": "number (MOCK_SUBJECTS.length)",
+    "activeSubjects": "number (status='Active')",
+    "inactiveSubjects": "number",
+    "subjectsPerCategory": "breakdown by category",
+    "totalClassAssignments": "sum of mappings.length across subjects",
+    "totalTeacherAssignments": "unique teacher count across all mappings",
+    "avgPeriodsPerWeek": "average over all subjects"
+  },
+  "uiComponents": {
+    "pages": [
+      "/school/subjects/page.jsx",
+      "/school/subjects/add/page.jsx",
+      "/school/subjects/[id]/page.jsx",
+      "/school/subjects/edit/page.jsx"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "StatusBadge",
+      "EmptyState",
+      "ConfirmDialog",
+      "KpiCard"
+    ],
+    "moduleComponents": [
+      "SubjectFilters",
+      "SubjectCard"
+    ],
+    "customHooks": ["useConfirmDialog"],
+    "iconsUsed": [
+      "Plus", "BookOpen", "Users", "Clock", "Edit2", "X", "ArrowLeft",
+      "Upload", "Download", "FileText", "AlertCircle", "FileSpreadsheet",
+      "Trash2", "Check", "Loader2"
+    ]
+  },
+  "actionsAndRoutes": {
+    "listPage": {
+      "addSubject": "/school/subjects/add",
+      "editSubject": "/school/subjects/edit?id={id}",
+      "viewSubject": "/school/subjects/{id}",
+      "deleteSubject": "confirm dialog then remove",
+      "refresh": "console log (mock)",
+      "export": "console log (mock)",
+      "filter": "by category, status, search (name, code, teacher name)"
+    },
+    "addPage": {
+      "singleMode": "form with name, code, category, description, periods/week, and dynamic class/teacher mappings",
+      "bulkMode": "CSV upload with preview, validation, import",
+      "successModal": "shows added count, options to add more or view all",
+      "downloadDemoCSV": "download sample CSV"
+    },
+    "detailPage": {
+      "editSubject": "/school/subjects/edit?id={id}",
+      "kpiCards": "Assigned Classes, Total Teachers, Periods/Week, Category",
+      "classTable": "list of grade-section with teachers",
+      "teacherList": "all teachers assigned to this subject"
+    },
+    "editPage": {
+      "updateSubject": "pre-populated form, save changes",
+      "cancel": "go back to subjects list"
+    }
+  },
+  "dependencies": {
+    "mockDataFiles": ["@/lib/mock-data"],
+    "mockDataExports": ["MOCK_SUBJECTS"],
+    "constantsFiles": ["@/lib/constants"],
+    "constantsExports": ["SUBJECT_CATEGORIES", "SUBJECT_CATEGORY_COLORS"],
+    "utilityLibraries": ["@/lib/utils (cn)", "next/navigation (useRouter, useParams, useSearchParams)"],
+    "reactHooks": ["useState", "useEffect", "useMemo", "useRef"]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Subjects Overview",
+        "metrics": ["Total Subjects", "Active Subjects", "Subjects with No Class Assignments", "Avg Periods/Week"]
+      },
+      {
+        "type": "barChart",
+        "title": "Subjects by Category",
+        "dataSource": "group by category",
+        "chartType": "horizontal bar"
+      },
+      {
+        "type": "table",
+        "title": "Recently Added/Edited Subjects (last 7 days)",
+        "columns": ["Name", "Code", "Category", "Assigned Classes", "Teachers"]
+      },
+      {
+        "type": "alert",
+        "title": "Subject Health Alerts",
+        "conditions": [
+          "Subject has zero class assignments",
+          "Subject with category 'Core' has no teacher assigned",
+          "Subject assigned to more than 15 classes (possible scheduling overload)",
+          "Subject code duplicate across different subjects"
+        ]
+      },
+      {
+        "type": "chart",
+        "title": "Teacher Workload – Subjects per Teacher",
+        "dataSource": "count of unique subject assignments per teacher"
+      }
+    ],
+    "alertTriggers": [
+      "Subject marked inactive but still assigned to active classes",
+      "CSV bulk import fails validation > 10% rows",
+      "Same subject assigned to same grade-section multiple times (duplicate mapping)",
+      "PeriodsPerWeek > 8 (suspicious high load)"
+    ],
+    "realTimeNeeds": [
+      "Live update of subject list after add/edit/delete (WebSocket)",
+      "Push notification to teachers when assigned to a new subject"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/subjects/page.jsx",
+      "app/(school)/school/subjects/add/page.jsx",
+      "app/(school)/school/subjects/[id]/page.jsx",
+      "app/(school)/school/subjects/edit/page.jsx",
+      "components/modules/subjects/SubjectFilters.jsx",
+      "components/modules/subjects/SubjectCard.jsx",
+      "components/shared/ConfirmDialog.jsx",
+      "lib/mock-data.js",
+      "lib/constants.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/subjects",
+        "GET /api/subjects/:id",
+        "POST /api/subjects",
+        "POST /api/subjects/bulk",
+        "PUT /api/subjects/:id",
+        "DELETE /api/subjects/:id"
+      ],
+      "webhooks": [
+        "Subject assigned to class → trigger timetable regeneration for that class",
+        "Teacher assigned to subject → update teacher availability for scheduling"
+      ]
+    }
+  }
+}
