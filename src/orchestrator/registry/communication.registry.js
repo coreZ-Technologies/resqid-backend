@@ -1,26 +1,42 @@
-// orchestrator/registry/communication.registry.js — RESQID
-//
-// Communication event types for announcements, messages, and reminders.
-
-export const COMMUNICATION_EVENTS = {
-  ANNOUNCEMENT_PUBLISHED: {
-    event: 'communication.announcement_published',
-    notificationType: 'communication.announcement',
-    description: 'School-wide announcement published',
+export const COMMUNICATION_NOTIFICATIONS = {
+  COMMUNICATION_ANNOUNCEMENT: {
+    id: 'communication.announcement',
+    label: 'School Announcement',
+    priority: 'normal',
+    channels: ['push', 'email'],
+    template: 'communication-announcement',
+    category: 'communication',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 2000 },
   },
-  DIRECT_MESSAGE_SENT: {
-    event: 'communication.direct_message_sent',
-    notificationType: 'communication.direct_message',
-    description: 'Direct message sent to parent',
+  COMMUNICATION_DIRECT_MESSAGE: {
+    id: 'communication.direct_message',
+    label: 'Direct Message',
+    priority: 'normal',
+    channels: ['push'],
+    template: 'communication-direct-message',
+    category: 'communication',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 1000 },
   },
-  FEE_REMINDER: {
-    event: 'communication.fee_reminder',
-    notificationType: 'communication.fee_reminder',
-    description: 'Fee payment reminder triggered',
+  COMMUNICATION_FEE_REMINDER: {
+    id: 'communication.fee_reminder',
+    label: 'Fee Reminder',
+    priority: 'normal',
+    channels: ['push', 'sms', 'email'],
+    template: 'communication-fee-reminder',
+    category: 'communication',
+    target: 'parent',
+    retry: { attempts: 3, backoff: 'exponential', delay: 5000 },
   },
-  PTM_REMINDER: {
-    event: 'communication.ptm_reminder',
-    notificationType: 'communication.ptm_reminder',
-    description: 'Parent-Teacher Meeting reminder',
+  COMMUNICATION_PTM_REMINDER: {
+    id: 'communication.ptm_reminder',
+    label: 'PTM Reminder',
+    priority: 'normal',
+    channels: ['push', 'sms'],
+    template: 'communication-ptm-reminder',
+    category: 'communication',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 3000 },
   },
 };

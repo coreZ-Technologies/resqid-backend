@@ -1,21 +1,14 @@
 // orchestrator/notifications/channel/email.js — RESQID
+//
 // Email notification channel.
 // Uses universal EmailAdapter (Resend/Brevo/SES via env).
+// Retry logic handled by BullMQ worker, not here.
 
 import { getEmail } from '#infrastructure/email/email.index.js';
 import { logger } from '#config/logger.js';
 
 /**
- * Send an email notification.
- * @param {Object} params
- * @param {string|string[]} params.to - Recipient email(s)
- * @param {string} params.subject - Email subject
- * @param {string} params.html - HTML body (React-rendered or raw)
- * @param {string} [params.text] - Plain text fallback (auto-generated if not provided)
- * @param {string} [params.from] - Sender override
- * @param {string} [params.replyTo] - Reply-to address
- * @param {Object} [params.meta] - Metadata for logging
- * @returns {Promise<{success: boolean, providerRef?: string, error?: string}>}
+ * Send a plain HTML email.
  */
 export const sendEmailNotification = async ({
   to,
@@ -26,7 +19,9 @@ export const sendEmailNotification = async ({
   replyTo,
   meta = {},
 }) => {
-  if (!to || !subject || !html) {
+  // Validate
+  const recipients = Array.isArray(to) ? to.filter(Boolean) : [to];
+  if (recipients.length === 0 || !subject || !html) {
     logger.warn({ meta }, '[email] Missing required fields — skipping');
     return { success: false, error: 'Missing required fields: to, subject, html' };
   }
@@ -35,18 +30,25 @@ export const sendEmailNotification = async ({
 
   try {
     const email = getEmail();
-    const result = await email.send({ to, subject, html, text, from, replyTo });
+    const result = await email.send({
+      to: recipients.length === 1 ? recipients[0] : recipients,
+      subject,
+      html,
+      text: text || stripHtml(html),
+      from,
+      replyTo,
+    });
 
     logger.info(
       {
-        to: Array.isArray(to) ? `${to.length} recipients` : to,
+        recipients: recipients.length,
         subject,
         latencyMs: Date.now() - start,
         providerRef: result?.id,
         provider: result?.provider,
         ...meta,
       },
-      '[email] Sent successfully'
+      '[email] ✅ Sent'
     );
 
     return { success: true, providerRef: result?.id, provider: result?.provider };
@@ -54,55 +56,78 @@ export const sendEmailNotification = async ({
     logger.error(
       {
         err: err.message,
-        to: Array.isArray(to) ? `${to.length} recipients` : to,
+        recipients: recipients.length,
         subject,
         latencyMs: Date.now() - start,
         ...meta,
       },
-      '[email] Send failed'
+      '[email] ❌ Failed'
     );
     return { success: false, error: err.message };
   }
 };
 
 /**
- * Send an email using a React template.
- * @param {React.Component} Component - React email component
- * @param {Object} props - Props for the component
- * @param {Object} options - { to, subject, from, replyTo, meta }
+ * Send email using a React Email template.
  */
 export const sendEmailWithTemplate = async (Component, props = {}, options = {}) => {
   const { to, subject, from, replyTo, meta = {} } = options;
 
-  if (!to || !subject) {
-    logger.warn({ meta }, '[email] Missing fields for template email');
+  const recipients = Array.isArray(to) ? to.filter(Boolean) : [to];
+  if (recipients.length === 0 || !subject) {
+    logger.warn({ meta }, '[email] Missing fields for template');
     return { success: false, error: 'Missing required fields: to, subject' };
   }
 
   const start = Date.now();
+  const templateName = Component?.displayName || Component?.name || 'EmailTemplate';
 
   try {
     const email = getEmail();
-    const result = await email.sendReactTemplate(Component, props, { to, subject, from, replyTo });
+    const result = await email.sendReactTemplate(Component, props, {
+      to: recipients.length === 1 ? recipients[0] : recipients,
+      subject,
+      from,
+      replyTo,
+    });
 
     logger.info(
       {
-        to: Array.isArray(to) ? `${to.length} recipients` : to,
+        recipients: recipients.length,
         subject,
-        template: Component.name || 'Unknown',
+        template: templateName,
         latencyMs: Date.now() - start,
         providerRef: result?.id,
         ...meta,
       },
-      '[email] Template sent'
+      '[email] ✅ Template sent'
     );
 
     return { success: true, providerRef: result?.id };
   } catch (err) {
     logger.error(
-      { err: err.message, to, subject, latencyMs: Date.now() - start, ...meta },
-      '[email] Template send failed'
+      {
+        err: err.message,
+        recipients: recipients.length,
+        subject,
+        template: templateName,
+        latencyMs: Date.now() - start,
+        ...meta,
+      },
+      '[email] ❌ Template failed'
     );
     return { success: false, error: err.message };
   }
 };
+
+/**
+ * Strip HTML tags for plain text fallback.
+ */
+function stripHtml(html) {
+  return (
+    html
+      ?.replace(/<[^>]*>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim() || ''
+  );
+}

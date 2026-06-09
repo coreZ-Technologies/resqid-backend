@@ -1,0 +1,32 @@
+export const CARD_NOTIFICATIONS = {
+  CARD_DEACTIVATED: {
+    id: 'card.deactivated',
+    label: 'Card Deactivated',
+    priority: 'normal',
+    channels: ['push', 'sms'],
+    template: 'card-deactivated',
+    category: 'cards',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 2000 },
+  },
+  CARD_REPLACED: {
+    id: 'card.replaced',
+    label: 'Card Replaced',
+    priority: 'normal',
+    channels: ['push'],
+    template: 'card-replaced',
+    category: 'cards',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 1000 },
+  },
+  QR_GENERATED: {
+    id: 'qr.generated',
+    label: 'QR Code Generated',
+    priority: 'low',
+    channels: ['push'],
+    template: 'qr-generated',
+    category: 'cards',
+    target: 'admin',
+    retry: { attempts: 1, backoff: 'fixed', delay: 3000 },
+  },
+};
