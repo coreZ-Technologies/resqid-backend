@@ -1,274 +1,208 @@
 {
-  "version": "1.0.0",
-  "description": "Backend data contract for Emergency Module – student emergency profiles, contact management, medical data, incident logging, and recent activity.",
-  "endpoints": {
-    "getStats": {
-      "method": "GET",
-      "path": "/api/v1/emergency/stats",
-      "description": "Get dashboard statistics (total students, high risk count, incidents today, resolved incidents this week).",
-      "response": {
-        "success": true,
-        "data": {
-          "totalStudents": "number",
-          "highRiskCount": "number (students with medical conditions flagged as high risk)",
-          "incidentsToday": "number",
-          "resolvedThisWeek": "number"
-        }
-      },
-      "exampleResponse": {
-        "success": true,
-        "data": {
-          "totalStudents": 48,
-          "highRiskCount": 12,
-          "incidentsToday": 0,
-          "resolvedThisWeek": 3
-        }
-      }
-    },
-    "getStudents": {
-      "method": "GET",
-      "path": "/api/v1/emergency/students",
-      "description": "Fetch list of students with basic information for the search panel. Supports filtering by class, risk, and search query.",
-      "queryParams": {
-        "search": "string (optional, searches name, studentId, id, class)",
-        "class": "string (optional, full class name e.g., '9A')",
-        "risk": "string (optional, values: high, low, all)",
-        "limit": "number (default 100)",
-        "offset": "number (default 0)"
-      },
-      "response": {
-        "success": true,
-        "data": {
-          "students": [
-            {
-              "id": "string (unique identifier, e.g., RQ-0001-00000001)",
-              "studentId": "string (STU0001)",
-              "name": "string",
-              "class": "string (e.g., '9A')",
-              "rollNo": "string",
-              "bloodGroup": "enum: A+, A-, B+, B-, O+, O-, AB+, AB-",
-              "hasHighRisk": "boolean",
-              "lastScanned": "datetime (ISO 8601, optional)"
-            }
-          ],
-          "pagination": { "total": "number", "limit": "number", "offset": "number" }
-        }
-      },
-      "exampleResponse": {
-        "success": true,
-        "data": {
-          "students": [
-            {
-              "id": "RQ-0001-00000001",
-              "studentId": "STU0001",
-              "name": "Arjun Sharma",
-              "class": "9A",
-              "rollNo": "12",
-              "bloodGroup": "O+",
-              "hasHighRisk": true,
-              "lastScanned": "2026-05-30T08:15:00Z"
-            }
-          ],
-          "pagination": { "total": 48, "limit": 100, "offset": 0 }
-        }
-      }
-    },
-    "getStudentEmergencyProfile": {
-      "method": "GET",
-      "path": "/api/v1/emergency/students/:id",
-      "description": "Get complete emergency profile for a student, including contacts, medical data, insurance, and address.",
-      "pathParams": { "id": "string (student id or studentId)" },
-      "response": {
-        "success": true,
-        "data": {
-          "id": "string",
-          "studentId": "string",
+  "moduleName": "Emergency Management",
+  "description": "Student emergency profiles, medical conditions, contacts, incident logging, and quick alert actions for school safety.",
+  "dataModels": {
+    "studentEmergencyProfile": {
+      "id": "string (e.g., RQ-0001-00000001)",
+      "studentId": "string (e.g., STU0001)",
+      "name": "string",
+      "class": "string (e.g., 9A)",
+      "rollNo": "string",
+      "dob": "string (YYYY-MM-DD)",
+      "bloodGroup": "string (A+, A-, B+, B-, O+, O-, AB+, AB-)",
+      "photo": "null or URL",
+      "medicalConditions": "array of strings",
+      "allergies": "array of strings",
+      "medications": "array of strings",
+      "doctorName": "string",
+      "doctorPhone": "string",
+      "parents": [
+        {
+          "relation": "string",
           "name": "string",
-          "class": "string",
-          "rollNo": "string",
-          "dob": "date (YYYY-MM-DD)",
-          "bloodGroup": "string",
-          "photo": "string (URL, nullable)",
-          "medicalConditions": ["string"],
-          "allergies": ["string"],
-          "medications": ["string"],
-          "doctorName": "string",
-          "doctorPhone": "string",
-          "parents": [
-            {
-              "relation": "enum: Father, Mother, Guardian",
-              "name": "string",
-              "phone": "string",
-              "alternatePhone": "string | null",
-              "isReachable": "boolean"
-            }
-          ],
-          "emergencyContacts": [
-            {
-              "relation": "string",
-              "name": "string",
-              "phone": "string"
-            }
-          ],
-          "address": "string",
-          "insuranceNo": "string",
-          "notes": "string | null",
-          "hasHighRisk": "boolean",
-          "lastScanned": "datetime (ISO)"
+          "phone": "string",
+          "alternatePhone": "null or string",
+          "isReachable": "boolean"
         }
-      },
-      "exampleResponse": {
-        "success": true,
-        "data": {
-          "id": "RQ-0001-00000001",
-          "studentId": "STU0001",
-          "name": "Arjun Sharma",
-          "class": "9A",
-          "rollNo": "12",
-          "dob": "2010-05-15",
-          "bloodGroup": "O+",
-          "photo": null,
-          "medicalConditions": ["Asthma"],
-          "allergies": ["Penicillin"],
-          "medications": ["Inhaler"],
-          "doctorName": "Dr. Ramesh Iyer",
-          "doctorPhone": "+91 9876543210",
-          "parents": [
-            { "relation": "Father", "name": "Sharma Sr.", "phone": "+91 9876543210", "alternatePhone": null, "isReachable": true },
-            { "relation": "Mother", "name": "Sunita Sharma", "phone": "+91 9876543211", "alternatePhone": null, "isReachable": false }
-          ],
-          "emergencyContacts": [
-            { "relation": "Uncle", "name": "Suresh Sharma", "phone": "+91 9876543212" }
-          ],
-          "address": "Flat 123, Block A, Green Park, City - 400001",
-          "insuranceNo": "INS000001",
-          "notes": "Student has Asthma. Keep inhaler accessible. Contact parents immediately if symptoms appear.",
-          "hasHighRisk": true,
-          "lastScanned": "2026-05-30T08:15:00Z"
+      ],
+      "emergencyContacts": [
+        {
+          "relation": "string",
+          "name": "string",
+          "phone": "string"
         }
-      }
+      ],
+      "address": "string",
+      "insuranceNo": "string",
+      "notes": "string",
+      "hasHighRisk": "boolean",
+      "lastScanned": "string (ISO datetime)"
     },
-    "getRecentIncidents": {
-      "method": "GET",
-      "path": "/api/v1/emergency/incidents/recent",
-      "description": "Get recent incidents across all students (for right sidebar).",
-      "queryParams": {
-        "limit": "number (default 10)"
-      },
-      "response": {
-        "success": true,
-        "data": [
-          {
-            "id": "string",
-            "studentName": "string",
-            "studentId": "string",
-            "class": "string",
-            "type": "string (Medical, Injury, Behavioral, Mental Health, Other)",
-            "severity": "enum: Low, Medium, High, Critical",
-            "time": "datetime (ISO) or relative string (frontend formats)",
-            "status": "enum: Open, Resolved, Closed",
-            "description": "string"
-          }
-        ]
-      },
-      "exampleResponse": {
-        "success": true,
-        "data": [
-          {
-            "id": "INC001",
-            "studentName": "Arjun Sharma",
-            "studentId": "STU0001",
-            "class": "9A",
-            "type": "Medical",
-            "severity": "High",
-            "time": "2026-05-30T06:30:00Z",
-            "status": "Resolved",
-            "description": "Asthma attack during PT period. Inhaler administered."
-          }
-        ]
-      }
-    },
-    "getIncidentsByStudent": {
-      "method": "GET",
-      "path": "/api/v1/emergency/students/:studentId/incidents",
-      "description": "Get incident history for a specific student.",
-      "pathParams": { "studentId": "string" },
-      "queryParams": {
-        "limit": "number (default 20)"
-      },
-      "response": "Same array as getRecentIncidents, filtered for the student"
-    },
-    "createIncident": {
-      "method": "POST",
-      "path": "/api/v1/emergency/incidents",
-      "description": "Log a new incident for a student.",
-      "requestBody": {
-        "studentId": "string (required)",
-        "type": "string (required, one of: Medical, Injury, Behavioral, Mental Health, Other)",
-        "severity": "enum: Low, Medium, High, Critical (required)",
-        "description": "string (required, what happened)",
-        "actionTaken": "string (optional, actions performed)"
-      },
-      "response": {
-        "success": true,
-        "data": {
-          "id": "string",
-          "message": "Incident logged successfully"
-        }
-      }
-    },
-    "updateIncidentStatus": {
-      "method": "PATCH",
-      "path": "/api/v1/emergency/incidents/:id",
-      "description": "Update incident status (e.g., mark as Resolved).",
-      "requestBody": {
-        "status": "enum: Open, Resolved, Closed"
-      },
-      "response": {
-        "success": true,
-        "data": "Updated incident object"
-      }
-    },
-    "getFilterOptions": {
-      "method": "GET",
-      "path": "/api/v1/emergency/filter-options",
-      "description": "Available classes for filter dropdown (based on actual student data).",
-      "response": {
-        "success": true,
-        "data": {
-          "classes": ["string (e.g., '6A', '6B', '7A', ...)"]
-        }
-      }
-    },
-    "broadcastAlert": {
-      "method": "POST",
-      "path": "/api/v1/emergency/students/:studentId/alert",
-      "description": "Send emergency SMS/notification to all contacts of a student (triggered by 'Alert All' button).",
-      "pathParams": { "studentId": "string" },
-      "requestBody": {
-        "message": "string (optional, default emergency template)"
-      },
-      "response": {
-        "success": true,
-        "data": {
-          "deliveredCount": "number",
-          "failedCount": "number",
-          "message": "Alert sent to X contacts"
-        }
-      }
+    "incident": {
+      "id": "string",
+      "studentName": "string",
+      "studentId": "string",
+      "class": "string",
+      "type": "string (Medical, Injury, Behavioral, Mental Health, Other)",
+      "severity": "string (High, Medium, Low, Critical)",
+      "time": "string (relative, e.g., '2 hours ago')",
+      "status": "string (Resolved, Closed, Open)",
+      "description": "string"
     }
   },
-  "enums": {
-    "BloodGroup": ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"],
-    "ParentRelation": ["Father", "Mother", "Guardian"],
-    "IncidentType": ["Medical", "Injury", "Behavioral", "Mental Health", "Other"],
-    "IncidentSeverity": ["Low", "Medium", "High", "Critical"],
-    "IncidentStatus": ["Open", "Resolved", "Closed"]
+  "keyMetrics": {
+    "totalStudents": "number (48 in mock)",
+    "highRiskStudents": "number (based on hasHighRisk flag)",
+    "incidentsToday": "number (0 in mock)",
+    "resolvedIncidents": "number (3 in mock)",
+    "systemStatus": "Active (with pulse indicator)"
   },
-  "fieldNotes": {
-    "hasHighRisk": "Boolean derived from medicalConditions length > 0 OR specific conditions flagged as high risk (e.g., Asthma, Diabetes, Epilepsy).",
-    "lastScanned": "Timestamp of most recent QR code scan for this student; used to show activity.",
-    "isReachable": "Optional field to indicate if the contact is currently reachable (e.g., from call attempts). Frontend may set mock value; backend could store optional reachability status.",
-    "notes": "Free‑text medical/emergency notes displayed prominently for high‑risk students."
+  "uiComponents": {
+    "subComponents": [
+      "BloodBadge",
+      "RiskBadge",
+      "SeverityDot",
+      "ContactCard",
+      "MedicalTag",
+      "EmptyState",
+      "StudentSearchPanel",
+      "EmergencyProfile",
+      "LogIncidentModal",
+      "RecentIncidents",
+      "StatsBar"
+    ],
+    "sharedComponentsUsed": [],
+    "customHooks": [],
+    "iconsUsed": [
+      "Search", "AlertTriangle", "Phone", "Heart", "Droplets", "User",
+      "ChevronDown", "ChevronRight", "X", "Clock", "MapPin", "Shield",
+      "Zap", "Activity", "FileText", "CheckCircle", "XCircle",
+      "PhoneCall", "MessageSquare", "Navigation", "Bell", "Filter",
+      "RefreshCw", "Eye", "ClipboardList", "Siren", "UserCheck",
+      "Ambulance", "BookOpen", "CalendarDays", "Hash", "AlertCircle",
+      "Radio", "Wifi", "WifiOff", "ChevronUp", "Loader2", "Copy", "ExternalLink"
+    ]
+  },
+  "actionsAndRoutes": {
+    "studentSelection": "Search by name/ID/class; filter by class and risk level",
+    "emergencyProfile": {
+      "alertAll": "Broadcast emergency alert to all contacts (mock)",
+      "callParents": "Initiate phone call to primary parent",
+      "callAmbulance": "Open phone dialer for 108",
+      "logIncident": "Open modal to record new incident",
+      "copyStudentId": "Copy student ID to clipboard",
+      "openMaps": "Open Google Maps with student address",
+      "sendSMS": "Send emergency SMS to individual contact (mock)",
+      "bulkNotify": "Send emergency SMS to all contacts (mock)"
+    },
+    "incidentLogging": {
+      "openModal": "from profile or incidents tab",
+      "submit": "Save incident with type, severity, description, action taken"
+    },
+    "recentIncidents": "Click incident to select that student",
+    "emergencyNumbers": "Click to call 108, 100, 101"
+  },
+  "dependencies": {
+    "mockData": "Internal mockStudents and mockIncidents arrays",
+    "utilityLibraries": [
+      "@/lib/utils (cn)",
+      "react (useState, useEffect, useRef)"
+    ],
+    "externalPackages": [
+      "lucide-react"
+    ]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Emergency Overview",
+        "metrics": ["Total Students", "High Risk Students", "Open Incidents", "Resolved Today"]
+      },
+      {
+        "type": "list",
+        "title": "High Risk Students (Require Immediate Attention)",
+        "dataSource": "filtered by hasHighRisk=true",
+        "fields": ["Name", "Class", "Medical Conditions", "Last Scanned"]
+      },
+      {
+        "type": "table",
+        "title": "Recent Incidents (Last 7 Days)",
+        "dataSource": "mockIncidents sorted by time",
+        "columns": ["Student", "Type", "Severity", "Status", "Time"]
+      },
+      {
+        "type": "chart",
+        "title": "Incidents by Type",
+        "chartType": "pie",
+        "dataSource": "aggregated from incidents"
+      },
+      {
+        "type": "alert",
+        "title": "Emergency Alerts",
+        "conditions": [
+          "Student with high-risk condition not scanned in > 3 days",
+          "Multiple incidents for same student within 24 hours",
+          "Parent unreachable flag toggled (isReachable = false)"
+        ]
+      }
+    ],
+    "alertTriggers": [
+      "High-risk student marked as absent unexpectedly",
+      "Emergency alert broadcast via 'Alert All' button",
+      "Incident logged with severity 'High' or 'Critical'",
+      "Failed to reach any parent contact for high-risk student"
+    ],
+    "realTimeNeeds": [
+      "Live scanning events to update 'Last Scanned' field",
+      "Push notification to admin when emergency alert is triggered",
+      "WebSocket for incident log updates across multiple admin screens"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/emergency/page.jsx",
+      "components/shared/StatusBadge.jsx (if used anywhere else; not directly in this file)",
+      "lib/utils.js (for cn function)"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/emergency/students",
+        "GET /api/emergency/students/:id",
+        "POST /api/emergency/alert",
+        "POST /api/emergency/incidents",
+        "GET /api/emergency/incidents",
+        "POST /api/emergency/contacts/sms"
+      ],
+      "webhooks": [
+        "SOS button press from parent app → instant alert to school admin dashboard",
+        "Low battery or offline status from RFID device → trigger maintenance alert"
+      ]
+    }
+  },
+  "sampleMockDataStructures": {
+    "studentProfile": {
+      "id": "RQ-0001-00000001",
+      "studentId": "STU0001",
+      "name": "Arjun Sharma",
+      "class": "9A",
+      "bloodGroup": "A+",
+      "medicalConditions": ["Asthma"],
+      "allergies": [],
+      "hasHighRisk": true,
+      "parents": [
+        { "relation": "Father", "name": "Arjun Sharma Sr.", "phone": "+91 98XXXXXXXX", "isReachable": true }
+      ],
+      "lastScanned": "2026-06-05T10:30:00.000Z"
+    },
+    "incident": {
+      "id": "INC001",
+      "studentName": "Arjun Sharma",
+      "type": "Medical",
+      "severity": "High",
+      "time": "2 hours ago",
+      "status": "Resolved",
+      "description": "Asthma attack during PT period. Inhaler administered."
+    }
   }
 }

@@ -1,0 +1,169 @@
+{
+  "moduleName": "Parents Management",
+  "description": "Manage parent/guardian accounts, link to students, set notification preferences, export parent data in multiple formats.",
+  "dataModels": {
+    "parent": {
+      "id": "string",
+      "firstName": "string",
+      "lastName": "string",
+      "email": "string",
+      "phone": "string",
+      "relation": "string (father, mother, guardian, grandparent, other)",
+      "address": "string (optional)",
+      "passwordHash": "string (not exposed on frontend)",
+      "linkedChildren": "array of student objects (id, name, class, rfid, avatar, color)",
+      "notificationPreferences": {
+        "notifyAttendance": "boolean",
+        "notifyLate": "boolean",
+        "notifyAbsent": "boolean",
+        "notifyEmergency": "boolean",
+        "weeklyReport": "boolean",
+        "notifChannel": "string (App, SMS, Email)"
+      },
+      "createdAt": "string (ISO datetime)",
+      "engagementLevel": "string (High, Medium, Low) – derived from activity",
+      "avgChildAttendance": "string (percentage)"
+    },
+    "exportConfig": {
+      "format": "string (csv, xlsx, pdf, json)",
+      "dateRange": "string (all, this_month, last_month, this_year, last_quarter)",
+      "engagementFilter": "string (all, high, medium, low)",
+      "selectedFields": "array of strings",
+      "emailDelivery": "boolean"
+    }
+  },
+  "keyMetrics": {
+    "totalParents": "number (from list page – inferred)",
+    "parentsWithLinkedChildren": "number",
+    "averageChildrenPerParent": "number",
+    "engagementDistribution": "object { High: number, Medium: number, Low: number }",
+    "preferencesSummary": {
+      "attendanceAlertsEnabled": "number",
+      "emergencyAlertsEnabled": "number",
+      "weeklyReportEnabled": "number",
+      "channelBreakdown": "object { App: number, SMS: number, Email: number }"
+    },
+    "exportUsage": {
+      "exportCountLast30d": "number",
+      "popularFormats": "object { csv: number, xlsx: number, pdf: number, json: number }",
+      "emailDeliveryRequests": "number"
+    }
+  },
+  "uiComponents": {
+    "pages": [
+      "/school/parents/page.jsx (list – code not provided, but structure exists)",
+      "/school/parents/[parentId]/page.jsx (detail – not provided)",
+      "/school/parents/add/page.jsx",
+      "/school/parents/export/exportpage.jsx"
+    ],
+    "subComponents": [
+      "Field", "Input", "Steps", "Step1", "Step2", "Step3", "SuccessScreen",
+      "Toast", "FORMAT_OPTIONS", "FIELD_OPTIONS"
+    ],
+    "sharedComponentsUsed": [],
+    "iconsUsed": [
+      "ArrowLeft", "User", "Mail", "Phone", "MapPin", "Lock", "Eye", "EyeOff",
+      "UserPlus", "CheckCircle2", "AlertCircle", "ChevronRight", "Plus", "Trash2",
+      "Search", "CreditCard", "Shield", "Bell", "Users", "Loader2", "Download",
+      "FileText", "FileSpreadsheet", "FileCsv", "FileJson", "Printer", "Filter",
+      "ChevronDown", "Clock", "CalendarCheck", "TrendingUp", "X"
+    ]
+  },
+  "actionsAndRoutes": {
+    "addParent": {
+      "steps": [
+        "Basic Info (name, email, phone, relation, address, password)",
+        "Link Children (search students, add multiple)",
+        "Preferences (choose notification types and channel)"
+      ],
+      "submit": "POST /api/parents (mock, simulates API call)"
+    },
+    "exportParents": {
+      "configForm": "select format, filters, fields, email delivery",
+      "preview": "live table of filtered data with selected columns",
+      "export": "triggers download or email (simulated)"
+    },
+    "viewParents": "list page (presumed) with search, filters, pagination",
+    "viewParentDetail": "/school/parents/[parentId]"
+  },
+  "dependencies": {
+    "mockData": {
+      "ALL_STUDENTS": "array of 8 students",
+      "PREVIEW_ROWS": "array of 6 parents for export preview"
+    },
+    "utilityLibraries": ["@/lib/utils (cn)", "next/link"],
+    "reactHooks": ["useState"]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Parents Overview",
+        "metrics": ["Total Parents", "Active Parents (linked ≥1 child)", "Parents with Low Engagement", "Avg Children per Parent"]
+      },
+      {
+        "type": "table",
+        "title": "Recently Added Parents (last 7 days)",
+        "columns": ["Name", "Email", "Phone", "Linked Children", "Engagement", "Joined"]
+      },
+      {
+        "type": "chart",
+        "title": "Parent Engagement Distribution",
+        "chartType": "pie",
+        "dataSource": "engagementLevel counts"
+      },
+      {
+        "type": "chart",
+        "title": "Notification Preferences – Channel Usage",
+        "chartType": "bar",
+        "metrics": ["App", "SMS", "Email"]
+      },
+      {
+        "type": "alert",
+        "title": "Inactive Parents",
+        "condition": "No login or notification interaction for >30 days",
+        "action": "Send re-engagement notification"
+      },
+      {
+        "type": "exportActivity",
+        "title": "Parent Data Exports (last 30 days)",
+        "dataSource": "tracked via analytics",
+        "display": "Count by format (CSV, Excel, PDF, JSON)"
+      }
+    ],
+    "alertTriggers": [
+      "Parent registers but links zero children (incomplete onboarding)",
+      "Parent opts out of emergency alerts (flag for follow-up)",
+      "Export of parent data triggered more than 5 times by same admin (potential data leakage)",
+      "Parent email or phone number appears duplicate across records"
+    ],
+    "realTimeNeeds": [
+      "Live count of parents linked to a specific student (when editing student page)",
+      "Instant push notification to parent when a notification preference is changed by admin"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/parents/add/page.jsx",
+      "app/(school)/school/parents/export/exportpage.jsx",
+      "app/(school)/school/parents/page.jsx (list – needed for full monitoring)",
+      "app/(school)/school/parents/[parentId]/page.jsx (detail – needed)"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/parents",
+        "GET /api/parents/:id",
+        "POST /api/parents",
+        "PUT /api/parents/:id",
+        "DELETE /api/parents/:id",
+        "GET /api/parents/export (query params for filters)",
+        "GET /api/students (for linking children step)",
+        "POST /api/notifications/preferences (to update parent preferences)",
+        "POST /api/export/parents (generate download/email)"
+      ],
+      "webhooks": [
+        "Parent engagement webhook: update engagement level based on login/app usage"
+      ]
+    }
+  }
+}

@@ -1,0 +1,208 @@
+{
+  "moduleName": "Communication",
+  "description": "Manage announcements, direct messages, delivery logs, and notification channels for school communication.",
+  "dataModels": {
+    "announcement": {
+      "id": "string",
+      "title": "string",
+      "category": "string (General, Academic, Event, Holiday, Urgent)",
+      "audience": "string (All Students, All Parents, All Teachers, Specific Class)",
+      "status": "string (Published, Draft, Scheduled)",
+      "pinned": "boolean",
+      "views": "number",
+      "sent": "number",
+      "delivered": "number",
+      "read": "number",
+      "publishedAt": "string (YYYY-MM-DD or null)",
+      "body": "string"
+    },
+    "message": {
+      "id": "string",
+      "to": "string",
+      "subject": "string",
+      "sentAt": "string (relative or absolute)",
+      "sent": "number",
+      "delivered": "number",
+      "read": "number",
+      "status": "string (delivered, read, partial, failed)"
+    },
+    "deliveryLogEntry": {
+      "id": "string",
+      "recipient": "string",
+      "phone": "string",
+      "channel": "string (SMS, Email, Push, WhatsApp)",
+      "message": "string",
+      "status": "string (Delivered, Failed, Pending, Bounced)",
+      "sentAt": "string (ISO datetime)",
+      "deliveredAt": "string (ISO datetime or null)",
+      "retries": "number"
+    }
+  },
+  "keyMetrics": {
+    "overview": {
+      "announcementsSent": "number",
+      "messagesSent": "number",
+      "deliveryRate": "string (percentage)",
+      "totalReach": "number"
+    },
+    "announcements": {
+      "total": "number",
+      "published": "number",
+      "pinned": "number",
+      "totalViews": "number"
+    },
+    "messages": {
+      "totalSent": "number",
+      "delivered": "number",
+      "read": "number",
+      "failed": "number"
+    },
+    "deliveryLog": {
+      "totalSent": "number",
+      "delivered": "number",
+      "failed": "number",
+      "deliveryRate": "string (percentage)"
+    },
+    "channels": {
+      "App Push": { "status": "active", "successRate": 98 },
+      "SMS": { "status": "active", "successRate": 94 },
+      "Email": { "status": "active", "successRate": 89 }
+    }
+  },
+  "uiComponents": {
+    "pages": [
+      "/school/communication/page.jsx",
+      "/school/communication/announcements/page.jsx",
+      "/school/communication/log/page.jsx",
+      "/school/communication/messages/page.jsx",
+      "/school/communication/messages/add/page.jsx"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "ToolbarActions",
+      "KpiCard",
+      "StatusBadge",
+      "EmptyState",
+      "ConfirmDialog"
+    ],
+    "customHooks": [
+      "useConfirmDialog"
+    ],
+    "iconsUsed": [
+      "Megaphone", "Mail", "Activity", "Plus", "Send", "Users", "TrendingUp",
+      "Clock", "CheckCircle2", "AlertCircle", "ArrowRight", "Bell", "MessageCircle",
+      "Search", "Edit2", "Trash2", "X", "Check", "Loader2", "Pin", "Eye", "Calendar",
+      "Globe", "ArrowUpRight", "CheckCircle", "XCircle", "Smartphone", "RotateCcw"
+    ]
+  },
+  "actionsAndRoutes": {
+    "mainPage": {
+      "viewAnnouncements": "/school/communication/announcements",
+      "sendMessage": "/school/communication/messages/add",
+      "viewDeliveryLog": "/school/communication/log",
+      "quickAnnouncement": "/school/communication/announcements/add (via modal)",
+      "quickMessage": "/school/communication/messages/add"
+    },
+    "announcements": {
+      "newAnnouncement": "opens compose modal",
+      "editAnnouncement": "opens modal with prefilled data",
+      "deleteAnnouncement": "confirm then remove",
+      "filter": "by category, status, search",
+      "export": "export filtered list"
+    },
+    "deliveryLog": {
+      "filter": "by channel, status, search",
+      "retryFailed": "inline retry action",
+      "export": "export logs"
+    },
+    "messages": {
+      "compose": "/school/communication/messages/add",
+      "viewDetails": "/school/communication/messages/{id}",
+      "filter": "by status, search"
+    },
+    "composeMessage": {
+      "selectRecipient": "dropdown (All Parents, All Students, All Teachers, specific classes)",
+      "sendMessage": "POST /api/communication/messages",
+      "afterSend": "success modal or redirect"
+    }
+  },
+  "dependencies": {
+    "mockDataFiles": [],
+    "mockDataExports": ["MOCK_ANNOUNCEMENTS", "MOCK_LOGS", "MOCK_MESSAGES"],
+    "constantsFiles": [],
+    "utilityLibraries": [
+      "@/lib/utils (cn)",
+      "next/navigation (useRouter)",
+      "react (useState, useEffect, useMemo)"
+    ]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Communication Overview",
+        "metrics": ["Announcements Sent", "Messages Sent", "Delivery Rate", "Total Reach"]
+      },
+      {
+        "type": "table",
+        "title": "Recent Announcements",
+        "columns": ["Title", "Category", "Audience", "Status", "Views"],
+        "dataSource": "announcements sorted by date"
+      },
+      {
+        "type": "table",
+        "title": "Failed Deliveries (Last 24h)",
+        "columns": ["Recipient", "Channel", "Message", "Retries"],
+        "dataSource": "deliveryLog with status='Failed'"
+      },
+      {
+        "type": "channelSuccessRate",
+        "title": "Notification Channel Health",
+        "channels": ["App Push", "SMS", "Email"]
+      },
+      {
+        "type": "alert",
+        "title": "Low Engagement Announcements",
+        "condition": "read < 50% of delivered for published announcements",
+        "action": "Suggest re-broadcast or reminder"
+      }
+    ],
+    "alertTriggers": [
+      "Delivery rate drops below 90% for any channel in last hour",
+      "Failed delivery count exceeds 10 in last 15 minutes",
+      "Announcement scheduled but not published",
+      "Message with high importance (e.g., 'Urgent') has low read rate"
+    ],
+    "realTimeNeeds": [
+      "Live delivery status updates via SSE/WebSocket",
+      "Real-time read receipts for urgent messages"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/communication/page.jsx",
+      "app/(school)/school/communication/announcements/page.jsx",
+      "app/(school)/school/communication/log/page.jsx",
+      "app/(school)/school/communication/messages/page.jsx",
+      "components/shared/KpiCard.jsx",
+      "components/shared/StatusBadge.jsx"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/communication/announcements",
+        "POST /api/communication/announcements",
+        "PUT /api/communication/announcements/:id",
+        "DELETE /api/communication/announcements/:id",
+        "GET /api/communication/messages",
+        "POST /api/communication/messages",
+        "GET /api/communication/logs",
+        "POST /api/communication/logs/retry/:id"
+      ],
+      "webhooks": [
+        "Push notification delivery status callback",
+        "SMS/Email bounce notifications"
+      ]
+    }
+  }
+}

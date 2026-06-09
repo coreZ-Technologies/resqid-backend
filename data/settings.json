@@ -1,0 +1,306 @@
+{
+  "moduleName": "Settings & Staff Management",
+  "description": "School settings (profile, timetable constraints, attendance rules, notifications, academic year, module permissions, sessions) and staff management (CRUD, filters, pagination, stats).",
+  "subModules": {
+    "billing": {
+      "dataModels": {
+        "plan": {
+          "id": "string",
+          "name": "string",
+          "price": "string",
+          "period": "string",
+          "features": "array of strings",
+          "popular": "boolean",
+          "color": "string"
+        },
+        "currentPlan": {
+          "name": "string",
+          "price": "string",
+          "status": "string (Active)",
+          "nextBilling": "string (YYYY-MM-DD)",
+          "studentsLimit": "number",
+          "studentsUsed": "number",
+          "activeModules": "array of strings"
+        },
+        "invoice": {
+          "id": "string",
+          "date": "string",
+          "amount": "string",
+          "status": "string (Paid)"
+        }
+      },
+      "keyMetrics": {
+        "studentsUsagePercentage": "number (studentsUsed / studentsLimit * 100)",
+        "activeModulesCount": "number",
+        "invoicesCount": "number",
+        "currentPlanPrice": "string"
+      },
+      "actions": ["upgrade plan", "download invoice"]
+    },
+    "profile": {
+      "dataModels": {
+        "userProfile": {
+          "name": "string",
+          "email": "string",
+          "phone": "string",
+          "role": "string",
+          "schoolCode": "string",
+          "memberSince": "string",
+          "plan": "string",
+          "schoolName": "string"
+        },
+        "session": {
+          "device": "string",
+          "meta": "string",
+          "current": "boolean"
+        },
+        "activityLogEntry": {
+          "icon": "string",
+          "title": "string",
+          "meta": "string"
+        }
+      },
+      "keyMetrics": {
+        "totalStudents": 847,
+        "totalStaff": 62,
+        "totalClasses": 24,
+        "activeSessionsCount": "number"
+      },
+      "actions": ["edit profile", "revoke session", "delete account"]
+    },
+    "schoolSettings": {
+      "sections": [
+        "SchoolProfile (name, board, udise, code, contact, address, principal)",
+        "TimetableConstraints (maxPeriods, lunchPeriod, maxConsecutive, periodDuration, workingDays)",
+        "AttendanceSettings (gateOpens, lateCutoff, autoAbsent, notifyTapIn, notifyTapOut, notifyAbsent)",
+        "NotificationPreferences (emergency, attendance, announcements channels)",
+        "AcademicYear (academicYear, term1Start, term1End, term2Start, term2End)",
+        "ModulePermissions (emergency, attendance, timetable, communication)",
+        "ActiveSessions (list and revoke)"
+      ],
+      "dataModels": {
+        "schoolProfile": {
+          "name": "string",
+          "board": "string",
+          "udise": "string",
+          "code": "string",
+          "phone": "string",
+          "email": "string",
+          "address": "string",
+          "principal": "string"
+        },
+        "timetableConstraints": {
+          "maxPeriods": "number",
+          "lunchPeriod": "number",
+          "maxConsecutive": "number",
+          "periodDuration": "string",
+          "workingDays": "array of strings"
+        },
+        "attendanceSettings": {
+          "gateOpens": "string (time)",
+          "lateCutoff": "string (time)",
+          "autoAbsent": "string (time)",
+          "notifyTapIn": "boolean",
+          "notifyTapOut": "boolean",
+          "notifyAbsent": "boolean"
+        },
+        "notificationPreferences": {
+          "emergency": "string (sms_app, email_app, app_only, all)",
+          "attendance": "string",
+          "announcements": "string"
+        },
+        "academicYear": {
+          "academicYear": "string",
+          "term1Start": "string (YYYY-MM-DD)",
+          "term1End": "string",
+          "term2Start": "string",
+          "term2End": "string"
+        },
+        "modulePermissions": {
+          "emergency": "boolean",
+          "attendance": "boolean",
+          "timetable": "boolean",
+          "communication": "boolean"
+        }
+      },
+      "keyMetrics": {
+        "configured": "all settings have default values",
+        "workingDaysCount": "number",
+        "notificationChannelsConfigured": "per module"
+      }
+    },
+    "staffManagement": {
+      "dataModels": {
+        "staffMember": {
+          "id": "string",
+          "name": "string",
+          "email": "string",
+          "phone": "string",
+          "designation": "string",
+          "department": "string",
+          "qualification": "string",
+          "subjects": "array of strings",
+          "experience": "string",
+          "joiningDate": "string",
+          "dateOfBirth": "string",
+          "address": "string",
+          "emergencyContact": "string",
+          "bloodGroup": "string",
+          "status": "string (Active, Inactive)",
+          "salary": "number",
+          "gender": "string",
+          "photo": "null or URL",
+          "isClassTeacher": "boolean",
+          "classAssigned": "string (optional)"
+        }
+      },
+      "keyMetrics": {
+        "totalStaff": "number (150 in mock)",
+        "teachingStaff": "number (filter department='Teaching')",
+        "activeStaff": "number (status='Active')",
+        "departmentsCount": "number (unique departments)",
+        "staffWithClassTeacher": "number",
+        "averageSalary": "number (can be computed)"
+      },
+      "uiComponents": [
+        "SearchBar",
+        "FilterDropdown (department, designation, status)",
+        "Pagination",
+        "StaffTable",
+        "AddStaffModal",
+        "StaffDetailsModal"
+      ],
+      "actions": [
+        "add staff (with photo upload)",
+        "edit staff",
+        "delete staff (with confirmation)",
+        "view staff details",
+        "filter by department/designation/status",
+        "search by name/ID/email",
+        "clear filters",
+        "refresh"
+      ]
+    }
+  },
+  "globalKeyMetrics": {
+    "billing": {
+      "currentPlanName": "Safety Bundle",
+      "studentsUsage": "847/1000 (84.7%)",
+      "nextBillingDate": "2026-07-15"
+    },
+    "profile": {
+      "adminName": "Animesh Karan",
+      "schoolName": "Springdale Public School",
+      "totalStudents": 847,
+      "totalStaff": 62,
+      "totalClasses": 24
+    },
+    "staffSummary": {
+      "totalStaff": 150,
+      "activeStaff": "~142",
+      "teachingStaff": "~25",
+      "departments": 12
+    }
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Billing & Plan",
+        "metrics": ["Current Plan", "Students Used / Limit", "Next Billing Date", "Active Modules"]
+      },
+      {
+        "type": "progressBar",
+        "title": "Student Capacity Usage",
+        "value": "84.7%",
+        "thresholdWarning": 90,
+        "thresholdCritical": 95
+      },
+      {
+        "type": "table",
+        "title": "Staff Summary",
+        "columns": ["Total Staff", "Teaching", "Active", "Departments"],
+        "dataSource": "staff counts"
+      },
+      {
+        "type": "alert",
+        "title": "Staff & Settings Alerts",
+        "conditions": [
+          "Staff member with isClassTeacher but no classAssigned",
+          "Inactive staff count > 10 (requires review)",
+          "Billing plan exceeds student limit → upgrade recommended",
+          "Scheduled term dates missing or invalid",
+          "Attendance settings have notifyAbsent disabled (parents not informed)"
+        ]
+      },
+      {
+        "type": "recentActivity",
+        "title": "Recent Staff Changes",
+        "dataSource": "audit log (not in code, but API needed)",
+        "display": "new staff added, edited, deleted"
+      },
+      {
+        "type": "chart",
+        "title": "Staff by Department",
+        "chartType": "bar",
+        "dataSource": "aggregate staff counts per department"
+      }
+    ],
+    "alertTriggers": [
+      "Student capacity usage > 90% (upgrade reminder)",
+      "More than 5 staff members added in a day",
+      "Staff member deleted without replacement",
+      "Class teacher assigned to a class that already has a teacher (conflict)",
+      "Notification preference for emergency alerts set to 'app_only' (parents may miss critical alerts)"
+    ],
+    "realTimeNeeds": [
+      "Live updates to staff list after add/edit/delete (WebSocket refresh)",
+      "Real-time validation for class teacher assignments (prevent overlap)",
+      "Push notification to all staff when school profile is updated"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/settings/billing/page.jsx",
+      "app/(school)/school/settings/profile/page.jsx",
+      "app/(school)/school/settings/page.jsx",
+      "app/(school)/school/staff/page.jsx",
+      "components/shared/PageBreadcrumb.jsx",
+      "components/shared/PageHeader.jsx",
+      "lib/utils.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/settings/profile",
+        "PUT /api/settings/profile",
+        "GET /api/settings/billing/current",
+        "GET /api/settings/billing/plans",
+        "GET /api/settings/billing/invoices",
+        "POST /api/settings/billing/upgrade",
+        "GET /api/settings/timetable/constraints",
+        "PUT /api/settings/timetable/constraints",
+        "GET /api/settings/attendance",
+        "PUT /api/settings/attendance",
+        "GET /api/settings/notifications/preferences",
+        "PUT /api/settings/notifications/preferences",
+        "GET /api/settings/academic-year",
+        "PUT /api/settings/academic-year",
+        "GET /api/settings/permissions",
+        "PUT /api/settings/permissions",
+        "GET /api/settings/sessions",
+        "DELETE /api/settings/sessions/:id",
+        "GET /api/staff",
+        "GET /api/staff/:id",
+        "POST /api/staff",
+        "PUT /api/staff/:id",
+        "DELETE /api/staff/:id",
+        "POST /api/staff/upload-photo"
+      ],
+      "webhooks": [
+        "Plan upgrade → update module permissions and feature flags",
+        "Staff assigned as class teacher → update timetable constraints",
+        "Academic year changed → reset attendance reports and timetable generation"
+      ]
+    }
+  }
+}

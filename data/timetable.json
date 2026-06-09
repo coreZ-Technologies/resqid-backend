@@ -1,0 +1,200 @@
+{
+  "moduleName": "Timetable Management",
+  "description": "Generate, validate, edit, and view school timetables. Supports constraint-based generation, CSV validation for conflicts, drag-and-drop slot swapping, and issue tracking.",
+  "dataModels": {
+    "timetableSlot": {
+      "id": "string (optional)",
+      "day": "string (Mon, Tue, Wed, Thu, Fri, Sat)",
+      "period": "number (1-8)",
+      "classId": "string",
+      "grade": "string",
+      "section": "string",
+      "subject": "string",
+      "teacherName": "string",
+      "room": "string",
+      "type": "string (regular, substitute)"
+    },
+    "timetableIssue": {
+      "id": "string",
+      "type": "string (teacher_conflict, room_clash, invalid_subject, teacher_overload, consecutive_periods, gap_period, unused_room)",
+      "severity": "string (error, warning, info)",
+      "class": "string (grade-section or '—')",
+      "day": "string (optional)",
+      "period": "number (optional)",
+      "description": "string",
+      "resolved": "boolean"
+    },
+    "constraintPreset": {
+      "label": "string",
+      "description": "string",
+      "maxConsecutive": "number",
+      "maxDaily": "number",
+      "allowGaps": "boolean"
+    },
+    "generationResult": {
+      "classesGenerated": "number",
+      "totalSlots": "number",
+      "conflicts": "number",
+      "warnings": "number",
+      "timeTaken": "string",
+      "slots": "array of timetableSlot",
+      "issues": "array of timetableIssue"
+    },
+    "validationResult": {
+      "totalSlots": "number",
+      "validSlots": "number",
+      "errors": "array of timetableIssue",
+      "warnings": "array of timetableIssue",
+      "info": "array of timetableIssue"
+    }
+  },
+  "keyMetrics": {
+    "totalSlots": "number (total timetable entries across all classes)",
+    "totalClasses": "number",
+    "openIssues": "number (unresolved errors + warnings)",
+    "generationPerformance": {
+      "averageTime": "string (from mock)",
+      "classesPerRun": "number"
+    },
+    "validationSummary": {
+      "validPercentage": "number",
+      "errorsCount": "number",
+      "warningsCount": "number"
+    },
+    "conflictTypes": "breakdown by issue.type (teacher_conflict, room_clash, etc.)"
+  },
+  "uiComponents": {
+    "pages": [
+      "/school/timetable/page.jsx",
+      "/school/timetable/[classId]/page.jsx",
+      "/school/timetable/generate/page.jsx",
+      "/school/timetable/validate/page.jsx"
+    ],
+    "sharedComponentsUsed": [
+      "PageBreadcrumb",
+      "PageHeader",
+      "KpiCard",
+      "StatusBadge"
+    ],
+    "moduleComponents": [
+      "TimetableGrid",
+      "IssuesList"
+    ],
+    "iconsUsed": [
+      "Calendar", "Upload", "AlertTriangle", "Grid3X3", "Plus", "Download",
+      "Eye", "Zap", "FileText", "ArrowLeft", "Edit2", "RotateCcw", "Save",
+      "GripVertical", "Check", "X", "AlertCircle", "Loader2", "ChevronDown",
+      "RefreshCw", "Info"
+    ]
+  },
+  "actionsAndRoutes": {
+    "mainPage": {
+      "viewClassTimetable": "/school/timetable/{classId}",
+      "generateAll": "/school/timetable/generate",
+      "generatePerClass": "/school/timetable/generate?mode=single",
+      "validateUpload": "/school/timetable/validate",
+      "exportReport": "download CSV/PDF (mock)",
+      "resolveIssue": "inline mock – logs to console"
+    },
+    "classPage": {
+      "editMode": "click slot to swap with another slot",
+      "saveChanges": "PUT /api/timetable/{classId} (mock)",
+      "cancelEdits": "revert to original",
+      "exportSchedule": "download current class schedule"
+    },
+    "generatePage": {
+      "selectMode": "all classes or single class",
+      "chooseConstraintPreset": "balanced, compact, relaxed",
+      "generate": "POST /api/timetable/generate (mock)",
+      "publish": "POST /api/timetable/publish (mock)",
+      "regenerate": "reset and run generation again"
+    },
+    "validatePage": {
+      "uploadCSV": "parse and validate file",
+      "validate": "POST /api/timetable/validate (mock returns MOCK_VALIDATION)",
+      "downloadReport": "export validation issues as CSV",
+      "publishIfValid": "if no errors, publish timetable"
+    }
+  },
+  "dependencies": {
+    "mockDataFiles": ["@/lib/mock-data"],
+    "mockDataExports": ["MOCK_TIMETABLE", "MOCK_CLASSES"],
+    "constantsFiles": [],
+    "utilityLibraries": ["@/lib/utils (cn)", "next/navigation (useRouter, useParams, useSearchParams)"],
+    "reactHooks": ["useState", "useEffect", "useMemo", "useRef"]
+  },
+  "monitorDashboardSuggestions": {
+    "widgets": [
+      {
+        "type": "kpi",
+        "title": "Timetable Overview",
+        "metrics": ["Total Slots", "Classes Scheduled", "Open Issues", "Generation Status"]
+      },
+      {
+        "type": "conflictTable",
+        "title": "Unresolved Timetable Conflicts (Errors & Warnings)",
+        "columns": ["Type", "Severity", "Class", "Day/Period", "Description"],
+        "dataSource": "MOCK_TIMETABLE.issues where resolved=false"
+      },
+      {
+        "type": "progressBar",
+        "title": "Validation Health",
+        "dataSource": "validSlots / totalSlots * 100",
+        "thresholdWarning": 90,
+        "thresholdCritical": 80
+      },
+      {
+        "type": "barChart",
+        "title": "Teacher Workload (Periods/Week)",
+        "dataSource": "aggregate from timetable slots by teacherName"
+      },
+      {
+        "type": "alert",
+        "title": "Generation Alerts",
+        "conditions": [
+          "Generation runs with >0 conflicts – flag for manual review",
+          "Same teacher assigned to two periods at the same time (teacher_conflict)",
+          "Room assigned to multiple classes simultaneously (room_clash)",
+          "Timetable not generated for new academic year"
+        ]
+      }
+    ],
+    "alertTriggers": [
+      "Any new timetable validation returns > 5 errors",
+      "Teacher workload exceeds maxLoad (e.g., 30 periods vs 28 max) – warning level",
+      "Consecutive periods of same subject >3",
+      "No timetable generated for any class after 7 days into term"
+    ],
+    "realTimeNeeds": [
+      "Live updates when timetable is published – refresh view for all users",
+      "WebSocket notification to teachers when their schedule changes"
+    ]
+  },
+  "importantFilesForMonitoring": {
+    "frontend": [
+      "app/(school)/school/timetable/page.jsx",
+      "app/(school)/school/timetable/generate/page.jsx",
+      "app/(school)/school/timetable/validate/page.jsx",
+      "app/(school)/school/timetable/[classId]/page.jsx",
+      "components/modules/timetable/TimetableGrid.jsx",
+      "components/modules/timetable/IssuesList.jsx",
+      "lib/mock-data.js"
+    ],
+    "backendIntegration": {
+      "apiEndpointsInferred": [
+        "GET /api/timetable",
+        "GET /api/timetable/classes",
+        "GET /api/timetable/class/:classId",
+        "PUT /api/timetable/class/:classId",
+        "POST /api/timetable/generate",
+        "POST /api/timetable/validate",
+        "POST /api/timetable/publish",
+        "GET /api/timetable/export"
+      ],
+      "webhooks": [
+        "Timetable generation complete → notify admins",
+        "Validation detects critical conflict → auto-create issue ticket"
+      ]
+    }
+  }
+}
