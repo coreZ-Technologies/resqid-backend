@@ -1,0 +1,175 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Upgrade / Pricing page – display plans, modules, current subscription, and upgrade actions.",
+  "endpoints": {
+    "getCurrentSubscription": {
+      "method": "GET",
+      "path": "/api/billing/current-subscription",
+      "description": "Get the school's current active subscription plan and related details.",
+      "response": {
+        "success": true,
+        "data": {
+          "planId": "string (e.g., 'starter', 'growth', 'enterprise')",
+          "planName": "string",
+          "price": "string (formatted, e.g., '₹2,999')",
+          "period": "string (e.g., '/mo' or empty for custom)",
+          "renewsOn": "date (YYYY-MM-DD, optional)",
+          "isActive": "boolean"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "planId": "starter",
+          "planName": "Starter",
+          "price": "₹2,999",
+          "period": "/mo",
+          "renewsOn": "2026-07-01",
+          "isActive": true
+        }
+      }
+    },
+    "getPlans": {
+      "method": "GET",
+      "path": "/api/billing/plans",
+      "description": "Get all available subscription plans with pricing, descriptions, module inclusions, and badges.",
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "id": "string",
+            "name": "string",
+            "price": "string (formatted, e.g., '₹2,999')",
+            "period": "string (e.g., '/mo' or empty string)",
+            "description": "string",
+            "badge": "string or null",
+            "highlight": "boolean",
+            "cta": "string (button label)",
+            "modules": ["array of module IDs that this plan includes"]
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          {
+            "id": "starter",
+            "name": "Starter",
+            "price": "₹2,999",
+            "period": "/mo",
+            "description": "Perfect for small schools getting started with digital safety.",
+            "badge": null,
+            "highlight": false,
+            "cta": "Get Starter",
+            "modules": ["attendance", "emergency"]
+          },
+          {
+            "id": "growth",
+            "name": "Growth",
+            "price": "₹5,999",
+            "period": "/mo",
+            "description": "For growing schools that need full staff and parent management.",
+            "badge": "Most Popular",
+            "highlight": true,
+            "cta": "Get Growth",
+            "modules": ["attendance", "emergency", "timetable", "communication"]
+          },
+          {
+            "id": "enterprise",
+            "name": "Enterprise",
+            "price": "Custom",
+            "period": "",
+            "description": "Full platform access with dedicated support and SLA.",
+            "badge": "All Features",
+            "highlight": false,
+            "cta": "Contact Sales",
+            "modules": ["attendance", "emergency", "timetable", "communication", "performance"]
+          }
+        ]
+      }
+    },
+    "getModules": {
+      "method": "GET",
+      "path": "/api/billing/modules",
+      "description": "Get list of all modules (features) with descriptions, icons, and which plans include them.",
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "id": "string",
+            "title": "string",
+            "description": "string",
+            "iconName": "string (frontend icon identifier, e.g., 'UserCheck')",
+            "plans": ["array of plan IDs that include this module"],
+            "comingSoon": "boolean"
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          {
+            "id": "attendance",
+            "title": "Student Attendance",
+            "description": "QR-based daily attendance tracking, auto-absent alerts, and parent notifications.",
+            "iconName": "UserCheck",
+            "plans": ["starter", "growth", "enterprise"],
+            "comingSoon": false
+          },
+          {
+            "id": "performance",
+            "title": "Student Performance",
+            "description": "Academic analytics, grade tracking, progress reports and teacher insights.",
+            "iconName": "TrendingUp",
+            "plans": ["enterprise"],
+            "comingSoon": true
+          }
+        ]
+      }
+    },
+    "upgradeSubscription": {
+      "method": "POST",
+      "path": "/api/billing/upgrade",
+      "description": "Upgrade (or downgrade) to a different plan. For enterprise (custom pricing), redirects to contact sales.",
+      "requestBody": {
+        "planId": "string (required, e.g., 'growth')"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "checkoutUrl": "string (URL to payment gateway for upgrade)",
+          "message": "string (optional, e.g., 'Redirect to complete payment')"
+        }
+      },
+      "errorResponses": {
+        "400": { "message": "Invalid plan ID or plan not available for upgrade" }
+      }
+    },
+    "contactSales": {
+      "method": "POST",
+      "path": "/api/billing/contact-sales",
+      "description": "Send a contact request to sales team for enterprise plan inquiry.",
+      "requestBody": {
+        "schoolName": "string (required)",
+        "email": "string (required)",
+        "phone": "string (optional)",
+        "message": "string (optional)"
+      },
+      "response": {
+        "success": true,
+        "message": "Request sent. Our sales team will contact you shortly."
+      }
+    }
+  },
+  "enums": {
+    "PlanId": ["starter", "growth", "enterprise"],
+    "ModuleId": ["attendance", "emergency", "timetable", "communication", "performance"]
+  },
+  "fieldNotes": {
+    "iconName": "The frontend maps this string to a Lucide icon name; backend may send any identifier that frontend understands.",
+    "highlight": "Determines whether the plan card should have visual emphasis (e.g., ‘Most Popular’).",
+    "cta": "Button label – may be ‘Get Starter’, ‘Get Growth’, or ‘Contact Sales’.",
+    "comingSoon": "Indicates that the module is not yet available but will be added later; frontend shows a badge.",
+    "price": "String to accommodate 'Custom' for enterprise; numeric price can be sent separately if needed."
+  }
+}

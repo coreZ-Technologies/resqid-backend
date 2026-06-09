@@ -1,0 +1,199 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Attendance Management page – overview stats, class cards, student list with status updates, monthly trend chart, and export.",
+  "endpoints": {
+    "getOverviewStats": {
+      "method": "GET",
+      "path": "/api/v1/attendance/stats",
+      "description": "Get summary statistics for the top cards (total students, present today, absent today, late arrivals, overall percentage).",
+      "queryParams": {
+        "date": "string (optional, YYYY-MM-DD, default today)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "totalStudents": "number (across all classes)",
+          "presentToday": "number",
+          "absentToday": "number",
+          "lateToday": "number",
+          "overallAttendanceRate": "number (percentage, 0-100)",
+          "trendPresent": "number (percentage change vs previous day, can be negative)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalStudents": 2100,
+          "presentToday": 1786,
+          "absentToday": 118,
+          "lateToday": 85,
+          "overallAttendanceRate": 85,
+          "trendPresent": 3
+        }
+      }
+    },
+    "getClassAttendance": {
+      "method": "GET",
+      "path": "/api/v1/attendance/classes",
+      "description": "Fetch attendance summary for all class-sections on a given date (for the class cards grid / list view).",
+      "queryParams": {
+        "date": "string (optional, YYYY-MM-DD, default today)",
+        "class": "string (optional, filter by class name e.g., '5')",
+        "section": "string (optional, filter by section A-D)",
+        "search": "string (optional, searches class+section string)"
+      },
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "class": "string (e.g., '5')",
+            "section": "string (A-D)",
+            "totalStudents": "number",
+            "present": "number",
+            "absent": "number",
+            "late": "number",
+            "leave": "number",
+            "attendanceRate": "number (percentage, 0-100)"
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          {
+            "class": "1",
+            "section": "A",
+            "totalStudents": 35,
+            "present": 34,
+            "absent": 1,
+            "late": 0,
+            "leave": 0,
+            "attendanceRate": 97
+          }
+        ]
+      }
+    },
+    "getStudentAttendance": {
+      "method": "GET",
+      "path": "/api/v1/attendance/students",
+      "description": "Get detailed student list for a specific class-section and date (used in the modal).",
+      "queryParams": {
+        "class": "string (required, e.g., '5')",
+        "section": "string (required, A-D)",
+        "date": "string (optional, YYYY-MM-DD, default today)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "class": "string",
+          "section": "string",
+          "students": [
+            {
+              "id": "string (unique student ID)",
+              "rollNumber": "number",
+              "name": "string",
+              "status": "enum: present, absent, late, leave",
+              "phone": "string (optional, parent contact)",
+              "email": "string (optional)"
+            }
+          ]
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "class": "1",
+          "section": "A",
+          "students": [
+            {
+              "id": "STU0001",
+              "rollNumber": 1,
+              "name": "Aarav Sharma",
+              "status": "present",
+              "phone": "+91 9876543210",
+              "email": "parent@example.com"
+            }
+          ]
+        }
+      }
+    },
+    "updateAttendance": {
+      "method": "PUT",
+      "path": "/api/v1/attendance",
+      "description": "Update attendance status for multiple students in a class-section on a specific date.",
+      "requestBody": {
+        "class": "string (required)",
+        "section": "string (required)",
+        "date": "string (YYYY-MM-DD, default today)",
+        "records": [
+          {
+            "studentId": "string",
+            "status": "enum: present, absent, late, leave"
+          }
+        ]
+      },
+      "response": {
+        "success": true,
+        "message": "Attendance updated successfully",
+        "data": {
+          "updatedCount": "number"
+        }
+      }
+    },
+    "getMonthlyTrend": {
+      "method": "GET",
+      "path": "/api/v1/attendance/monthly-trend",
+      "description": "Get monthly attendance percentages for the current academic year (or selected year) – used in the bar chart.",
+      "queryParams": {
+        "year": "string (optional, e.g., '2024-2025', default current academic year)"
+      },
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "month": "string (e.g., 'Jan')",
+            "attendanceRate": "number (percentage, 0-100)"
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          { "month": "Jan", "attendanceRate": 92 },
+          { "month": "Feb", "attendanceRate": 89 },
+          { "month": "Mar", "attendanceRate": 94 }
+        ]
+      }
+    },
+    "exportAttendance": {
+      "method": "GET",
+      "path": "/api/v1/attendance/export",
+      "description": "Export filtered attendance data as CSV (same query params as getClassAttendance, no pagination).",
+      "queryParams": "Same as getClassAttendance (date, class, section, search)",
+      "response": "CSV file download with columns: class, section, total_students, present, absent, late, leave, attendance_rate"
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/v1/attendance/filter-options",
+      "description": "Get available classes and sections for filter dropdowns (based on actual enrollment data).",
+      "response": {
+        "success": true,
+        "data": {
+          "classes": ["string (e.g., 'Nursery','LKG','UKG','1','2',...)"],
+          "sections": ["A","B","C","D"]
+        }
+      }
+    }
+  },
+  "fieldNotes": {
+    "date": "All date parameters should be in YYYY-MM-DD format. Default is current date if not provided.",
+    "leave": "Used for approved absences (e.g., medical, family event) – treated separately from unexcused absent.",
+    "trendPresent": "Percentage point change in present count compared to previous day (positive = more present).",
+    "monthlyTrend.month": "Frontend expects short month names (Jan, Feb, etc.) – backend can send 3-letter abbreviation or full name; frontend will display accordingly."
+  },
+  "enums": {
+    "AttendanceStatus": ["present", "absent", "late", "leave"],
+    "ClassList": ["Nursery","LKG","UKG","1","2","3","4","5","6","7","8","9","10","11","12"],
+    "SectionList": ["A","B","C","D"]
+  }
+}

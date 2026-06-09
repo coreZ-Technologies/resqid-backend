@@ -1,19 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
-
-// infrastructure/storage/s3.adapter.js — RESQID
-//
-// Universal S3-compatible storage adapter.
-// Works with: AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces.
-// Switch via STORAGE_PROVIDER env variable.
-
-<<<<<<< HEAD
->>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 import {
   S3Client,
   PutObjectCommand,
@@ -30,33 +14,19 @@ export class S3Adapter extends StorageProvider {
   constructor(config = {}) {
     super();
 
-    this.endpoint =
-      config.endpoint || config.ENDPOINT || process.env.R2_ENDPOINT || process.env.AWS_S3_ENDPOINT;
-    this.region =
-      config.region || config.REGION || process.env.R2_REGION || process.env.AWS_REGION || 'auto';
-    this.bucket =
-      config.bucket || config.BUCKET || process.env.R2_BUCKET || process.env.AWS_S3_BUCKET;
-    this.cdnDomain = config.cdnDomain || config.CDN_DOMAIN || process.env.R2_CDN_DOMAIN || '';
+    this.endpoint = config.ENDPOINT ?? process.env.AWS_S3_ENDPOINT;
+    this.region = config.REGION ?? process.env.AWS_REGION ?? 'auto';
+    this.bucket = config.BUCKET ?? process.env.AWS_S3_BUCKET;
+    this.cdnDomain = config.CDN_DOMAIN ?? process.env.AWS_CDN_DOMAIN ?? 'assets.getresqid.in';
 
-    const accessKey =
-      config.accessKeyId ||
-      config.ACCESS_KEY_ID ||
-      process.env.R2_ACCESS_KEY_ID ||
-      process.env.AWS_ACCESS_KEY_ID;
-    const secretKey =
-      config.secretAccessKey ||
-      config.SECRET_ACCESS_KEY ||
-      process.env.R2_SECRET_ACCESS_KEY ||
-      process.env.AWS_SECRET_ACCESS_KEY;
-
-    // Clean endpoint: remove trailing slash and bucket name
+    // 🟢 FIX: Remove bucket name from endpoint if present (R2 requirement)
     const cleanEndpoint = this.endpoint?.replace(/\/$/, '').replace(`/${this.bucket}`, '');
 
     this.s3 = new S3Client({
       region: this.region,
       credentials: {
-        accessKeyId: accessKey,
-        secretAccessKey: secretKey,
+        accessKeyId: config.ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: config.SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY,
       },
       ...(cleanEndpoint ? { endpoint: cleanEndpoint } : {}),
       forcePathStyle: true,
@@ -76,9 +46,7 @@ export class S3Adapter extends StorageProvider {
         })
       );
 
-      const location = this.cdnDomain
-        ? `https://${this.cdnDomain}/${key}`
-        : `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+      const location = `https://${this.cdnDomain}/${key}`;
 
       logger.info({ key, location }, `[Storage] Uploaded "${key}"`);
       return { success: true, key, location };
@@ -180,9 +148,8 @@ export class S3Adapter extends StorageProvider {
       });
 
       const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn });
-      const publicUrl = this.cdnDomain
-        ? `https://${this.cdnDomain}/${key}`
-        : `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+
+      const publicUrl = `https://${this.cdnDomain}/${key}`;
 
       return { uploadUrl, publicUrl, key, expiresIn };
     } catch (err) {
@@ -195,12 +162,4 @@ export class S3Adapter extends StorageProvider {
   }
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 export default S3Adapter;
-=======
-export default S3Adapter;z
->>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
-=======
-export default S3Adapter;z
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

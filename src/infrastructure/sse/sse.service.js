@@ -1,20 +1,7 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
 // src/infrastructure/sse/sse.service.js
 // FIXED: Removed CONNECTION_TIMEOUT_MS. Heartbeat alone keeps connection alive.
 // FIXED: Removed lastActivity dead state.
 // FIXED: cleanupConnection timer leak resolved.
-=======
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
-// src/infrastructure/sse/sse.service.js — RESQID
-//
-// Server-Sent Events (SSE) service for real-time client updates.
-// Used by: timetable generation progress, crisis status, notifications.
-<<<<<<< HEAD
->>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 
 import { logger } from '#config/logger.js';
 
@@ -27,16 +14,11 @@ const MAX_CONNECTIONS_PER_USER = 5;
 // Heartbeat interval (25 seconds - standard, beats most proxy timeouts)
 const HEARTBEAT_INTERVAL_MS = 25000;
 
-// CONNECTION MANAGEMENT
-
 /**
- * Register an SSE client connection.
- * @param {string} userId - User ID
- * @param {string} userType - 'school_admin', 'teacher', 'parent'
- * @param {Object} res - Express response object
- * @returns {boolean} true if registered, false if rejected
+ * Register an SSE client connection
  */
 export const registerClient = (userId, userType, res) => {
+  // Initialize user's connection set if not exists
   if (!clients.has(userId)) {
     clients.set(userId, new Set());
   }
@@ -56,7 +38,7 @@ export const registerClient = (userId, userType, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
+    'X-Accel-Buffering': 'no', // Nginx/proxy buffering disabled
   });
 
   // Send initial connection event
@@ -106,13 +88,14 @@ export const registerClient = (userId, userType, res) => {
 };
 
 /**
- * Clean up a single connection.
+ * Clean up a single connection
  */
 const cleanupConnection = (userId, heartbeatInterval, res) => {
   clearInterval(heartbeatInterval);
 
   const userConnections = clients.get(userId);
   if (userConnections) {
+    // Find and remove this specific connection
     for (const conn of userConnections) {
       if (conn.res === res) {
         userConnections.delete(conn);
@@ -120,6 +103,7 @@ const cleanupConnection = (userId, heartbeatInterval, res) => {
       }
     }
 
+    // Remove user entirely if no connections left
     if (userConnections.size === 0) {
       clients.delete(userId);
     }
@@ -133,7 +117,7 @@ const cleanupConnection = (userId, heartbeatInterval, res) => {
 };
 
 /**
- * Remove all connections for a user.
+ * Remove all connections for a user
  */
 export const removeClient = (userId) => {
   const userConnections = clients.get(userId);
@@ -149,13 +133,8 @@ export const removeClient = (userId) => {
   }
 };
 
-// EVENT PUSHING
-
 /**
- * Push event to a specific user (all their connections).
- * @param {string} userId
- * @param {Object} event - { type: string, data: any }
- * @returns {boolean} true if at least one connection received the event
+ * Push event to a specific user (all their connections)
  */
 export const pushSSE = (userId, event) => {
   const userConnections = clients.get(userId);
@@ -193,10 +172,7 @@ export const pushSSE = (userId, event) => {
 };
 
 /**
- * Push event to multiple users.
- * @param {string[]} userIds
- * @param {Object} event
- * @returns {{ sent: number, failed: number }}
+ * Push event to multiple users
  */
 export const pushSSEToAll = (userIds, event) => {
   let sent = 0;
@@ -212,9 +188,7 @@ export const pushSSEToAll = (userIds, event) => {
 };
 
 /**
- * Broadcast event to all connected clients.
- * @param {Object} event
- * @returns {number} Number of connections that received the event
+ * Broadcast to all connected clients
  */
 export const broadcastToAll = (event) => {
   let sent = 0;
@@ -245,10 +219,8 @@ export const broadcastToAll = (event) => {
   return sent;
 };
 
-// STATS & MONITORING
-
 /**
- * Get total number of active connections.
+ * Get total number of connections
  */
 export const getTotalConnections = () => {
   let total = 0;
@@ -258,9 +230,6 @@ export const getTotalConnections = () => {
   return total;
 };
 
-/**
- * Get list of all connected clients with metadata.
- */
 export const getConnectedClients = () => {
   const result = [];
   for (const [userId, connections] of clients.entries()) {
@@ -269,61 +238,25 @@ export const getConnectedClients = () => {
         userId,
         userType: conn.userType,
         createdAt: conn.createdAt,
-        connectionDuration: Date.now() - conn.createdAt,
       });
     }
   }
   return result;
 };
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-/**
- * Check if a user has any active connections.
- */
->>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
-=======
-/**
- * Check if a user has any active connections.
- */
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 export const isUserConnected = (userId) => {
   const connections = clients.get(userId);
   return connections ? connections.size > 0 : false;
 };
 
-/**
- * Get number of unique users connected.
- */
 export const getConnectedCount = () => clients.size;
 
-/**
- * Get connection stats by user type.
- */
-export const getConnectionStats = () => {
-  const stats = {};
-  for (const [, connections] of clients.entries()) {
-    for (const conn of connections) {
-      const type = conn.userType || 'unknown';
-      stats[type] = (stats[type] || 0) + 1;
-    }
-  }
-  return stats;
-};
-
-// SHUTDOWN
-
-/**
- * Close all SSE connections (graceful shutdown).
- */
 export const closeAllConnections = () => {
   let closed = 0;
   for (const [userId, connections] of clients.entries()) {
     for (const conn of connections) {
       clearInterval(conn.heartbeatInterval);
       if (!conn.res.writableEnded) {
-        conn.res.write('event: shutdown\ndata: {"message":"Server shutting down"}\n\n');
         conn.res.end();
       }
       closed++;
@@ -334,50 +267,15 @@ export const closeAllConnections = () => {
   return closed;
 };
 
-// TIMETABLE-SPECIFIC HELPERS
-
-/**
- * Push timetable generation progress to a school's admin users.
- */
-export const pushTimetableProgress = (schoolId, jobId, progress) => {
-  return broadcastToAll({
-    type: 'timetable:progress',
-    data: { schoolId, jobId, ...progress },
-  });
-};
-
-/**
- * Push crisis event to a school's admin users.
- */
-export const pushCrisisUpdate = (schoolId, crisisEvent) => {
-  return broadcastToAll({
-    type: 'crisis:update',
-    data: { schoolId, ...crisisEvent },
-  });
-};
-
 export default {
   registerClient,
   removeClient,
   pushSSE,
   pushSSEToAll,
-  broadcastToAll,
   getConnectedClients,
   isUserConnected,
   getConnectedCount,
-  getTotalConnections,
-<<<<<<< HEAD
-<<<<<<< HEAD
-};
-=======
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
-  getConnectionStats,
+  broadcastToAll,
   closeAllConnections,
-  pushTimetableProgress,
-  pushCrisisUpdate,
+  getTotalConnections,
 };
-<<<<<<< HEAD
->>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

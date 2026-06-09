@@ -1,0 +1,166 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Export Parents Data page – configure filters, select fields, choose format, preview data, and trigger export (download or email).",
+  "endpoints": {
+    "getExportFields": {
+      "method": "GET",
+      "path": "/api/export/parents/fields",
+      "description": "Get list of all available fields that can be selected for export (name, email, phone, etc.).",
+      "response": {
+        "success": true,
+        "data": {
+          "fields": [
+            {
+              "id": "name",
+              "label": "Parent Name",
+              "type": "string",
+              "default": true
+            },
+            {
+              "id": "email",
+              "label": "Email Address",
+              "type": "email",
+              "default": true
+            },
+            {
+              "id": "phone",
+              "label": "Phone Number",
+              "type": "string",
+              "default": true
+            },
+            {
+              "id": "location",
+              "label": "Location",
+              "type": "string",
+              "default": false
+            },
+            {
+              "id": "children",
+              "label": "Linked Children",
+              "type": "number",
+              "default": true
+            },
+            {
+              "id": "attendance",
+              "label": "Avg. Attendance",
+              "type": "percentage",
+              "default": true
+            },
+            {
+              "id": "engagement",
+              "label": "Engagement Level",
+              "type": "enum",
+              "enumValues": ["High", "Medium", "Low"],
+              "default": true
+            },
+            {
+              "id": "joined",
+              "label": "Joined Date",
+              "type": "date",
+              "default": true
+            },
+            {
+              "id": "notifs",
+              "label": "Pending Notifications",
+              "type": "number",
+              "default": false
+            },
+            {
+              "id": "rfid",
+              "label": "Child RFID Tags",
+              "type": "string",
+              "default": false
+            }
+          ]
+        }
+      }
+    },
+    "previewExportData": {
+      "method": "POST",
+      "path": "/api/export/parents/preview",
+      "description": "Preview filtered parent data (same filters as export) for the live preview table. Supports pagination.",
+      "requestBody": {
+        "filters": {
+          "dateRange": "enum: all, this_month, last_month, this_year, last_quarter (optional, default all)",
+          "engagementLevel": "enum: all, high, medium, low (optional, default all)"
+        },
+        "fields": ["array of field IDs (e.g., ['name','email','phone'])"],
+        "pagination": {
+          "page": "number (default 1)",
+          "limit": "number (default 10, max 50)"
+        }
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "records": [
+            {
+              "name": "Rajesh Sharma",
+              "email": "rajesh.sharma@gmail.com",
+              "phone": "+91 98765 43210",
+              "children": 2,
+              "attendance": "91%",
+              "engagement": "High",
+              "joined": "Jan 2024"
+            }
+          ],
+          "pagination": {
+            "currentPage": 1,
+            "totalPages": 3,
+            "totalItems": 25,
+            "itemsPerPage": 10
+          }
+        }
+      }
+    },
+    "exportParentsData": {
+      "method": "POST",
+      "path": "/api/export/parents",
+      "description": "Generate and download (or email) the export file in the requested format.",
+      "requestBody": {
+        "format": "enum: csv, xlsx, pdf, json (required)",
+        "filters": {
+          "dateRange": "enum: all, this_month, last_month, this_year, last_quarter (optional)",
+          "engagementLevel": "enum: all, high, medium, low (optional)"
+        },
+        "fields": ["array of field IDs (required, at least one)"],
+        "emailDelivery": "boolean (default false)",
+        "recipientEmail": "string (optional, required if emailDelivery = true, otherwise ignored)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "jobId": "string (for async processing, optional)",
+          "message": "Export job queued successfully",
+          "downloadUrl": "string (optional, if immediate download, returns temporary URL)",
+          "expiresIn": "string (optional, e.g., '5 minutes')"
+        }
+      }
+    },
+    "getExportJobStatus": {
+      "method": "GET",
+      "path": "/api/export/jobs/:jobId",
+      "description": "Check status of an asynchronous export job (for large exports).",
+      "response": {
+        "success": true,
+        "data": {
+          "status": "enum: pending, processing, completed, failed",
+          "downloadUrl": "string (if completed)",
+          "errorMessage": "string (if failed)",
+          "completedAt": "datetime (ISO, optional)"
+        }
+      }
+    }
+  },
+  "enums": {
+    "ExportFormat": ["csv", "xlsx", "pdf", "json"],
+    "DateRange": ["all", "this_month", "last_month", "this_year", "last_quarter"],
+    "EngagementLevel": ["all", "high", "medium", "low"]
+  },
+  "fieldNotes": {
+    "fields": "The list of field IDs corresponds to the keys in the exported records. Backend should return only those fields in the preview and export endpoints.",
+    "emailDelivery": "If true, the generated file is sent to the authenticated user's email (admin email). The recipientEmail field is optional but can override.",
+    "format": "csv = simple CSV, xlsx = Excel workbook with basic formatting, pdf = formatted report, json = raw JSON array.",
+    "pagination": "Preview endpoint supports pagination for live preview; export endpoint does not paginate (returns all filtered records)."
+  }
+}

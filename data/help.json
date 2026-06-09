@@ -1,0 +1,186 @@
+{
+  "version": "1.0.0",
+  "description": "Backend API specification for the ResQID platform – authentication, school management, student data, attendance, and emergency alerts.",
+  "baseUrl": "/api",
+  "authentication": "Bearer token required for all endpoints except /auth/login. Include in Authorization header.",
+  "rateLimits": {
+    "default": "100 requests per minute",
+    "hourly": "1000 requests per hour"
+  },
+  "endpoints": {
+    "getCurrentUser": {
+      "method": "GET",
+      "path": "/auth/me",
+      "description": "Get current authenticated user information.",
+      "auth": "Bearer token",
+      "response": {
+        "success": true,
+        "data": {
+          "user": {
+            "id": "string",
+            "name": "string",
+            "email": "string",
+            "role": "enum: admin, superadmin",
+            "schoolId": "string"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "user": {
+            "id": "usr_123",
+            "name": "John Doe",
+            "email": "john@school.com",
+            "role": "admin",
+            "schoolId": "sch_001"
+          }
+        }
+      }
+    },
+    "login": {
+      "method": "POST",
+      "path": "/auth/login",
+      "description": "Authenticate user and get session token.",
+      "auth": "None",
+      "requestBody": {
+        "email": "string (required)",
+        "password": "string (required)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "token": "string (JWT)",
+          "user": {
+            "id": "string",
+            "name": "string",
+            "email": "string",
+            "role": "enum: admin, superadmin",
+            "schoolId": "string"
+          }
+        }
+      },
+      "errorResponses": {
+        "401": { "message": "Invalid credentials" }
+      }
+    },
+    "getSchools": {
+      "method": "GET",
+      "path": "/schools",
+      "description": "Get list of schools (superadmin only).",
+      "auth": "Bearer token (superadmin role required)",
+      "response": {
+        "success": true,
+        "data": {
+          "schools": [
+            {
+              "id": "string",
+              "name": "string",
+              "code": "string",
+              "plan": "enum: basic, professional, enterprise"
+            }
+          ]
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "schools": [
+            { "id": "sch_001", "name": "Sunrise School", "code": "SUN001", "plan": "professional" }
+          ]
+        }
+      }
+    },
+    "getStudents": {
+      "method": "GET",
+      "path": "/students",
+      "description": "Get all students for the authenticated school. Supports optional filtering by class and section.",
+      "auth": "Bearer token",
+      "queryParams": {
+        "class": "string (optional, e.g., '5')",
+        "section": "string (optional, A-D)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "students": [
+            {
+              "id": "string",
+              "name": "string",
+              "class": "string",
+              "rollNumber": "number",
+              "section": "string"
+            }
+          ]
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "students": [
+            { "id": "stu_001", "name": "Aarav Sharma", "class": "5", "rollNumber": 12, "section": "A" }
+          ]
+        }
+      }
+    },
+    "markAttendance": {
+      "method": "POST",
+      "path": "/attendance",
+      "description": "Mark attendance for students in a specific class on a given date.",
+      "auth": "Bearer token",
+      "requestBody": {
+        "date": "string (YYYY-MM-DD, required)",
+        "class": "string (required, e.g., '5')",
+        "section": "string (optional, A-D)",
+        "attendance": [
+          {
+            "studentId": "string (required)",
+            "status": "enum: present, absent, late (required)"
+          }
+        ]
+      },
+      "response": {
+        "success": true,
+        "message": "Attendance recorded successfully",
+        "data": {
+          "updatedCount": "number"
+        }
+      },
+      "errorResponses": {
+        "400": { "message": "Invalid request body or date format" },
+        "409": { "message": "Attendance already marked for this date/class" }
+      }
+    },
+    "triggerEmergency": {
+      "method": "POST",
+      "path": "/emergency",
+      "description": "Trigger an emergency alert (fire, medical, security, etc.) across the school system.",
+      "auth": "Bearer token",
+      "requestBody": {
+        "type": "enum: fire, medical, security, other (required)",
+        "location": "string (required, e.g., 'Main Building, Floor 2')",
+        "message": "string (optional, additional details)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "alertId": "string",
+          "status": "triggered",
+          "timestamp": "datetime (ISO)"
+        }
+      }
+    }
+  },
+  "enums": {
+    "UserRole": ["admin", "superadmin"],
+    "SchoolPlan": ["basic", "professional", "enterprise"],
+    "AttendanceStatus": ["present", "absent", "late"],
+    "EmergencyType": ["fire", "medical", "security", "other"]
+  },
+  "fieldNotes": {
+    "token": "JWT returned on login. Must be included in all subsequent requests as 'Authorization: Bearer <token>'.",
+    "schoolId": "Automatically associated with the authenticated user. Superadmin can access multiple schools.",
+    "date": "All dates should be in YYYY-MM-DD format.",
+    "attendance": "Batch update allowed; partial failures should be reported."
+  }
+}

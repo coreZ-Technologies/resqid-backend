@@ -1,0 +1,187 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Subscription & Billing page – current plan, usage, available plans, invoices, payment method, and upgrade/cancel actions.",
+  "endpoints": {
+    "getCurrentSubscription": {
+      "method": "GET",
+      "path": "/api/billing/subscription",
+      "description": "Get current subscription details (plan, usage, payment method, renewal date).",
+      "response": {
+        "success": true,
+        "data": {
+          "planId": "string (e.g., 'pro')",
+          "planName": "string (e.g., 'Pro')",
+          "price": "number (monthly price in INR)",
+          "renewsOn": "date (YYYY-MM-DD)",
+          "startedOn": "date (YYYY-MM-DD)",
+          "students": "number (current enrolled students)",
+          "maxStudents": "number (limit of current plan)",
+          "cardLast4": "string",
+          "cardBrand": "string (e.g., 'Visa', 'Mastercard')"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "planId": "pro",
+          "planName": "Pro",
+          "price": 5999,
+          "renewsOn": "2026-06-01",
+          "startedOn": "2025-06-01",
+          "students": 1247,
+          "maxStudents": 2000,
+          "cardLast4": "4242",
+          "cardBrand": "Visa"
+        }
+      }
+    },
+    "getAvailablePlans": {
+      "method": "GET",
+      "path": "/api/billing/plans",
+      "description": "Get list of all available subscription plans with features, pricing, and badges.",
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "id": "string (e.g., 'basic', 'pro', 'enterprise')",
+            "name": "string",
+            "price": "number (monthly in INR)",
+            "period": "enum: month, year",
+            "description": "string",
+            "badge": "string or null",
+            "features": [
+              {
+                "text": "string",
+                "included": "boolean"
+              }
+            ]
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          {
+            "id": "basic",
+            "name": "Basic",
+            "price": 2999,
+            "period": "month",
+            "description": "For small schools just getting started",
+            "badge": null,
+            "features": [
+              { "text": "Up to 500 students", "included": true },
+              { "text": "QR attendance", "included": true },
+              { "text": "Parent messaging", "included": false }
+            ]
+          }
+        ]
+      }
+    },
+    "getInvoices": {
+      "method": "GET",
+      "path": "/api/billing/invoices",
+      "description": "Get paginated list of past invoices (billing history).",
+      "queryParams": {
+        "limit": "number (default 12)",
+        "offset": "number (default 0)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "invoices": [
+            {
+              "id": "string",
+              "date": "date (YYYY-MM-DD)",
+              "amount": "number",
+              "invoiceNumber": "string",
+              "status": "enum: Paid, Pending, Overdue"
+            }
+          ],
+          "pagination": {
+            "total": "number",
+            "limit": "number",
+            "offset": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "invoices": [
+            {
+              "id": "inv1",
+              "date": "2026-05-01",
+              "amount": 5999,
+              "invoiceNumber": "INV-2026-05",
+              "status": "Paid"
+            }
+          ],
+          "pagination": { "total": 5, "limit": 12, "offset": 0 }
+        }
+      }
+    },
+    "downloadInvoice": {
+      "method": "GET",
+      "path": "/api/billing/invoices/:invoiceId/download",
+      "description": "Download invoice PDF.",
+      "pathParams": { "invoiceId": "string" },
+      "response": "PDF file (binary)"
+    },
+    "upgradeSubscription": {
+      "method": "POST",
+      "path": "/api/billing/upgrade",
+      "description": "Upgrade to a higher plan (immediate effect).",
+      "requestBody": {
+        "planId": "string (required, e.g., 'pro' or 'enterprise')"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "newPlanId": "string",
+          "message": "Subscription upgraded successfully"
+        }
+      }
+    },
+    "cancelSubscription": {
+      "method": "POST",
+      "path": "/api/billing/cancel",
+      "description": "Cancel current subscription at the end of the billing period.",
+      "requestBody": {
+        "reason": "string (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "expiresOn": "date (YYYY-MM-DD)",
+          "message": "Subscription will end on ..."
+        }
+      }
+    },
+    "updatePaymentMethod": {
+      "method": "POST",
+      "path": "/api/billing/payment-method",
+      "description": "Update the payment method (credit card).",
+      "requestBody": {
+        "paymentMethodId": "string (token from payment gateway)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "cardLast4": "string",
+          "cardBrand": "string"
+        }
+      }
+    }
+  },
+  "enums": {
+    "PlanPeriod": ["month", "year"],
+    "InvoiceStatus": ["Paid", "Pending", "Overdue"]
+  },
+  "fieldNotes": {
+    "students": "Current number of active students in the school; used for usage bar.",
+    "maxStudents": "Student limit defined by the current plan.",
+    "price": "Monthly price in Indian Rupees (INR).",
+    "badge": "Optional promotional badge text (e.g., 'Most popular') for a plan card.",
+    "features": "List of feature objects; included flag determines if the feature is part of the plan."
+  }
+}

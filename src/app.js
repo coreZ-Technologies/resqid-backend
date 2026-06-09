@@ -61,6 +61,7 @@ app.use('/api/reports', buildAuthPipeline(), reportRoutes);
 app.use('/api/templates', buildAuthPipeline(), templateRoutes);
 app.use('/api/communication', buildAuthPipeline(), communicationRoutes);
 app.use('/api/tokens', buildAuthPipeline(), tokenRoutes);
+// INDEX.ROUTES.JS -> APP-ROUTES
 app.use(notFoundHandler);
 app.use(errorHandler);
 

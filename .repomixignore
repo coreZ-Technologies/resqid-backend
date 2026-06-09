@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+.next/
+.expo/
+*.lock
+*.log
+.env
+.env.*
+prisma/migrations/
