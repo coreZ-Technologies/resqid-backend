@@ -1,103 +1,3 @@
-<<<<<<< HEAD
-// src/modules/m6-students/student.validation.js
-import { z } from 'zod';
-
-// Enums matching Prisma
-const GenderEnum = z.enum(['MALE', 'FEMALE', 'OTHER']);
-const BloodGroupEnum = z.enum(['A_POSITIVE', 'A_NEGATIVE', 'B_POSITIVE', 'B_NEGATIVE', 'O_POSITIVE', 'O_NEGATIVE', 'AB_POSITIVE', 'AB_NEGATIVE', 'UNKNOWN']);
-const StudentStatusEnum = z.enum(['ACTIVE', 'INACTIVE', 'GRADUATED', 'TRANSFERRED', 'SUSPENDED']);
-const VisibilityLevelEnum = z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']);
-const DocumentTypeEnum = z.enum(['BIRTH_CERTIFICATE', 'TRANSFER_CERTIFICATE', 'MEDICAL_REPORT', 'IMMUNIZATION_RECORD', 'ID_PROOF', 'PASSPORT', 'AADHAR_CARD', 'PARENT_ID', 'PHOTO', 'OTHER']);
-
-// ─── Create Student ──────────────────────────────────────────────
-export const createStudentSchema = z.object({
-  firstName: z.string().min(1).max(50),
-  lastName: z.string().min(1).max(50),
-  dateOfBirth: z.string().date().optional(),
-  gender: GenderEnum.optional(),
-  bloodGroup: BloodGroupEnum.optional(),
-  grade: z.string().optional(),
-  section: z.string().optional(),
-  rollNumber: z.string().optional(),
-  studentId: z.string().optional(),
-  allergies: z.array(z.string()).optional(),
-  conditions: z.array(z.string()).optional(),
-  medications: z.array(z.string()).optional(),
-  medicalNotes: z.string().optional(),
-  transportRoute: z.string().optional(),
-  transportStop: z.string().optional(),
-  rfidTagNumber: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
-  // Parent linking
-  parentIds: z.array(z.string()).optional(),
-  // Emergency visibility
-  cardVisibility: z.object({
-    visibility: VisibilityLevelEnum.default('PUBLIC'),
-    showName: z.boolean().default(true),
-    showBloodGroup: z.boolean().default(true),
-    showAllergies: z.boolean().default(false),
-    showConditions: z.boolean().default(false),
-    showMedications: z.boolean().default(false),
-    showEmergencyContacts: z.boolean().default(true),
-    showParentInfo: z.boolean().default(false),
-    showTransportInfo: z.boolean().default(false),
-    showPhoto: z.boolean().default(true),
-    showGrade: z.boolean().default(true),
-  }).optional(),
-});
-
-// ─── Update Student ──────────────────────────────────────────────
-export const updateStudentSchema = createStudentSchema.partial();
-
-// ─── List Students Query ─────────────────────────────────────────
-export const listStudentsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(100).default(15),
-  search: z.string().optional(),
-  class: z.string().optional(),
-  section: z.string().optional(),
-  status: StudentStatusEnum.optional(),
-  fromDate: z.string().datetime().optional(),
-  toDate: z.string().datetime().optional(),
-});
-
-// ─── Link Parents ────────────────────────────────────────────────
-export const linkParentsSchema = z.object({
-  parentIds: z.array(z.string()).min(1),
-});
-
-// ─── Unlink Parent ───────────────────────────────────────────────
-export const unlinkParentSchema = z.object({
-  parentId: z.string().min(1),
-});
-
-// ─── Update Emergency Visibility ─────────────────────────────────
-export const updateEmergencyVisibilitySchema = z.object({
-  visibility: VisibilityLevelEnum,
-});
-
-// ─── Send Message to Parents ────────────────────────────────────
-export const sendMessageSchema = z.object({
-  subject: z.string().max(200).optional(),
-  body: z.string().min(1).max(5000),
-  type: z.enum(['GENERAL', 'EMERGENCY', 'ATTENDANCE', 'ANNOUNCEMENT']).default('GENERAL'),
-});
-
-// ─── Export Query ────────────────────────────────────────────────
-export const exportStudentsQuerySchema = z.object({
-  format: z.enum(['csv', 'json']).default('csv'),
-  class: z.string().optional(),
-  section: z.string().optional(),
-  status: StudentStatusEnum.optional(),
-  fields: z.array(z.string()).optional(),
-  emailDelivery: z.boolean().default(false),
-});
-
-// ─── Bulk Upload (multipart) ─────────────────────────────────────
-export const bulkUploadSchema = z.object({
-  file: z.any(), // Will be validated in service
-});
-=======
 // =============================================================================
 // modules/students/student.validation.js — RESQID
 // =============================================================================
@@ -106,7 +6,7 @@ import { z } from 'zod';
 
 const cuid = z.string().min(1, 'Invalid ID format');
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+// ─── Enums (matching Prisma) ─────────────────────────────────────────────────
 
 const bloodGroupEnum = z.enum([
   'A_POSITIVE',
@@ -119,9 +19,13 @@ const bloodGroupEnum = z.enum([
   'O_NEGATIVE',
   'UNKNOWN',
 ]);
+
 const genderEnum = z.enum(['MALE', 'FEMALE', 'OTHER']);
+
 const statusEnum = z.enum(['ACTIVE', 'INACTIVE', 'GRADUATED', 'TRANSFERRED', 'SUSPENDED']);
+
 const visibilityEnum = z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']);
+
 const relationshipEnum = z.enum([
   'FATHER',
   'MOTHER',
@@ -131,7 +35,20 @@ const relationshipEnum = z.enum([
   'OTHER',
 ]);
 
-// ─── Parent Contact ───────────────────────────────────────────────────────────
+const documentTypeEnum = z.enum([
+  'BIRTH_CERTIFICATE',
+  'TRANSFER_CERTIFICATE',
+  'MEDICAL_REPORT',
+  'IMMUNIZATION_RECORD',
+  'ID_PROOF',
+  'PASSPORT',
+  'AADHAR_CARD',
+  'PARENT_ID',
+  'PHOTO',
+  'OTHER',
+]);
+
+// ─── Parent Contact (for create/update) ──────────────────────────────────────
 
 const parentSchema = z.object({
   name: z.string().min(1).max(200),
@@ -144,7 +61,7 @@ const parentSchema = z.object({
   canWhatsapp: z.boolean().default(true),
 });
 
-// ─── Emergency Contact ────────────────────────────────────────────────────────
+// ─── Emergency Contact ───────────────────────────────────────────────────────
 
 const emergencyContactSchema = z.object({
   name: z.string().min(1).max(200),
@@ -153,7 +70,7 @@ const emergencyContactSchema = z.object({
   priority: z.number().int().min(1).max(10).default(1),
 });
 
-// ─── Medical Info ─────────────────────────────────────────────────────────────
+// ─── Medical Info ────────────────────────────────────────────────────────────
 
 const medicalInfoSchema = z.object({
   allergies: z.array(z.string().max(200)).max(20).optional().default([]),
@@ -175,7 +92,23 @@ const medicalInfoSchema = z.object({
   emergencyInstructions: z.string().max(2000).optional().nullable(),
 });
 
-// ─── Create Student ───────────────────────────────────────────────────────────
+// ─── Card Visibility (granular controls) ─────────────────────────────────────
+
+const cardVisibilitySchema = z.object({
+  visibility: visibilityEnum.default('PUBLIC'),
+  showName: z.boolean().default(true),
+  showBloodGroup: z.boolean().default(true),
+  showAllergies: z.boolean().default(false),
+  showConditions: z.boolean().default(false),
+  showMedications: z.boolean().default(false),
+  showEmergencyContacts: z.boolean().default(true),
+  showParentInfo: z.boolean().default(false),
+  showTransportInfo: z.boolean().default(false),
+  showPhoto: z.boolean().default(true),
+  showGrade: z.boolean().default(true),
+}).optional();
+
+// ─── Create Student Schema ───────────────────────────────────────────────────
 
 export const createStudentSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100),
@@ -196,28 +129,27 @@ export const createStudentSchema = z.object({
   emergencyVisibility: visibilityEnum.optional().default('PUBLIC'),
   rfidTagNumber: z.string().max(100).optional(),
   classGroupId: z.string().optional(),
-  parents: z
-    .array(parentSchema)
-    .min(1, 'At least one parent is required')
-    .max(4)
-    .optional()
-    .default([]),
+  parents: z.array(parentSchema).min(1).max(4).optional().default([]),
   emergencyContacts: z.array(emergencyContactSchema).max(10).optional().default([]),
   medicalInfo: medicalInfoSchema.optional().default({}),
   previousSchool: z.string().max(200).optional().nullable(),
+  cardVisibility: cardVisibilitySchema,
+  metadata: z.record(z.any()).optional(),
+  // Backward compatibility: parentIds array (for simple linking)
+  parentIds: z.array(z.string()).optional(),
 });
 
-// ─── Update Student ───────────────────────────────────────────────────────────
+// ─── Update Student Schema ───────────────────────────────────────────────────
 
 export const updateStudentSchema = createStudentSchema.partial();
 
-// ─── Bulk Create ──────────────────────────────────────────────────────────────
+// ─── Bulk Create Schema ─────────────────────────────────────────────────────
 
 export const bulkCreateStudentSchema = z.object({
   students: z.array(createStudentSchema).min(1).max(500),
 });
 
-// ─── List Query ───────────────────────────────────────────────────────────────
+// ─── List Query Schema ──────────────────────────────────────────────────────
 
 export const studentListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -232,7 +164,54 @@ export const studentListQuerySchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('asc'),
 });
 
-// ─── Params ───────────────────────────────────────────────────────────────────
+// Legacy alias for routes that use `listStudentsQuerySchema` (old name)
+export const listStudentsQuerySchema = studentListQuerySchema;
 
-export const studentIdParamsSchema = z.object({ id: cuid });
->>>>>>> 29c3ec21ee207f590fb533e851f49fc2e7b35588
+// ─── Link Parents Schema ────────────────────────────────────────────────────
+
+export const linkParentsSchema = z.object({
+  parentIds: z.array(z.string()).min(1),
+});
+
+// ─── Unlink Parent Schema ───────────────────────────────────────────────────
+
+export const unlinkParentSchema = z.object({
+  parentId: z.string().min(1),
+});
+
+// ─── Update Emergency Visibility Schema ─────────────────────────────────────
+
+export const updateEmergencyVisibilitySchema = z.object({
+  visibility: visibilityEnum,
+});
+
+// ─── Send Message Schema ────────────────────────────────────────────────────
+
+export const sendMessageSchema = z.object({
+  subject: z.string().max(200).optional(),
+  body: z.string().min(1).max(5000),
+  type: z.enum(['GENERAL', 'EMERGENCY', 'ATTENDANCE', 'ANNOUNCEMENT']).default('GENERAL'),
+});
+
+// ─── Export Query Schema ────────────────────────────────────────────────────
+
+export const exportStudentsQuerySchema = z.object({
+  format: z.enum(['csv', 'json']).default('csv'),
+  class: z.string().optional(),
+  section: z.string().optional(),
+  status: statusEnum.optional(),
+  fields: z.array(z.string()).optional(),
+  emailDelivery: z.boolean().default(false),
+});
+
+// ─── Bulk Upload (multipart) ────────────────────────────────────────────────
+
+export const bulkUploadSchema = z.object({
+  file: z.any(), // validated in service
+});
+
+// ─── Params Schema ──────────────────────────────────────────────────────────
+
+export const studentIdParamsSchema = z.object({
+  id: cuid,
+});
