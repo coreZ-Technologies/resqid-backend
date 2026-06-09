@@ -1,42 +1,61 @@
 // orchestrator/registry/attendance.registry.js — RESQID
 //
-// Attendance event types that trigger notifications.
+// Attendance-related notification types.
 
-export const ATTENDANCE_EVENTS = {
-  TAP_IN: {
-    event: 'attendance.tap_in',
-    notificationType: 'attendance.tap_in',
+export const ATTENDANCE_NOTIFICATIONS = {
+  ATTENDANCE_TAP_IN: {
+    id: 'attendance.tap_in',
+    label: 'Student Tap-In',
     description: 'RFID card scanned at entry gate',
-    triggersNotification: true,
+    priority: 'normal',
+    channels: ['push', 'sms'],
+    template: 'attendance-tap-in',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 3, backoff: 'exponential', delay: 1000 },
   },
-  TAP_OUT: {
-    event: 'attendance.tap_out',
-    notificationType: 'attendance.tap_out',
+  ATTENDANCE_TAP_OUT: {
+    id: 'attendance.tap_out',
+    label: 'Student Tap-Out',
     description: 'RFID card scanned at exit gate',
-    triggersNotification: true,
+    priority: 'normal',
+    channels: ['push'],
+    template: 'attendance-tap-out',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 1000 },
   },
-  MARKED_MANUALLY: {
-    event: 'attendance.marked_manually',
-    notificationType: 'attendance.absent',
-    description: 'Teacher manually marked attendance',
-    triggersNotification: true,
+  ATTENDANCE_ABSENT: {
+    id: 'attendance.absent',
+    label: 'Student Absent',
+    description: 'Student did not tap in by cutoff time',
+    priority: 'normal',
+    channels: ['push', 'sms'],
+    template: 'attendance-absent',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 3, backoff: 'exponential', delay: 2000 },
   },
-  BULK_MARKED: {
-    event: 'attendance.bulk_marked',
-    notificationType: 'attendance.bulk_marked',
-    description: 'Bulk attendance processing completed',
-    triggersNotification: true,
+  ATTENDANCE_LATE: {
+    id: 'attendance.late',
+    label: 'Student Late',
+    description: 'Student tapped in after cutoff time',
+    priority: 'normal',
+    channels: ['push'],
+    template: 'attendance-late',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'exponential', delay: 1000 },
   },
-  AUTO_ABSENT: {
-    event: 'attendance.auto_absent',
-    notificationType: 'attendance.absent',
-    description: 'System auto-marked student as absent',
-    triggersNotification: true,
-  },
-  DAILY_SUMMARY: {
-    event: 'attendance.daily_summary',
-    notificationType: 'attendance.daily_summary',
-    description: 'Daily attendance summary generated',
-    triggersNotification: true,
+  ATTENDANCE_DAILY_SUMMARY: {
+    id: 'attendance.daily_summary',
+    label: 'Daily Attendance Summary',
+    description: 'End-of-day report for parent',
+    priority: 'low',
+    channels: ['push', 'email'],
+    template: 'attendance-daily-summary',
+    category: 'attendance',
+    target: 'parent',
+    retry: { attempts: 2, backoff: 'fixed', delay: 5000 },
   },
 };
