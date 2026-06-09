@@ -56,13 +56,46 @@
     "sharedComponentsUsed": [],
     "customHooks": ["useCallback", "useState", "useEffect"],
     "iconsUsed": [
-      "Bell", "Send", "Mail", "Smartphone", "Users", "Filter", "Search",
-      "CheckCircle", "XCircle", "Clock", "Eye", "Trash2", "RefreshCw",
-      "MessageSquare", "TrendingUp", "Download", "Calendar", "Plus",
-      "ChevronLeft", "ChevronRight", "MoreVertical", "Copy", "Share2",
-      "BarChart3", "PieChart", "AlertCircle", "Globe", "Zap", "Settings",
-      "UserCheck", "UserX", "Loader2", "FilterX", "Check", "X", "Edit2", "User",
-      "Megaphone", "GraduationCap", "BookOpen"
+      "Bell",
+      "Send",
+      "Mail",
+      "Smartphone",
+      "Users",
+      "Filter",
+      "Search",
+      "CheckCircle",
+      "XCircle",
+      "Clock",
+      "Eye",
+      "Trash2",
+      "RefreshCw",
+      "MessageSquare",
+      "TrendingUp",
+      "Download",
+      "Calendar",
+      "Plus",
+      "ChevronLeft",
+      "ChevronRight",
+      "MoreVertical",
+      "Copy",
+      "Share2",
+      "BarChart3",
+      "PieChart",
+      "AlertCircle",
+      "Globe",
+      "Zap",
+      "Settings",
+      "UserCheck",
+      "UserX",
+      "Loader2",
+      "FilterX",
+      "Check",
+      "X",
+      "Edit2",
+      "User",
+      "Megaphone",
+      "GraduationCap",
+      "BookOpen"
     ]
   },
   "actionsAndRoutes": {
@@ -151,9 +184,7 @@
         "GET /api/notifications/preferences",
         "PUT /api/notifications/preferences"
       ],
-      "webhooks": [
-        "Delivery receipt from SMS/email/push provider → update notification status"
-      ]
+      "webhooks": ["Delivery receipt from SMS/email/push provider → update notification status"]
     }
   }
 }

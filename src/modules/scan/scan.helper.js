@@ -229,158 +229,12 @@ export const applyVisibilityFilters = (profile) => {
 /**
  * Strip internal cache fields before sending to client.
  */
-<<<<<<< HEAD
-export const formatScanResponse = (cached) => {
-  if (!cached) return null;
-  const { _schoolId, _parentTokens, _studentId, ...safe } = cached;
-=======
 export const formatScanResponse = (data) => {
   const { _schoolId, _parentTokens, _studentId, ...safe } = data;
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
   return safe;
 };
 
 /**
-<<<<<<< HEAD
- * Calculate risk score for a scan based on various factors.
- * Returns score from 0 (safe) to 100 (high risk).
- */
-export const calculateRiskScore = ({
-  isSuspiciousUA,
-  isNewDevice,
-  unusualLocation,
-  unusualTime,
-  rapidScanCount,
-}) => {
-  let score = 0;
-  
-  if (isSuspiciousUA) score += 30;
-  if (isNewDevice) score += 20;
-  if (unusualLocation) score += 25;
-  if (unusualTime) score += 15;
-  if (rapidScanCount > 5) score += Math.min(30, (rapidScanCount - 5) * 3);
-  
-  return Math.min(100, score);
-};
-
-/**
- * Check if scan time is unusual (outside 6 AM - 10 PM).
- */
-export const isUnusualScanTime = (timestamp = new Date()) => {
-  const hour = timestamp.getHours();
-  return hour < 6 || hour > 22;
-};
-
-/**
- * Generate a unique scan ID.
- */
-export const generateScanId = () => {
-  return `SCN-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-};
-
-/**
- * Validate scan result.
- */
-export const isValidScanResult = (result) => {
-  const validResults = ['SUCCESS', 'INVALID', 'REVOKED', 'EXPIRED', 'RATE_LIMITED', 'ERROR'];
-  return validResults.includes(result);
-};
-
-/**
- * Get result style for frontend display.
- */
-export const getResultStyle = (result) => {
-  const styles = {
-    SUCCESS: { bg: '#ECFDF5', color: '#047857', label: 'Success', icon: 'check' },
-    INVALID: { bg: '#FEF2F2', color: '#B91C1C', label: 'Invalid', icon: 'x' },
-    REVOKED: { bg: '#FEF2F2', color: '#B91C1C', label: 'Revoked', icon: 'x' },
-    EXPIRED: { bg: '#FFFBEB', color: '#B45309', label: 'Expired', icon: 'clock' },
-    RATE_LIMITED: { bg: '#FEF3C7', color: '#92400E', label: 'Rate Limited', icon: 'clock' },
-    ERROR: { bg: '#FEF2F2', color: '#B91C1C', label: 'Error', icon: 'alert' },
-  };
-  return styles[result] || styles.ERROR;
-};
-
-/**
- * Truncate string to max length.
- */
-export const truncate = (str, maxLength = 100, suffix = '...') => {
-  if (!str) return '';
-  if (str.length <= maxLength) return str;
-  return str.slice(0, maxLength - suffix.length) + suffix;
-};
-
-/**
- * Parse User-Agent into structured object.
- */
-export const parseUserAgent = (userAgent) => {
-  if (!userAgent) {
-    return {
-      raw: null,
-      browser: 'Unknown',
-      os: 'Unknown',
-      device: 'Unknown',
-      isBot: false,
-    };
-  }
-  
-  const isBot = BOT_PATTERNS.test(userAgent);
-  
-  return {
-    raw: userAgent,
-    browser: getBrowserName(userAgent),
-    os: getOsName(userAgent),
-    device: getDeviceType(userAgent),
-    isBot,
-    isMobile: isMobileDevice(userAgent),
-  };
-};
-
-/**
- * Format scan log for API response (used by list and detail endpoints).
- * Fields match the frontend expected shape.
- */
-export const formatScanLogForResponse = (scan) => {
-  if (!scan) return null;
-  
-  let studentName = null;
-  let studentId = null;
-  if (scan.student) {
-    studentName = `${scan.student.firstName} ${scan.student.lastName}`.trim();
-    studentId = scan.student.id;
-  } else if (scan.studentName) {
-    studentName = scan.studentName;
-    studentId = scan.studentId;
-  }
-  
-  return {
-    id: scan.id,
-    token_hash: scan.token?.qrCode || scan.token?.rfidUid || scan.tokenId || 'Unknown',
-    result: scan.result,
-    student_name: studentName,
-    student_id: studentId,
-    ip_address: scan.ipAddress,
-    ip_city: scan.city,
-    device: scan.device,
-    scan_purpose: scan.scanPurpose,
-    response_time_ms: scan.responseTimeMs,
-    created_at: scan.scannedAt || scan.createdAt,
-  };
-};
-
-/**
- * Format stats for frontend dashboard.
- */
-export const formatStatsResponse = (stats) => {
-  return {
-    total: stats.total || 0,
-    success: stats.success || 0,
-    failed: stats.failed || 0,
-    avgResponse: stats.avgResponse || '0ms',
-    successRate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0,
-  };
-};
-=======
  * Get severity label for display.
  */
 export const getSeverityLabel = (severity) => {
@@ -416,4 +270,3 @@ export const getIncidentTypeLabel = (type) => {
   };
   return labels[type] || type;
 };
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd

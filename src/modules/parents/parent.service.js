@@ -59,10 +59,6 @@ export const create = async (data, schoolId) => {
 export const update = async (id, data, req) => {
   const { role } = req.user;
 
-<<<<<<< HEAD
-export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
-  repo.getScanHistory(parentId, { studentId, page, limit, filter });
-=======
   // Parent self-update — restricted fields
   if (role === 'PARENT') {
     if (req.user.id !== id) throw ApiError.forbidden('Can only edit own profile');
@@ -107,4 +103,3 @@ export const getStats = async (schoolId) => {
 export const exportList = async (schoolId, filters) => {
   return repo.findForExport(schoolId, filters);
 };
->>>>>>> 29c3ec21ee207f590fb533e851f49fc2e7b35588

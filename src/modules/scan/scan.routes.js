@@ -47,69 +47,6 @@ import {
   checkTokenStatus,
   getEmergencyContacts,
 } from './scan.redirect.controller.js';
-<<<<<<< HEAD
-
-const router = Router();
-
-// ===========================================================================
-// PUBLIC SCAN ENDPOINTS (No Authentication Required)
-// ===========================================================================
-
-/**
- * GET /s/:code
- * Main QR code scan endpoint - serves HTML for browsers, JSON for API
- */
-router.get(
-  '/s/:code',
-  addScanSecurityHeaders,
-  serveEmergencyHtml,
-  validateScanCodeFormat,
-  checkIpBlockedRedis,
-  detectSuspiciousActivity,
-  publicScanLimiter,
-  perTokenScanLimit,
-  logScanRequest,
-  validate(scanCodeParamsSchema, 'params'),
-  handleScan
-);
-
-// ===========================================================================
-// PUBLIC EMERGENCY REDIRECT ENDPOINTS (No Authentication Required)
-// ===========================================================================
-
-/**
- * GET /s/call/:contactId/:token
- * Initiate phone call to emergency contact
- */
-router.get(
-  '/s/call/:contactId/:token',
-  checkIpBlockedRedis,
-  publicScanLimiter,
-  callContact
-);
-
-/**
- * GET /s/whatsapp/:contactId/:token
- * Open WhatsApp chat with emergency contact
- */
-router.get(
-  '/s/whatsapp/:contactId/:token',
-  checkIpBlockedRedis,
-  publicScanLimiter,
-  whatsappContact
-);
-
-/**
- * GET /s/call/school/:token
- * Initiate phone call to school
- */
-router.get(
-  '/s/call/school/:token',
-  checkIpBlockedRedis,
-  publicScanLimiter,
-  callSchool
-);
-=======
 import { validate } from '#middleware/validate.middleware.js';
 import { perTokenScanLimit } from '#middleware/security/rateLimit.middleware.js';
 import {
@@ -159,7 +96,6 @@ router.get('/doctor-call/:token', validate(tokenOnlyParamsSchema), callDoctor);
  * Decrypts code, fetches emergency profile, returns to responder.
  */
 router.get('/:code', validate(scanCodeParamsSchema), perTokenScanLimit, scanQr);
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 
 /**
  * GET /s/call/doctor/:token

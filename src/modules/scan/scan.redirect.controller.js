@@ -1,10 +1,6 @@
 // =============================================================================
 // modules/scan/scan.redirect.controller.js — RESQID
-<<<<<<< HEAD
 // Redirect endpoints for calls and WhatsApp from emergency QR scans.
-=======
-// Redirect endpoints for calls and WhatsApp from emergency profile.
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 // =============================================================================
 
 import { asyncHandler } from '#shared/response/asyncHandler.js';
@@ -13,16 +9,11 @@ import { logger } from '#config/logger.js';
 import { decodeScanCode } from '#shared/helpers/token.helper.js';
 import { ApiError } from '#shared/response/ApiError.js';
 
-<<<<<<< HEAD
-/**
- * Find token by various identifiers (UUID, scan code, QR code, RFID)
-=======
-// ─── Token Lookup (shared) ────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
+const EMERGENCY_VALID_STATUSES = new Set(['ACTIVE', 'ISSUED']);
 
 /**
- * Find token by UUID or scan code.
- * Returns null if not found or revoked.
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
+ * Find token by various identifiers (UUID, scan code, QR code, RFID)
  */
 const findToken = async (token) => {
   if (!token) return null;
@@ -46,7 +37,6 @@ const findToken = async (token) => {
     },
   });
 
-<<<<<<< HEAD
   // Try QR code
   if (!record) {
     record = await prisma.token.findFirst({
@@ -90,9 +80,6 @@ const findToken = async (token) => {
   }
 
   // Try scan code decode (encrypted)
-=======
-  // Try scan code decode (43-char base62)
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
   if (!record && token.length === 43) {
     try {
       const uuid = decodeScanCode(token);
@@ -113,33 +100,21 @@ const findToken = async (token) => {
           },
         },
       });
-<<<<<<< HEAD
     } catch (err) {
       logger.debug({ err: err.message, token: token.slice(0, 10) }, 'Invalid scan code');
-=======
-    } catch {
-      // Invalid scan code — return null
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
     }
-  }
-
-  // Check expiry
-  if (record?.expiresAt && new Date(record.expiresAt) < new Date()) {
-    return null;
   }
 
   return record;
 };
 
-<<<<<<< HEAD
 /**
  * Check if token is valid for emergency actions
  */
 const isValidTokenForEmergency = (tokenRecord) => {
   if (!tokenRecord) return false;
-  if (tokenRecord.status === 'REVOKED') return false;
-  if (tokenRecord.status === 'EXPIRED') return false;
-  if (tokenRecord.status === 'INACTIVE') return false;
+  if (!EMERGENCY_VALID_STATUSES.has(tokenRecord.status)) return false;
+  if (tokenRecord.expiresAt && new Date(tokenRecord.expiresAt) < new Date()) return false;
   return true;
 };
 
@@ -155,7 +130,7 @@ const renderDialer = (res, phone, title, subtitle, color, studentName = null) =>
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-        <title>${displayTitle}</title>
+        <title>${escapeHtml(displayTitle)}</title>
         <style>
           * {
             margin: 0;
@@ -238,26 +213,36 @@ const renderDialer = (res, phone, title, subtitle, color, studentName = null) =>
       <body>
         <div class="container">
           <div class="spinner"></div>
-          <div class="title">${displayTitle}</div>
-          ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}
-          <div class="phone-number">${phone}</div>
-          <a href="tel:${phone}" class="fallback-link">Tap if dialer doesn't open</a>
-          ${studentName ? `<div class="student-name">Student: ${studentName}</div>` : ''}
+          <div class="title">${escapeHtml(displayTitle)}</div>
+          ${subtitle ? `<div class="subtitle">${escapeHtml(subtitle)}</div>` : ''}
+          <div class="phone-number">${escapeHtml(phone)}</div>
+          <a href="tel:${escapeHtml(phone)}" class="fallback-link">Tap if dialer doesn't open</a>
+          ${studentName ? `<div class="student-name">Student: ${escapeHtml(studentName)}</div>` : ''}
         </div>
         <script>
-          // Attempt to open native dialer
-          window.location.href = 'tel:${phone}';
-          
-          // Fallback: if page remains visible after 1 second, try again
+          window.location.href = 'tel:${escapeHtml(phone)}';
           setTimeout(() => {
             if (!document.hidden) {
-              window.location.href = 'tel:${phone}';
+              window.location.href = 'tel:${escapeHtml(phone)}';
             }
           }, 1000);
         </script>
       </body>
     </html>
   `);
+};
+
+/**
+ * Basic HTML escaping to prevent XSS
+ */
+const escapeHtml = (str) => {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 };
 
 // =============================================================================
@@ -270,60 +255,13 @@ const renderDialer = (res, phone, title, subtitle, color, studentName = null) =>
  */
 export const callContact = asyncHandler(async (req, res) => {
   const { contactId, token } = req.params;
-=======
-// ─── Dialer Page Renderer ─────────────────────────────────────────────────────
 
-const renderDialer = (res, phone, title, subtitle, color) => {
-  res.send(`
-    <!DOCTYPE html><html><head>
-      <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-      <title>${title}</title>
-      <style>
-        body{margin:0;min-height:100vh;background:#0a0f1e;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif}
-        .spinner{width:48px;height:48px;border:3px solid rgba(232,69,69,.2);border-top-color:${color};border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 20px}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        .msg{color:#f1f5f9;font-size:16px;margin-bottom:8px;text-align:center}
-        .num{color:${color};font-size:20px;font-weight:600;margin-bottom:20px;text-align:center}
-        a{color:${color};text-decoration:none}
-      </style></head>
-      <body>
-        <div style="text-align:center;padding:24px">
-          <div class="spinner"></div>
-          <div class="msg">${title}</div>
-          ${subtitle ? `<div class="msg" style="color:#64748b;font-size:14px">${subtitle}</div>` : ''}
-          <div class="num">${phone}</div>
-          <a href="tel:${phone}">Tap here if dialer doesn't open</a>
-        </div>
-        <script>
-          window.location.href='tel:${phone}';
-          setTimeout(()=>{if(!document.hidden)window.location.href='tel:${phone}';},1000);
-        </script>
-      </body></html>`);
-};
-
-// ─── Redirect Handlers ────────────────────────────────────────────────────────
-
-/**
- * GET /api/scan/call/:contactId/:token
- * Opens phone dialer to call an emergency contact.
- */
-export const callContact = asyncHandler(async (req, res) => {
-  const { contactId, token } = req.params;
-
-  const tokenRecord = await findToken(token);
-  if (!tokenRecord || tokenRecord.status === 'REVOKED') {
-    return res.status(404).json({ error: 'Invalid or revoked token' });
-  }
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
-
-  // Validate token
   const tokenRecord = await findToken(token);
   if (!isValidTokenForEmergency(tokenRecord)) {
     logger.warn({ contactId, tokenPrefix: token?.slice(0, 10) }, 'Invalid token for call contact');
     return res.status(404).json({ error: 'Invalid or expired token' });
   }
 
-  // Get contact
   const contact = await prisma.emergencyContact.findUnique({
     where: { id: contactId, isActive: true },
     select: { phone: true, name: true, relationship: true },
@@ -354,42 +292,27 @@ export const callContact = asyncHandler(async (req, res) => {
 export const whatsappContact = asyncHandler(async (req, res) => {
   const { contactId, token } = req.params;
 
-  // Validate token
   const tokenRecord = await findToken(token);
   if (!isValidTokenForEmergency(tokenRecord)) {
     logger.warn({ contactId, tokenPrefix: token?.slice(0, 10) }, 'Invalid token for WhatsApp');
     return res.status(404).json({ error: 'Invalid or expired token' });
   }
 
-  // Get contact
   const contact = await prisma.emergencyContact.findUnique({
     where: { id: contactId, isActive: true },
     select: { phone: true, name: true },
   });
-<<<<<<< HEAD
-=======
 
   if (!contact?.phone) {
     return res.status(404).json({ error: 'Contact not found' });
   }
 
-  logger.info({ contactId, phone: contact.phone.slice(0, 6) + '…' }, '[scan] Call dialer opened');
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
-
-  if (!contact?.phone) {
-    return res.status(404).json({ error: 'Contact not found' });
-  }
-
-  // Clean phone number for WhatsApp (remove all non-digits)
   const cleanPhone = contact.phone.replace(/\D/g, '');
-  
   logger.info({ contactId, phone: cleanPhone.slice(0, 6) + '...' }, 'WhatsApp redirect');
   
-  // Redirect to WhatsApp
-  return res.redirect(302, `https://wa.me/${cleanPhone}`);
+  res.redirect(302, `https://wa.me/${cleanPhone}`);
 });
 
-<<<<<<< HEAD
 // =============================================================================
 // SCHOOL ENDPOINTS
 // =============================================================================
@@ -400,68 +323,17 @@ export const whatsappContact = asyncHandler(async (req, res) => {
  */
 export const callSchool = asyncHandler(async (req, res) => {
   const { token } = req.params;
-=======
-/**
- * GET /api/scan/whatsapp/:contactId/:token
- * Opens WhatsApp chat with emergency contact.
- */
-export const whatsappContact = asyncHandler(async (req, res) => {
-  const { contactId, token } = req.params;
 
-  const tokenRecord = await findToken(token);
-  if (!tokenRecord || tokenRecord.status === 'REVOKED') {
-    return res.status(404).json({ error: 'Invalid or revoked token' });
-  }
-
-  const contact = await prisma.emergencyContact.findUnique({
-    where: { id: contactId, isActive: true },
-    select: { phone: true },
-  });
-
-  if (!contact?.phone) {
-    return res.status(404).json({ error: 'Contact not found' });
-  }
-
-  logger.info({ contactId }, '[scan] WhatsApp redirect');
-
-  const cleanPhone = contact.phone.replace(/\D/g, '');
-  return res.redirect(302, `https://wa.me/${cleanPhone}`);
-});
-
-/**
- * GET /api/scan/call-school/:token
- * Opens phone dialer to call the school.
- */
-export const callSchool = asyncHandler(async (req, res) => {
-  const { token } = req.params;
-
-  const tokenRecord = await findToken(token);
-  if (!tokenRecord || tokenRecord.status === 'REVOKED') {
-    return res.status(404).json({ error: 'Invalid or revoked token' });
-  }
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
-
-  // Validate token
   const tokenRecord = await findToken(token);
   if (!isValidTokenForEmergency(tokenRecord)) {
     logger.warn({ tokenPrefix: token?.slice(0, 10) }, 'Invalid token for call school');
     return res.status(404).json({ error: 'Invalid or expired token' });
   }
 
-  // Get school phone
   const school = await prisma.school.findUnique({
     where: { id: tokenRecord.schoolId },
     select: { phone: true, name: true },
   });
-<<<<<<< HEAD
-=======
-
-  if (!school?.phone) {
-    return res.status(404).json({ error: 'School phone not available' });
-  }
-
-  logger.info({ schoolId: tokenRecord.schoolId }, '[scan] School dialer opened');
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 
   if (!school?.phone) {
     return res.status(404).json({ error: 'School phone number not available' });
@@ -481,7 +353,6 @@ export const callSchool = asyncHandler(async (req, res) => {
   );
 });
 
-<<<<<<< HEAD
 // =============================================================================
 // DOCTOR ENDPOINTS
 // =============================================================================
@@ -492,34 +363,26 @@ export const callSchool = asyncHandler(async (req, res) => {
  */
 export const callDoctor = asyncHandler(async (req, res) => {
   const { token } = req.params;
-=======
-/**
- * GET /api/scan/call-doctor/:token
- * Opens phone dialer to call the student's doctor.
- */
-export const callDoctor = asyncHandler(async (req, res) => {
-  const { token } = req.params;
 
-  const tokenRecord = await findToken(token);
-  if (!tokenRecord || tokenRecord.status === 'REVOKED') {
-    return res.status(404).json({ error: 'Invalid or revoked token' });
-  }
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
-
-  // Validate token
-  const tokenRecord = await findToken(token);
-  if (!isValidTokenForEmergency(tokenRecord)) {
-    logger.warn({ tokenPrefix: token?.slice(0, 10) }, 'Invalid token for call doctor');
-    return res.status(404).json({ error: 'Invalid or expired token' });
-  }
-
-  // Get student's emergency profile with doctor info
-  const tokenWithStudent = await prisma.token.findUnique({
-    where: { id: tokenRecord.id },
+  // Fetch token with emergency profile in one query
+  const tokenWithDoctor = await prisma.token.findFirst({
+    where: {
+      OR: [
+        { id: token },
+        { qrCode: token },
+        { rfidUid: token },
+        ...(token.length === 43 ? [{ id: { equals: token } }] : []),
+      ],
+    },
     select: {
+      id: true,
+      status: true,
+      expiresAt: true,
+      schoolId: true,
+      studentId: true,
       student: {
         select: {
-<<<<<<< HEAD
+          id: true,
           firstName: true,
           lastName: true,
           emergencyProfile: {
@@ -527,21 +390,54 @@ export const callDoctor = asyncHandler(async (req, res) => {
               doctorPhone: true,
               doctorName: true,
             },
-=======
-          emergencyProfile: {
-            select: { doctorPhone: true, doctorName: true },
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
           },
         },
       },
     },
   });
 
-<<<<<<< HEAD
-  const phone = tokenWithStudent?.student?.emergencyProfile?.doctorPhone;
-  const doctorName = tokenWithStudent?.student?.emergencyProfile?.doctorName;
-  const studentName = tokenWithStudent?.student 
-    ? `${tokenWithStudent.student.firstName} ${tokenWithStudent.student.lastName}`
+  // If not found by direct fields, try decoding scan code
+  let tokenRecord = tokenWithDoctor;
+  if (!tokenRecord && token.length === 43) {
+    try {
+      const uuid = decodeScanCode(token);
+      tokenRecord = await prisma.token.findUnique({
+        where: { id: uuid },
+        select: {
+          id: true,
+          status: true,
+          expiresAt: true,
+          schoolId: true,
+          studentId: true,
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              emergencyProfile: {
+                select: {
+                  doctorPhone: true,
+                  doctorName: true,
+                },
+              },
+            },
+          },
+        },
+      });
+    } catch (err) {
+      logger.debug({ err: err.message }, 'Invalid scan code for doctor call');
+    }
+  }
+
+  if (!isValidTokenForEmergency(tokenRecord)) {
+    logger.warn({ tokenPrefix: token?.slice(0, 10) }, 'Invalid token for call doctor');
+    return res.status(404).json({ error: 'Invalid or expired token' });
+  }
+
+  const phone = tokenRecord?.student?.emergencyProfile?.doctorPhone;
+  const doctorName = tokenRecord?.student?.emergencyProfile?.doctorName;
+  const studentName = tokenRecord?.student 
+    ? `${tokenRecord.student.firstName} ${tokenRecord.student.lastName}`
     : null;
 
   if (!phone) {
@@ -556,18 +452,6 @@ export const callDoctor = asyncHandler(async (req, res) => {
     '#10b981',
     studentName
   );
-=======
-  const doctorPhone = tokenWithStudent?.student?.emergencyProfile?.doctorPhone;
-  const doctorName = tokenWithStudent?.student?.emergencyProfile?.doctorName;
-
-  if (!doctorPhone) {
-    return res.status(404).json({ error: 'Doctor phone not available' });
-  }
-
-  logger.info({ tokenId: tokenRecord.id }, '[scan] Doctor dialer opened');
-
-  renderDialer(res, doctorPhone, 'Calling Doctor', doctorName, '#10b981');
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 });
 
 // =============================================================================
@@ -583,11 +467,21 @@ export const checkTokenStatus = asyncHandler(async (req, res) => {
 
   const tokenRecord = await findToken(token);
   const isValid = isValidTokenForEmergency(tokenRecord);
+  
+  let statusInfo = null;
+  if (tokenRecord) {
+    statusInfo = {
+      status: tokenRecord.status,
+      expiresAt: tokenRecord.expiresAt,
+      isExpired: tokenRecord.expiresAt ? new Date(tokenRecord.expiresAt) < new Date() : false,
+    };
+  }
 
   res.json({
     success: true,
     data: {
       isValid,
+      status: statusInfo,
       student: isValid && tokenRecord.student ? {
         id: tokenRecord.student.id,
         name: `${tokenRecord.student.firstName} ${tokenRecord.student.lastName}`,
@@ -609,7 +503,6 @@ export const getEmergencyContacts = asyncHandler(async (req, res) => {
     throw ApiError.unauthorized('Invalid or expired token');
   }
 
-  // Get student with emergency contacts
   const student = await prisma.student.findUnique({
     where: { id: tokenRecord.studentId },
     select: {
@@ -646,15 +539,13 @@ export const getEmergencyContacts = asyncHandler(async (req, res) => {
     throw ApiError.notFound('Student not found');
   }
 
-  // Format contacts
   const contacts = [];
 
-  // Add parents as emergency contacts
   for (const link of student.parentLinks) {
     if (link.parent.phone) {
       contacts.push({
         id: link.parent.id,
-        name: `${link.parent.firstName} ${link.parent.lastName}`,
+        name: `${link.parent.firstName} ${link.parent.lastName}`.trim(),
         phone: link.parent.phone,
         type: 'parent',
         relationship: link.relation,
@@ -663,7 +554,6 @@ export const getEmergencyContacts = asyncHandler(async (req, res) => {
     }
   }
 
-  // Add doctor as emergency contact
   if (student.emergencyProfile?.doctorPhone) {
     contacts.push({
       id: 'doctor',
@@ -675,7 +565,6 @@ export const getEmergencyContacts = asyncHandler(async (req, res) => {
     });
   }
 
-  // Sort by priority
   contacts.sort((a, b) => (a.priority || 99) - (b.priority || 99));
 
   res.json({
@@ -683,7 +572,7 @@ export const getEmergencyContacts = asyncHandler(async (req, res) => {
     data: {
       student: {
         id: student.id,
-        name: `${student.firstName} ${student.lastName}`,
+        name: `${student.firstName} ${student.lastName}`.trim(),
         bloodGroup: student.emergencyProfile?.bloodGroup,
         allergies: student.emergencyProfile?.allergies || [],
         conditions: student.emergencyProfile?.conditions || [],

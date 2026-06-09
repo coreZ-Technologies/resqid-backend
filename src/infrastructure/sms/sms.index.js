@@ -1,13 +1,7 @@
-<<<<<<< HEAD
-import { TwoFactorAdapter } from './twofactor.adapter.js';
-import { MSG91Adapter } from './msg91.adapter.js';
-import { SmsProvider } from './sms.provider.js';
-=======
 // infrastructure/sms/sms.index.js — RESQID
 //
 // SMS singleton — switch provider via SMS_PROVIDER env variable.
 // Uses universal SmsAdapter that supports MSG91 and 2Factor.
->>>>>>> 57ee725b18733cc851da4976956f89ab529f09da
 
 import { SmsAdapter } from './sms.adapter.js';
 import { SmsProvider } from './sms.provider.js';
@@ -38,9 +32,6 @@ export function getSms() {
   return smsInstance;
 }
 
-<<<<<<< HEAD
-export { SmsProvider, TwoFactorAdapter, MSG91Adapter };
-=======
 /**
  * Check if SMS is initialized.
  */
@@ -67,4 +58,3 @@ export async function shutdownSms() {
 }
 
 export { SmsProvider, SmsAdapter };
->>>>>>> 57ee725b18733cc851da4976956f89ab529f09da

@@ -22,27 +22,6 @@ const router = Router();
 router.use(authenticate);
 router.use(authorize(ROLES.SCHOOL_ADMIN));
 
-<<<<<<< HEAD
-// Rate limiting for sending (prevent spam)
-const sendLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// ─── Announcements ────────────────────────────────────────────────
-router.get('/announcements', validate(listAnnouncementsQuerySchema, 'query'), controller.listAnnouncements);
-router.get('/announcements/stats', controller.getAnnouncementStats);
-router.post('/announcements', sendLimiter, validate(createAnnouncementSchema), controller.createAnnouncement);
-router.put('/announcements/:id', validate(updateAnnouncementSchema), controller.updateAnnouncement);
-router.delete('/announcements/:id', controller.deleteAnnouncement);
-
-// ─── Delivery Logs ────────────────────────────────────────────────
-router.get('/delivery-logs', validate(deliveryLogQuerySchema, 'query'), controller.getDeliveryLogs);
-router.get('/delivery-logs/stats', controller.getDeliveryStats);
-router.post('/delivery-logs/:deliveryId/retry', validate(retryDeliverySchema, 'params'), controller.retryDelivery);
-=======
 // ─── Announcement ─────────────────────────────────────────────────────────────
 
 export const createAnnouncementSchema = z.object({
@@ -55,7 +34,6 @@ export const createAnnouncementSchema = z.object({
   targetSections: z.array(z.string()).optional().default([]),
   priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).default('NORMAL'),
 });
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
 
 // ─── Messages ─────────────────────────────────────────────────────
 router.get('/messages/threads', validate(listMessagesQuerySchema, 'query'), controller.getThreads);
@@ -63,9 +41,6 @@ router.get('/messages', validate(listMessagesQuerySchema, 'query'), controller.g
 router.post('/messages', sendLimiter, validate(sendMessageSchema), controller.sendMessage);
 router.patch('/messages/threads/:parentId/read', validate(markThreadReadSchema, 'params'), controller.markThreadRead);
 
-<<<<<<< HEAD
-export default router;
-=======
 export const sendMessageSchema = z.object({
   parentId: cuid,
   studentId: cuid.optional(),
@@ -134,4 +109,3 @@ export const createCampaignSchema = z.object({
   targetGrades: z.array(z.string()).optional().default([]),
   targetSections: z.array(z.string()).optional().default([]),
 });
->>>>>>> f769c34b07b38ef93f84fb7ec946cdc6fdb91efd
