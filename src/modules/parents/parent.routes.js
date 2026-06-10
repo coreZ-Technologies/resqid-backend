@@ -4,7 +4,7 @@ import { validate } from '#middleware/validate.middleware.js';
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
 import { authorize } from '#middleware/auth/authorize.middleware.js';
 import { ROLES } from '#shared/constants/roles.js';
-import * as controller from './parent.controller.js';
+import * as controller from './parent.controller.js';              // ✅ Fixed duplicate import
 import {
   parentProfileSchema,
   updateVisibilitySchema,
@@ -15,28 +15,29 @@ import {
   generateUploadUrlSchema,
   confirmUploadSchema,
 } from './parent.validation.js';
-import * as controller from './parent.controller.js';
 
 const router = Router();
 
-// All routes require authentication and school admin role
+// ─── Authentication ─────────────────────────────────────────────────────────
+// All parent routes require authentication
 router.use(authenticate);
-router.use(authorize(ROLES.SCHOOL_ADMIN));
+
+// ─── Role authorization ─────────────────────────────────────────────────────
+// Parent endpoints can be accessed by PARENT (self) or SCHOOL_ADMIN (for management)
+router.use(authorize(ROLES.PARENT, ROLES.SCHOOL_ADMIN));
 
 // =============================================================================
-// DASHBOARD
+// DASHBOARD & PROFILE (Parent Self-Service)
 // =============================================================================
 
+// Get parent dashboard data
 router.get('/me', controller.getMe);
 
-// =============================================================================
-// PROFILE
-// =============================================================================
-
+// Update own profile (PARENT only; SCHOOL_ADMIN may also use for support)
 router.patch('/me', validate(parentProfileSchema), controller.updateParentProfile);
 
 // =============================================================================
-// NOTIFICATIONS
+// NOTIFICATION PREFERENCES
 // =============================================================================
 
 router.patch(
@@ -49,16 +50,20 @@ router.patch(
 // CHILD MANAGEMENT
 // =============================================================================
 
+// Update card visibility for a child
 router.patch(
   '/me/students/:studentId/visibility',
   validate(updateVisibilitySchema),
   controller.updateVisibility
 );
 
+// Lock child's card (emergency)
 router.post('/me/students/:studentId/lock', controller.lockCard);
 
+// Link a child via RFID card number
 router.post('/me/children', validate(linkCardSchema), controller.linkCard);
 
+// Set active child (for dashboard default)
 router.patch('/me/active-child', validate(setActiveStudentSchema), controller.setActiveStudent);
 
 // =============================================================================
@@ -68,21 +73,23 @@ router.patch('/me/active-child', validate(setActiveStudentSchema), controller.se
 router.get('/me/students/:studentId/scans', controller.getScanHistory);
 
 // =============================================================================
-// DEVICE
+// DEVICE REGISTRATION (Push Notifications)
 // =============================================================================
 
 router.post('/me/device', validate(registerDeviceTokenSchema), controller.registerDeviceToken);
 
 // =============================================================================
-// PHOTO UPLOAD
+// PHOTO UPLOAD (Student Photos)
 // =============================================================================
 
+// Generate presigned upload URL
 router.post(
   '/me/students/:studentId/photo/upload-url',
   validate(generateUploadUrlSchema),
   controller.generatePhotoUploadUrl
 );
 
+// Confirm photo upload after S3 upload completes
 router.post(
   '/me/students/:studentId/photo/confirm',
   validate(confirmUploadSchema),
