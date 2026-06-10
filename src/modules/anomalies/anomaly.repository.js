@@ -229,4 +229,116 @@ export const anomalyRepository = {
       },
     });
   },
+
+  // NEW: Stream CSV export using cursor pagination
+  async streamExport(schoolId, filters, writeStream) {
+    const { status, severity, search } = filters;
+
+    const where = { schoolId };
+
+    if (status === 'open') where.resolvedAt = null;
+    else if (status === 'resolved') where.resolvedAt = { not: null };
+    else if (status === 'investigating') {
+      where.resolvedAt = null;
+      where.resolution = { not: null };
+    }
+
+    if (severity) {
+      where.severity = severity === 'high' ? { in: ['HIGH', 'CRITICAL'] } : severity.toUpperCase();
+    }
+
+    if (search) {
+      where.OR = [
+        { description: { contains: search, mode: 'insensitive' } },
+        { student: { firstName: { contains: search, mode: 'insensitive' } } },
+        { student: { lastName: { contains: search, mode: 'insensitive' } } },
+        { id: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Write CSV header
+    const headers = [
+      'id', 'type', 'severity', 'status', 'studentName', 'studentId', 'class',
+      'description', 'location', 'time', 'detectedBy'
+    ];
+    writeStream.write(headers.join(',') + '\n');
+
+    const BATCH_SIZE = 500;
+    let lastId = undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+      const batch = await prisma.scanAnomaly.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        take: BATCH_SIZE,
+        ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
+        select: {
+          id: true,
+          type: true,
+          severity: true,
+          resolvedAt: true,
+          resolution: true,
+          description: true,
+          metadata: true,
+          detectedAt: true,
+          student: {
+            select: {
+              firstName: true,
+              lastName: true,
+              studentId: true,
+              grade: true,
+              section: true,
+            },
+          },
+        },
+      });
+
+      if (batch.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      for (const anomaly of batch) {
+        // Format anomaly for export (similar to service)
+        const student = anomaly.student;
+        const studentName = student
+          ? `${student.firstName || ''} ${student.lastName || ''}`.trim()
+          : null;
+        const className = student?.grade
+          ? `Class ${student.grade}${student.section ? `-${student.section}` : ''}`
+          : '—';
+        const type = ANOMALY_TYPE_MAP[anomaly.type] || anomaly.type || 'suspicious_timing';
+        const severityVal = SEVERITY_MAP[anomaly.severity] || 'low';
+        const statusVal = anomaly.resolvedAt ? 'resolved' : (anomaly.resolution ? 'investigating' : 'open');
+        let location = '';
+        const desc = anomaly.description || '';
+        if (desc.includes('km away')) location = 'Location Jump Detected';
+        else if (desc.includes('Gate')) {
+          const gates = desc.match(/Gate [A-Z]/g);
+          location = gates ? gates.join(' → ') : '';
+        }
+
+        const row = [
+          anomaly.id,
+          type,
+          severityVal,
+          statusVal,
+          `"${(studentName || 'Unknown').replace(/"/g, '""')}"`,
+          student?.studentId || '',
+          className,
+          `"${desc.replace(/"/g, '""')}"`,
+          location,
+          anomaly.detectedAt?.toISOString() || '',
+          anomaly.metadata?.detectedBy || 'Auto-detection',
+        ];
+        writeStream.write(row.join(',') + '\n');
+      }
+
+      lastId = batch[batch.length - 1].id;
+      if (batch.length < BATCH_SIZE) hasMore = false;
+    }
+
+    writeStream.end();
+  },
 };

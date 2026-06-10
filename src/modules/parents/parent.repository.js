@@ -231,7 +231,7 @@ export const getStats = async (schoolId) => {
   return { totalParents: total, activeParents: active };
 };
 
-// ─── Export ───────────────────────────────────────────────────────────────────
+// ─── Export (Legacy, kept for backward compatibility) ─────────────────────────
 
 export const findForExport = async (schoolId, filters = {}) => {
   const parentIds = await prisma.parentStudent.findMany({
@@ -269,4 +269,94 @@ export const findForExport = async (schoolId, filters = {}) => {
       },
     },
   });
+};
+
+// ─── Streaming Export (new, memory efficient) ─────────────────────────────────
+
+export const streamExport = async (schoolId, filters, writeStream) => {
+  const { grade, section, isActive } = filters;
+
+  // Build where clause for parents linked to students in this school
+  const where = {
+    students: {
+      some: {
+        student: {
+          schoolId,
+          ...(grade && { grade }),
+          ...(section && { section }),
+        },
+        isActive: true,
+      },
+    },
+  };
+
+  if (isActive !== undefined) where.isActive = isActive;
+
+  // CSV headers
+  const headers = ['First Name', 'Last Name', 'Phone', 'Email', 'City', 'State', 'Children'];
+  writeStream.write(headers.join(',') + '\n');
+
+  const BATCH_SIZE = 500;
+  let lastId = undefined;
+  let hasMore = true;
+
+  while (hasMore) {
+    const batch = await prisma.parentUser.findMany({
+      where,
+      orderBy: { id: 'asc' },
+      take: BATCH_SIZE,
+      ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        email: true,
+        city: true,
+        state: true,
+        students: {
+          where: { isActive: true },
+          select: {
+            student: {
+              select: { firstName: true, lastName: true, grade: true, section: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (batch.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    for (const parent of batch) {
+      const childrenStr = parent.students
+        .map(
+          (s) =>
+            `${s.student?.firstName || ''} ${s.student?.lastName || ''} (${s.student?.grade || ''}-${s.student?.section || ''})`.trim()
+        )
+        .filter(Boolean)
+        .join('; ');
+
+      const row = [
+        parent.firstName || '',
+        parent.lastName || '',
+        parent.phone || '',
+        parent.email || '',
+        parent.city || '',
+        parent.state || '',
+        childrenStr,
+      ];
+
+      writeStream.write(
+        row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',') + '\n'
+      );
+    }
+
+    lastId = batch[batch.length - 1].id;
+    if (batch.length < BATCH_SIZE) hasMore = false;
+  }
+
+  writeStream.end();
 };

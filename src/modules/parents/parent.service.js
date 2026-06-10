@@ -59,9 +59,21 @@ export const create = async (data, schoolId) => {
 export const update = async (id, data, req) => {
   const { role } = req.user;
 
-  // Parent self-update — restricted fields
+  // Parent self‑update — restricted fields + email uniqueness
   if (role === 'PARENT') {
     if (req.user.id !== id) throw ApiError.forbidden('Can only edit own profile');
+
+    // Check email uniqueness if provided
+    if (data.email) {
+      const existing = await prisma.parentUser.findFirst({
+        where: {
+          email: data.email,
+          id: { not: id },
+        },
+      });
+      if (existing) throw ApiError.conflict('Email already used by another parent');
+    }
+
     const allowed = [
       'firstName',
       'lastName',
@@ -101,5 +113,13 @@ export const getStats = async (schoolId) => {
 };
 
 export const exportList = async (schoolId, filters) => {
+  // Legacy export (kept for backward compatibility)
   return repo.findForExport(schoolId, filters);
+};
+
+// ─── Streaming CSV Export ─────────────────────────────────────────────────────
+export const exportCsvStream = async (schoolId, filters, res) => {
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename=parents-${Date.now()}.csv`);
+  await repo.streamExport(schoolId, filters, res);
 };

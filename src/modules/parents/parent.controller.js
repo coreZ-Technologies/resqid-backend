@@ -1,5 +1,5 @@
 // =============================================================================
-// modules/parents/parent.controller.js — RESQID
+// modules/parents/parent.controller.js — RESQID (streaming export)
 // =============================================================================
 
 import { ApiResponse } from '#shared/response/ApiResponse.js';
@@ -55,38 +55,8 @@ export const stats = asyncHandler(async (req, res) => {
   ApiResponse.ok(res, result);
 });
 
+// ─── Streaming CSV Export (memory efficient) ────────────────────────────────
 export const exportList = asyncHandler(async (req, res) => {
   const query = parentExportQuerySchema.parse(req.query);
-  const data = await service.exportList(req.schoolId, query);
-
-  if (query.format === 'csv') {
-    const csv = convertToCSV(data);
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=parents-${Date.now()}.csv`);
-    return res.send(csv);
-  }
-
-  ApiResponse.ok(res, data);
+  await service.exportCsvStream(req.schoolId, query, res);
 });
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-function convertToCSV(data) {
-  if (!data?.length) return '';
-  const headers = ['First Name', 'Last Name', 'Phone', 'Email', 'City', 'State', 'Children'];
-  const rows = data.map((p) => [
-    p.firstName,
-    p.lastName,
-    p.phone,
-    p.email || '',
-    p.city || '',
-    p.state || '',
-    p.students
-      ?.map((s) => `${s.student?.firstName} (${s.student?.grade}-${s.student?.section})`)
-      .join('; ') || '',
-  ]);
-  return [
-    headers.join(','),
-    ...rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')),
-  ].join('\n');
-}

@@ -37,13 +37,8 @@ export const getFilterOptions = asyncHandler(async (req, res) => {
   ApiResponse.ok(res, options);
 });
 
+// ✅ Streaming CSV export – memory efficient
 export const exportCsv = asyncHandler(async (req, res) => {
   const query = anomalyQuerySchema.parse(req.query);
-  const { headers, rows } = await anomalyService.exportCsv(req.schoolId, query);
-
-  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="anomalies.csv"');
-  res.send(csv);
+  await anomalyService.exportCsvStream(req.schoolId, query, res);
 });
