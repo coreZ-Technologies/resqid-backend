@@ -153,6 +153,7 @@ export const getStats = async (schoolId) => {
 export const exportList = async (schoolId, filters) => {
   return repo.findForExport(schoolId, filters);
 };
+<<<<<<< HEAD
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARENT SELF‑SERVICE (called by parent.controller.js)
@@ -208,3 +209,5 @@ export const setActiveStudent = async (parentId, studentId) => {
 
 export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
   repo.getScanHistory(parentId, { studentId, page, limit, filter });
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e

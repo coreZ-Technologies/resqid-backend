@@ -306,6 +306,7 @@ export const getParentHome = async (parentId) => {
     scanCount,
   };
 };
+<<<<<<< HEAD
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROFILE
@@ -452,3 +453,5 @@ export const getScanHistory = async (
 
   return { scans: rows, total, page, limit };
 };
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e

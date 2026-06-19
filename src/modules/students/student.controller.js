@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // src/modules/m6-students/student.controller.js
 import { ApiResponse } from '#shared/response/ApiResponse.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
@@ -132,6 +133,8 @@ export const bulkUploadStudents = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, result, 'Bulk upload processed');
 });
 =======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
 // =============================================================================
 // modules/students/student.controller.js — RESQID
 // =============================================================================
@@ -192,4 +195,7 @@ export const stats = asyncHandler(async (req, res) => {
   const result = await service.getStats(req.schoolId);
   ApiResponse.ok(res, result);
 });
+<<<<<<< HEAD
 >>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e

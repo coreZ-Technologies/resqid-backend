@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // src/modules/scan-log/scanLog.repository.js
 import { prisma } from '#config/prisma.js';
 
@@ -156,6 +157,8 @@ export class ScanLogRepository {
   }
 }
 =======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
 // =============================================================================
 // modules/scan-log/scanLog.repository.js — RESQID
 // =============================================================================
@@ -350,4 +353,7 @@ export const getStats = async (schoolId) => {
     avgResponseMs: Math.round(avgResponse._avg?.responseTimeMs || 0),
   };
 };
+<<<<<<< HEAD
 >>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e

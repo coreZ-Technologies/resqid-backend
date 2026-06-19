@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // src/modules/notification/notification.service.js
 import { NotificationRepository } from './notification.repository.js';
 import { notificationsQueue } from '#orchestrator/queues/queue.config.js';
@@ -34,6 +35,8 @@ export class NotificationService {
     } else if (recipientType === 'individual' && selectedParents?.length) {
       recipientIds = selectedParents;
 =======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
 // =============================================================================
 // notification.module.service.js — RESQID
 // Business logic for the notification module.
@@ -145,7 +148,10 @@ export const fanOutNotification = async ({
     if (eventSlug && !isEventEnabled(prefs, eventSlug)) {
       logger.debug({ parentId, eventSlug }, 'Notification suppressed by parent preference');
       return { count: 0 };
+<<<<<<< HEAD
 >>>>>>> edc29bd731c98b248db2db23ddd164ac14db75d3
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
     }
 
     if (!recipientIds.length) throw new Error('No recipients found');
@@ -153,6 +159,7 @@ export const fanOutNotification = async ({
     const category = TYPE_TO_CATEGORY[type] || 'OTHER';
     const channels = Array.isArray(channel) ? channel : [channel];
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     // Create notification record (one per recipient? Better to create one with batch)
     // For simplicity, create a single notification record and track deliveries separately.
@@ -287,6 +294,8 @@ export const fanOutNotification = async ({
   }
 }
 =======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
   const jsonData = buildNotificationData(type, data);
 
   const rows = activeChannels.map((channel) => ({
@@ -1514,5 +1523,9 @@ export default {
   // System
   notifySchoolRenewalDue,
   notifyInternalAlert,
+<<<<<<< HEAD
 };
 >>>>>>> edc29bd731c98b248db2db23ddd164ac14db75d3
+=======
+};
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e

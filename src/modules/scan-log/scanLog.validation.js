@@ -1,10 +1,14 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // src/modules/scan-log/scanLog.validation.js
 =======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
 // =============================================================================
 // modules/scan-log/scanLog.validation.js — RESQID
 // =============================================================================
 
+<<<<<<< HEAD
 >>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
 import { z } from 'zod';
 import { SCAN_RESULTS } from './scanLog.constants.js';
@@ -30,6 +34,11 @@ export const getScanLogParamsSchema = z.object({
   id: z.string().min(1),
 });
 =======
+=======
+import { z } from 'zod';
+import { SCAN_RESULTS } from './scanLog.constants.js';
+
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
 const cuid = z.string().min(1, 'Invalid ID format');
 
 export const scanLogQuerySchema = z.object({
@@ -52,4 +61,7 @@ export const scanLogIdParamsSchema = z.object({ id: cuid });
 export const cleanupSchema = z.object({
   beforeDate: z.string().datetime('beforeDate must be ISO date'),
 });
+<<<<<<< HEAD
 >>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e

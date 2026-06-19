@@ -1,16 +1,23 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // src/modules/scan-log/scanLog.service.js
 import { ScanLogRepository } from './scanLog.repository.js';
 =======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
 // =============================================================================
 // modules/scan-log/scanLog.service.js — RESQID
 // =============================================================================
 
+<<<<<<< HEAD
 >>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
 import { ApiError } from '#shared/response/ApiError.js';
 import * as repo from './scanLog.repository.js';
 import { prisma } from '#config/prisma.js';
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 const repo = new ScanLogRepository();
 
@@ -86,6 +93,8 @@ export class ScanLogService {
   }
 }
 =======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
 // ─── List (Role-based) ────────────────────────────────────────────────────────
 
 export const list = async (req) => {
@@ -152,4 +161,7 @@ export const cleanupOld = async (beforeDate) => {
 export const getStats = async (schoolId) => {
   return repo.getStats(schoolId);
 };
+<<<<<<< HEAD
 >>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e

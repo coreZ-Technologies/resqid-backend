@@ -14,7 +14,7 @@ import {
   detectSuspiciousActivity,
   validateScanCodeFormat,
   addScanSecurityHeaders,
-} from '#middleware/security/scan.middleware.js';
+} from './scan.middleware.js';  // ✅ Fixed path
 import {
   handleScan,
   listScanLogs,
