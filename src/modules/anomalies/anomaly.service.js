@@ -132,6 +132,7 @@ export const anomalyService = {
     return anomalyRepository.getFilterOptions(schoolId);
   },
 
+  // Legacy export (kept for backward compatibility)
   async exportCsv(schoolId, query) {
     const anomalies = await anomalyRepository.findAllForExport(schoolId, query);
 
@@ -167,5 +168,12 @@ export const anomalyService = {
     });
 
     return { headers, rows };
+  },
+
+  // NEW: Streaming CSV export – memory efficient
+  async exportCsvStream(schoolId, query, res) {
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="anomalies.csv"');
+    await anomalyRepository.streamExport(schoolId, query, res);
   },
 };

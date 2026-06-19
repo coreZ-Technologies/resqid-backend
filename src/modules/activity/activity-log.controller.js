@@ -22,11 +22,6 @@ export const getFilterOptions = asyncHandler(async (req, res) => {
 
 export const exportCsv = asyncHandler(async (req, res) => {
   const query = logQuerySchema.parse(req.query);
-  const { headers, rows } = await activityLogService.exportCsv(req.schoolId, query);
-
-  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-
-  res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename="activity-logs.csv"');
-  res.send(csv);
+  // Streaming export – writes directly to response
+  await activityLogService.exportCsvStream(req.schoolId, query, res);
 });

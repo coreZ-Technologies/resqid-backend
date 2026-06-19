@@ -24,6 +24,7 @@ export const activityLogService = {
     return activityLogRepository.getFilterOptions();
   },
 
+  // Legacy export (kept for backward compatibility if needed)
   async exportCsv(schoolId, query) {
     const logs = await activityLogRepository.findAllForExport(schoolId, query);
 
@@ -56,5 +57,15 @@ export const activityLogService = {
     ]);
 
     return { headers, rows };
+  },
+
+  // NEW: Streaming CSV export – memory efficient for large datasets
+  async exportCsvStream(schoolId, query, res) {
+    // Set response headers for CSV download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="activity-logs.csv"');
+
+    // Delegate to repository which writes directly to the response stream
+    await activityLogRepository.streamExport(schoolId, query, res);
   },
 };

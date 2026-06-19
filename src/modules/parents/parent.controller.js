@@ -1,7 +1,11 @@
 <<<<<<< HEAD
 // =============================================================================
+<<<<<<< HEAD
 // modules/parents/parent.controller.js — RESQID
 // Thin HTTP wrappers for parent endpoints.
+=======
+// modules/parents/parent.controller.js — RESQID (streaming export)
+>>>>>>> 2486c963b630c5536708957167d372145ac148b4
 // =============================================================================
 
 import { ApiResponse } from '#shared/response/ApiResponse.js';
@@ -74,6 +78,7 @@ export const registerDeviceToken = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, result, 'Device registered');
 });
 
+<<<<<<< HEAD
 // ─── Link a Child via RFID Card ──────────────────────────────────────────────
 
 export const linkCard = asyncHandler(async (req, res) => {
@@ -231,3 +236,10 @@ export const confirmPhotoUpload = asyncHandler(async (req, res) => {
   ApiResponse.ok(res, { photoUrl });
 });
 >>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+=======
+// ─── Streaming CSV Export (memory efficient) ────────────────────────────────
+export const exportList = asyncHandler(async (req, res) => {
+  const query = parentExportQuerySchema.parse(req.query);
+  await service.exportCsvStream(req.schoolId, query, res);
+});
+>>>>>>> 2486c963b630c5536708957167d372145ac148b4

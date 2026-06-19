@@ -90,9 +90,27 @@ export const create = async (data, schoolId) => {
 export const update = async (id, data, req) => {
   const { role, id: userId, schoolId } = req.user;
 
+<<<<<<< HEAD
   // Parent self‑update — restricted fields
   if (role === 'PARENT') {
     if (userId !== id) throw ApiError.forbidden('Can only edit own profile');
+=======
+  // Parent self‑update — restricted fields + email uniqueness
+  if (role === 'PARENT') {
+    if (req.user.id !== id) throw ApiError.forbidden('Can only edit own profile');
+
+    // Check email uniqueness if provided
+    if (data.email) {
+      const existing = await prisma.parentUser.findFirst({
+        where: {
+          email: data.email,
+          id: { not: id },
+        },
+      });
+      if (existing) throw ApiError.conflict('Email already used by another parent');
+    }
+
+>>>>>>> 2486c963b630c5536708957167d372145ac148b4
     const allowed = [
       'name',
       'email',
@@ -151,8 +169,10 @@ export const getStats = async (schoolId) => {
 };
 
 export const exportList = async (schoolId, filters) => {
+  // Legacy export (kept for backward compatibility)
   return repo.findForExport(schoolId, filters);
 };
+<<<<<<< HEAD
 <<<<<<< HEAD
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -211,3 +231,12 @@ export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
   repo.getScanHistory(parentId, { studentId, page, limit, filter });
 =======
 >>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+=======
+
+// ─── Streaming CSV Export ─────────────────────────────────────────────────────
+export const exportCsvStream = async (schoolId, filters, res) => {
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename=parents-${Date.now()}.csv`);
+  await repo.streamExport(schoolId, filters, res);
+};
+>>>>>>> 2486c963b630c5536708957167d372145ac148b4

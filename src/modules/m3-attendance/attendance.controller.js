@@ -54,7 +54,6 @@ export const processTap = async (req, res) => {
   const schoolId = req.user?.schoolId;
 
   const result = await service.processTap({ uidHash, deviceId, tappedAt, schoolId });
-
   return ApiResponse.ok(res, result, result.alreadyMarked ? 'Already marked' : 'Marked PRESENT');
 };
 
@@ -67,7 +66,6 @@ export const processBulkTaps = async (req, res) => {
   const schoolId = req.user?.schoolId;
 
   const result = await service.processBulkTaps({ deviceId, schoolId, taps });
-
   return ApiResponse.ok(
     res,
     result,
@@ -115,7 +113,7 @@ export const updateAttendance = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// QUERIES
+// QUERIES — ✅ Pass req.user for scoping
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const getSessionRecords = async (req, res) => {
@@ -138,6 +136,7 @@ export const getStudentAttendance = async (req, res) => {
   const { studentId } = req.params;
   const { page, limit, from, to } = req.query;
   const result = await service.getStudentAttendance({
+    user: req.user,                // ✅ Pass full user
     studentId,
     schoolId: req.schoolId,
     page,
@@ -155,6 +154,7 @@ export const getStudentAttendance = async (req, res) => {
 export const getClassAttendance = async (req, res) => {
   const { grade, section, from, to } = req.query;
   const result = await service.getClassAttendance({
+    user: req.user,                // ✅ Pass full user
     schoolId: req.schoolId,
     grade,
     section,

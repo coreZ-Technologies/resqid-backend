@@ -85,13 +85,56 @@ function inferStatus(severity) {
   return 'success';
 }
 
+function formatLogEntry(log) {
+  const actionType = inferActionType(log.action);
+  const module = inferModule(log.entity);
+  const device = inferDevice(log.userAgent);
+  const severity = inferSeverity(log.severity);
+  const status = inferStatus(log.severity);
+
+  const actorName = log.actorName || 'System';
+  const avatar = actorName
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  return {
+    id: log.id,
+    actor: actorName,
+    role: ROLE_MAP[log.actorType] || 'System',
+    avatar,
+    action: formatAction(log.action, log.entity, log.metadata),
+    module,
+    type: actionType,
+    severity,
+    ip: log.ipAddress || 'internal',
+    device,
+    time: log.createdAt?.toISOString() || null,
+    status,
+  };
+}
+
+function formatAction(action, entity, metadata) {
+  const label = metadata?.entityLabel || entity || '';
+  if (action?.includes('CREATED')) return `Created ${label}`;
+  if (action?.includes('UPDATED')) return `Updated ${label}`;
+  if (action?.includes('DELETED')) return `Deleted ${label}`;
+  if (action?.includes('LOGIN')) return 'Logged in';
+  if (action?.includes('LOGOUT')) return 'Logged out';
+  if (action?.includes('EXPORTED')) return `Exported ${label.toLowerCase()} report`;
+  if (action?.includes('VIEWED')) return `Viewed ${label}`;
+  if (action?.includes('SENT')) return `Sent ${label.toLowerCase()}`;
+  return action || 'System action';
+}
+
 export const activityLogRepository = {
   async findAll(schoolId, filters = {}) {
     const { page = 1, limit = 10, search, type, status, role, fromDate, toDate } = filters;
 
     const where = { schoolId };
 
-    // Search across actor name, action, entity
     if (search) {
       where.OR = [
         { actorName: { contains: search, mode: 'insensitive' } },
@@ -100,7 +143,6 @@ export const activityLogRepository = {
       ];
     }
 
-    // Role filter — map frontend label back to DB enum
     if (role) {
       const dbRoles = Object.entries(ROLE_MAP)
         .filter(([, label]) => label === role)
@@ -110,14 +152,12 @@ export const activityLogRepository = {
       }
     }
 
-    // Date range
     if (fromDate || toDate) {
       where.createdAt = {};
       if (fromDate) where.createdAt.gte = new Date(`${fromDate}T00:00:00.000Z`);
       if (toDate) where.createdAt.lte = new Date(`${toDate}T23:59:59.999Z`);
     }
 
-    // Fetch all matching (type/status filtered in JS since they're derived)
     const [allLogs, total] = await Promise.all([
       prisma.auditLog.findMany({
         where,
@@ -138,20 +178,11 @@ export const activityLogRepository = {
       prisma.auditLog.count({ where }),
     ]);
 
-    // Format and filter in JS for derived fields
     let formatted = allLogs.map(formatLogEntry);
 
-    // Type filter
-    if (type) {
-      formatted = formatted.filter((l) => l.type === type);
-    }
+    if (type) formatted = formatted.filter((l) => l.type === type);
+    if (status) formatted = formatted.filter((l) => l.status === status);
 
-    // Status filter
-    if (status) {
-      formatted = formatted.filter((l) => l.status === status);
-    }
-
-    // Paginate after filtering
     const totalFiltered = formatted.length;
     const start = (page - 1) * limit;
     const paginated = formatted.slice(start, start + limit);
@@ -218,6 +249,7 @@ export const activityLogRepository = {
   },
 
   async findAllForExport(schoolId, filters = {}) {
+    // Kept for backward compatibility if needed elsewhere
     const { search, type, status, role, fromDate, toDate } = filters;
 
     const where = { schoolId };
@@ -265,50 +297,98 @@ export const activityLogRepository = {
 
     return formatted;
   },
+
+  /**
+   * Stream CSV export directly to the response stream (memory efficient).
+   * Uses cursor pagination to fetch batches of logs and writes rows incrementally.
+   */
+  async streamExport(schoolId, filters, writeStream) {
+    const { search, type, status, role, fromDate, toDate } = filters;
+
+    const where = { schoolId };
+    if (search) {
+      where.OR = [
+        { actorName: { contains: search, mode: 'insensitive' } },
+        { action: { contains: search, mode: 'insensitive' } },
+        { entity: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (role) {
+      const dbRoles = Object.entries(ROLE_MAP)
+        .filter(([, label]) => label === role)
+        .map(([dbRole]) => dbRole);
+      if (dbRoles.length > 0) where.actorType = { in: dbRoles };
+    }
+    if (fromDate || toDate) {
+      where.createdAt = {};
+      if (fromDate) where.createdAt.gte = new Date(`${fromDate}T00:00:00.000Z`);
+      if (toDate) where.createdAt.lte = new Date(`${toDate}T23:59:59.999Z`);
+    }
+
+    // Write CSV header
+    const headers = [
+      'id', 'actor', 'role', 'avatar', 'action', 'module', 'type',
+      'severity', 'ip', 'device', 'time', 'status'
+    ];
+    writeStream.write(headers.join(',') + '\n');
+
+    const BATCH_SIZE = 500;
+    let lastCursor = undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+      const batch = await prisma.auditLog.findMany({
+        where,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: BATCH_SIZE,
+        ...(lastCursor ? { cursor: { createdAt_id: lastCursor } } : {}),
+        select: {
+          id: true,
+          action: true,
+          severity: true,
+          actorName: true,
+          actorType: true,
+          entity: true,
+          ipAddress: true,
+          userAgent: true,
+          createdAt: true,
+          metadata: true,
+        },
+      });
+
+      if (batch.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      for (const log of batch) {
+        const formatted = formatLogEntry(log);
+        // Apply type/status filters (still needed until DB columns are added)
+        if (type && formatted.type !== type) continue;
+        if (status && formatted.status !== status) continue;
+
+        const row = [
+          formatted.id,
+          `"${formatted.actor.replace(/"/g, '""')}"`,
+          formatted.role,
+          formatted.avatar,
+          `"${formatted.action.replace(/"/g, '""')}"`,
+          formatted.module,
+          formatted.type,
+          formatted.severity,
+          formatted.ip,
+          formatted.device,
+          formatted.time,
+          formatted.status,
+        ];
+        writeStream.write(row.join(',') + '\n');
+      }
+
+      const last = batch[batch.length - 1];
+      lastCursor = { createdAt: last.createdAt, id: last.id };
+      if (batch.length < BATCH_SIZE) hasMore = false;
+    }
+
+    writeStream.end();
+  },
 };
-
-function formatLogEntry(log) {
-  const actionType = inferActionType(log.action);
-  const module = inferModule(log.entity);
-  const device = inferDevice(log.userAgent);
-  const severity = inferSeverity(log.severity);
-  const status = inferStatus(log.severity);
-
-  // Avatar initials from actor name
-  const actorName = log.actorName || 'System';
-  const avatar = actorName
-    .split(' ')
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
-  return {
-    id: log.id,
-    actor: actorName,
-    role: ROLE_MAP[log.actorType] || 'System',
-    avatar,
-    action: formatAction(log.action, log.entity, log.metadata),
-    module,
-    type: actionType,
-    severity,
-    ip: log.ipAddress || 'internal',
-    device,
-    time: log.createdAt?.toISOString() || null,
-    status,
-  };
-}
-
-function formatAction(action, entity, metadata) {
-  // Return human-readable action description
-  const label = metadata?.entityLabel || entity || '';
-  if (action?.includes('CREATED')) return `Created ${label}`;
-  if (action?.includes('UPDATED')) return `Updated ${label}`;
-  if (action?.includes('DELETED')) return `Deleted ${label}`;
-  if (action?.includes('LOGIN')) return 'Logged in';
-  if (action?.includes('LOGOUT')) return 'Logged out';
-  if (action?.includes('EXPORTED')) return `Exported ${label.toLowerCase()} report`;
-  if (action?.includes('VIEWED')) return `Viewed ${label}`;
-  if (action?.includes('SENT')) return `Sent ${label.toLowerCase()}`;
-  return action || 'System action';
-}
