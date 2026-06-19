@@ -65,12 +65,27 @@ export const findProfileForScan = (studentId) =>
     },
   });
 
-export const upsertProfile = (studentId, schoolId, data) =>
-  prisma.emergencyProfile.upsert({
+// ✅ FIXED: Respect incoming isComplete; default to true only if not provided.
+export const upsertProfile = (studentId, schoolId, data) => {
+  // Ensure isComplete uses provided value, else default true for creation.
+  const createData = {
+    studentId,
+    schoolId,
+    isComplete: data.isComplete ?? true,
+    ...data,
+  };
+
+  // For update, we simply spread data (no forced override)
+  return prisma.emergencyProfile.upsert({
     where: { studentId },
-    create: { studentId, schoolId, isComplete: true, ...data },
-    update: { ...data, isComplete: true, updatedAt: new Date() },
+    create: createData,
+    update: {
+      ...data,
+      // No forced isComplete: true — respect incoming data.
+      // Prisma's @updatedAt will handle updatedAt automatically.
+    },
   });
+};
 
 // ─── Contacts ─────────────────────────────────────────────────────────────────
 
@@ -127,6 +142,58 @@ export const findIncidentById = (incidentId) =>
 export const updateIncident = (incidentId, data) =>
   prisma.emergencyIncident.update({ where: { id: incidentId }, data });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 🆕 NEW: Global Incidents (School-wide) — Added for Dashboard
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch paginated incidents across ALL students in a school.
+ * Supports filtering by type, severity, and status.
+ */
+export const findIncidentsBySchool = (schoolId, { page = 1, limit = 20, type, severity, status }) => {
+  const skip = (page - 1) * limit;
+  const where = {
+    schoolId,
+    ...(type && { type }),
+    ...(severity && { severity }),
+    ...(status && { status }),
+  };
+
+  return prisma.emergencyIncident.findMany({
+    where,
+    skip,
+    take: limit,
+    orderBy: { occurredAt: 'desc' },
+    include: {
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          grade: true,
+          section: true,
+        },
+      },
+      reportedBy: { select: { name: true } },
+      handledBy: { select: { name: true } },
+    },
+  });
+};
+
+/**
+ * Count incidents across ALL students in a school.
+ * Supports the same filters as findIncidentsBySchool.
+ */
+export const countIncidentsBySchool = (schoolId, { type, severity, status }) => {
+  const where = {
+    schoolId,
+    ...(type && { type }),
+    ...(severity && { severity }),
+    ...(status && { status }),
+  };
+  return prisma.emergencyIncident.count({ where });
+};
+
 // ─── Access Logs ──────────────────────────────────────────────────────────────
 
 export const logAccess = (data) => prisma.emergencyAccessLog.create({ data });
@@ -147,7 +214,10 @@ export const countAccessLogsByStudent = (studentId) =>
 export const createDrill = (data) => prisma.emergencyDrill.create({ data });
 
 export const findDrillsBySchool = (schoolId) =>
-  prisma.emergencyDrill.findMany({ where: { schoolId }, orderBy: { conductedAt: 'desc' } });
+  prisma.emergencyDrill.findMany({
+    where: { schoolId },
+    orderBy: { conductedAt: 'desc' },
+  });
 
 // ─── Verification ─────────────────────────────────────────────────────────────
 

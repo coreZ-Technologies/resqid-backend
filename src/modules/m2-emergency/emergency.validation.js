@@ -92,8 +92,7 @@ export const emergencyProfileSchema = z.object({
   showInstructions: z.boolean().optional(),
   showInsurance: z.boolean().optional(),
   showSpecialNeeds: z.boolean().optional(),
-  emergencyContact: z.string().max(200).nullable().optional(),
-  emergencyPhone: z.string().max(20).nullable().optional(),
+  isComplete: z.boolean().optional(),
   contacts: z
     .array(
       z.object({
@@ -144,7 +143,7 @@ export const emergencyIncidentSchema = z.object({
   severity: severityEnum.optional().default('MEDIUM'),
   description: z.string().min(1).max(1000),
   location: z.string().max(500).nullable().optional(),
-  occurredAt: z.string().datetime().optional(),
+  occurredAt: z.string().datetime().nullable().optional(),
   actionTaken: z.string().max(1000).nullable().optional(),
   medicationGiven: z.string().max(500).nullable().optional(),
   ambulanceCalled: z.boolean().optional().default(false),
@@ -164,7 +163,7 @@ export const emergencyDrillSchema = z.object({
   type: drillTypeEnum.optional().default('FIRE'),
   description: z.string().max(1000).nullable().optional(),
   scheduledFor: z.string().datetime().nullable().optional(),
-  conductedAt: z.string().datetime().optional(),
+  conductedAt: z.string().datetime().nullable().optional(),
   totalStudents: z.number().int().min(0).optional().default(0),
   totalStaff: z.number().int().min(0).optional().default(0),
   evacuationTime: z.number().int().min(0).nullable().optional(),
@@ -182,4 +181,38 @@ export const emergencyQuerySchema = z.object({
   type: incidentTypeEnum.optional(),
   severity: severityEnum.optional(),
   status: incidentStatusEnum.optional(),
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🆕 NEW SCHEMAS FOR EMERGENCY MODULE (Added for Frontend PRD Alignment)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Student List Query (for GET /emergency/students) ──────────────────────
+
+export const studentListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  search: z.string().optional().default(''),
+  class: z.string().optional(),
+  risk: z.enum(['high', 'low', 'all']).optional().default('all'),
+});
+
+// ─── Emergency Alert Broadcast (for POST /emergency/alert) ──────────────────
+
+export const emergencyAlertSchema = z.object({
+  studentId: cuid.optional(), // Optional: if alerting multiple students, use contacts array
+  message: z.string().max(500).optional(),
+  contacts: z.array(cuid).optional(), // Specific contact IDs to alert (if not all)
+});
+
+// ─── Emergency SMS (for POST /emergency/contacts/:contactId/sms) ────────────
+
+export const emergencySmsSchema = z.object({
+  message: z.string().min(1).max(500),
+});
+
+// ─── Dashboard Stats Query (for GET /emergency/dashboard/stats) ────────────
+
+export const dashboardStatsQuerySchema = z.object({
+  // No required params — just scoped to school
 });
