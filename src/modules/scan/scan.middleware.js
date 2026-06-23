@@ -27,7 +27,11 @@ const RAPID_SCAN_THRESHOLD = 5;
 const BLOCK_IP_AFTER_RAPID = 10;
 const BLOCK_DURATION_SEC = 300;
 
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // ─── Trusted IPs ──────────────────────────────────────────────────────────────
 
 const trustedIps = new Set([
@@ -62,7 +66,11 @@ export const serveEmergencyHtml = (req, res, next) => {
   if (accept.includes('text/html')) {
     // Use absolute path for reliability
     const emergencyHtmlPath = path.resolve(__dirname, '../../../public/emergency.html');
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
     
     return res.sendFile(emergencyHtmlPath, {
       headers: {
@@ -91,7 +99,11 @@ export const serveEmergencyHtml = (req, res, next) => {
  * Check if IP is blocked in Redis before allowing scan
  */
 =======
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 export const checkIpBlockedRedis = async (req, res, next) => {
   const ip = extractIp(req);
 
@@ -111,7 +123,11 @@ export const checkIpBlockedRedis = async (req, res, next) => {
         message: 'Access restricted',
         errorCode: 'IP_BLOCKED',
       });
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
     }
   } catch (err) {
     logger.error({ err: err.message, ip }, 'IP block check error — passing');
@@ -132,7 +148,11 @@ export const publicScanLimiter = async (req, res, next) => {
 =======
 export const publicScanLimiter = async (req, res, next) => {
   const ip = extractIp(req);
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
   if (trustedIps.has(ip)) return next();
 
   const key = `rl:scan:${ip}`;
@@ -155,7 +175,11 @@ export const publicScanLimiter = async (req, res, next) => {
     res.setHeader('X-RateLimit-Limit', String(PUBLIC_SCAN_LIMIT));
 
     if (current > PUBLIC_SCAN_LIMIT) {
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
       logger.info({ ip, count: current }, 'Scan IP rate limit exceeded');
       const ttl = await redis.ttl(key);
       return res.status(429).json({
@@ -179,7 +203,11 @@ export const publicScanLimiter = async (req, res, next) => {
  * Rate limit scans per specific token (20 scans per hour)
  */
 =======
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 export const perTokenScanLimit = async (req, res, next) => {
   const { code } = req.params;
   if (!code) return next();
@@ -201,7 +229,11 @@ export const perTokenScanLimit = async (req, res, next) => {
     req.scanCount = current;
 
     if (current > TOKEN_SCAN_LIMIT_PER_HOUR) {
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
       logger.info({ codePrefix: code.slice(0, 8), count: current }, 'Token scan limit exceeded');
       return res.status(429).json({
         success: false,
@@ -224,7 +256,11 @@ export const perTokenScanLimit = async (req, res, next) => {
  * Log scan request details for audit and analytics
  */
 =======
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 export const logScanRequest = async (req, res, next) => {
   const startTime = Date.now();
   const ip = extractIp(req);
@@ -239,7 +275,11 @@ export const logScanRequest = async (req, res, next) => {
   req.scanStartTime = startTime;
   req.scanIp = ip;
   
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
   logger.debug({
     type: 'scan_request',
     ip,
@@ -259,7 +299,11 @@ export const logScanRequest = async (req, res, next) => {
 =======
 // ─── Detect Suspicious Activity ───────────────────────────────────────────────
 
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 export const detectSuspiciousActivity = async (req, res, next) => {
   const ip = extractIp(req);
   const key = `suspicious:${ip}`;
@@ -283,7 +327,11 @@ export const detectSuspiciousActivity = async (req, res, next) => {
       
       if (count > BLOCK_IP_AFTER_RAPID) {
         await redis.setex(`ipblock:${ip}`, BLOCK_DURATION_SEC, 'Rapid scanning');
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
         return res.status(429).json({
           success: false,
           message: 'Too many requests. Please try again later.',
@@ -305,7 +353,11 @@ export const detectSuspiciousActivity = async (req, res, next) => {
  * Basic format validation before heavy crypto operations
  */
 =======
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 export const validateScanCodeFormat = (req, res, next) => {
   const { code } = req.params;
   
@@ -320,7 +372,11 @@ export const validateScanCodeFormat = (req, res, next) => {
 <<<<<<< HEAD
   // Basic format check: alphanumeric, dash, underscore, or encrypted format
 =======
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
   const isValidFormat = /^[A-Za-z0-9\-_]+$/.test(code);
   if (!isValidFormat && code.length !== 43) {
     logger.warn({ codePrefix: code.slice(0, 10) }, 'Invalid scan code format');
@@ -344,7 +400,11 @@ export const addScanSecurityHeaders = (req, res, next) => {
   // Add security headers for all scan responses
 =======
 export const addScanSecurityHeaders = (req, res, next) => {
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
@@ -352,6 +412,10 @@ export const addScanSecurityHeaders = (req, res, next) => {
 <<<<<<< HEAD
   
 =======
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
   next();
 };

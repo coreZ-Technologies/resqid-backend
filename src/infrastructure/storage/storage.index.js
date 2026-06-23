@@ -1,62 +1,25 @@
-// infrastructure/storage/storage.index.js — RESQID
-//
-// Storage singleton — S3-compatible adapter.
-// Works with: AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces.
-
+import crypto from 'crypto';
 import { S3Adapter } from './s3.adapter.js';
 import { StorageProvider } from './storage.provider.js';
-import { logger } from '#config/logger.js';
-
 export { StoragePath, resolveAssetUrl } from './storage.paths.js';
 
+// ---------------------------------------------------------------------------
+// Singleton
+// ---------------------------------------------------------------------------
 let storageInstance = null;
 
-/**
- * Initialize the storage adapter.
- * Called once at startup from infrastructure.index.js.
- */
 export function initializeStorage(config = {}) {
   if (!storageInstance) {
     storageInstance = new S3Adapter(config);
-    logger.info('[Storage] Storage adapter initialized');
   }
   return storageInstance;
 }
 
-/**
- * Get the storage adapter instance.
- * Throws if not initialized — call initializeStorage() first.
- */
 export function getStorage() {
   if (!storageInstance) {
-    throw new Error('[Storage] Not initialized. Call initializeStorage() first.');
+    throw new Error('[Storage] Not initialized. Call initializeStorage() before use.');
   }
   return storageInstance;
-}
-
-/**
- * Check if storage is initialized.
- */
-export function isStorageInitialized() {
-  return storageInstance !== null;
-}
-
-/**
- * Reset storage instance (useful for testing).
- */
-export function resetStorage() {
-  storageInstance = null;
-  logger.info('[Storage] Storage adapter reset');
-}
-
-/**
- * Shutdown storage adapter.
- */
-export async function shutdownStorage() {
-  if (storageInstance) {
-    storageInstance = null;
-    logger.info('[Storage] Storage adapter shut down');
-  }
 }
 
 export { StorageProvider, S3Adapter };

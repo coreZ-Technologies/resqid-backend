@@ -65,17 +65,69 @@ export const listSessions = ({ schoolId, filters = {}, page = 1, limit = 20 }) =
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TOKEN / STUDENT LOOKUP (for RFID)
+// USER CONTEXT (for role-based scoping)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Find student by RFID UID hash.
- * 🔧 Your Token model may have rfidTagNumber or uidHash field.
- */
+export const findUserContext = async (userId, role) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      student: true,        // Single Student record (if role = STUDENT)
+      teacher: {
+        include: {
+          classes: {        // Classes taught by this teacher
+            select: { classId: true },
+          },
+        },
+      },
+      parent: {
+        include: {
+          children: {       // Students linked to this parent
+            select: { studentId: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) return null;
+
+  const context = { user };
+
+  if (role === 'STUDENT' && user.student) {
+    context.studentProfileId = user.student.id;
+  }
+  if (role === 'TEACHER' && user.teacher) {
+    context.teacherClassIds = user.teacher.classes.map((c) => c.classId);
+  }
+  if (role === 'PARENT' && user.parent) {
+    context.linkedStudentIds = user.parent.children.map((c) => c.studentId);
+  }
+
+  return context;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TOKEN / STUDENT LOOKUP (for RFID) — ✅ FIXED: joins Token model
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export const findStudentByRfid = (uidHash, schoolId) =>
+  prisma.token.findFirst({
+    where: {
+      rfidTagNumber: uidHash,
+      student: { schoolId, isActive: true },
+    },
+    select: {
+      student: {
+        select: { id: true, firstName: true, lastName: true, grade: true, section: true },
+      },
+    },
+  }).then((token) => token?.student || null);
+
+export const findStudentById = (studentId, schoolId) =>
   prisma.student.findFirst({
-    where: { rfidTagNumber: uidHash, schoolId, isActive: true },
-    select: { id: true, firstName: true, lastName: true, grade: true, section: true },
+    where: { id: studentId, schoolId, isActive: true },
+    select: { id: true, classId: true, grade: true, section: true },
   });
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -1,12 +1,16 @@
 // =============================================================================
 // modules/parents/parent.repository.js — RESQID
 <<<<<<< HEAD
+<<<<<<< HEAD
 // All DB queries — ownership-gated, index-optimized.
+=======
+// Purpose-built queries for each use case.
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
-import { ApiError } from '#shared/response/ApiError.js';
 
+<<<<<<< HEAD
 // ═══════════════════════════════════════════════════════════════════════════════
 // OWNERSHIP GUARD
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -105,6 +109,8 @@ export const getParentHome = async (parentId) => {
 
 import { prisma } from '#config/prisma.js';
 
+=======
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // ─── List (School Admin) ──────────────────────────────────────────────────────
 
 export const findBySchool = async (schoolId, query = {}) => {
@@ -122,13 +128,105 @@ export const findBySchool = async (schoolId, query = {}) => {
     where: { student: { schoolId }, isActive: true },
     select: { parentId: true },
     distinct: ['parentId'],
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
   });
 
   if (!parent) return null;
 
+<<<<<<< HEAD
   const studentLinks = await prisma.parentStudent.findMany({
     where: { parentId },
+=======
+  if (isActive !== undefined) where.isActive = isActive;
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { phone: { contains: search } },
+      { email: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const [parents, total] = await Promise.all([
+    prisma.parentUser.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: sortBy === 'name' ? { firstName: sortOrder } : { [sortBy]: sortOrder },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        name: true,
+        phone: true,
+        email: true,
+        isActive: true,
+        lastLoginAt: true,
+        createdAt: true,
+        _count: { select: { students: true, devices: true } },
+      },
+    }),
+    prisma.parentUser.count({ where }),
+  ]);
+
+  return { parents, total };
+};
+
+// ─── Find All (Super Admin) ───────────────────────────────────────────────────
+
+export const findAll = async (query = {}) => {
+  const {
+    page = 1,
+    limit = 20,
+    search,
+    isActive,
+    sortBy = 'createdAt',
+    sortOrder = 'desc',
+  } = query;
+
+  const where = {};
+  if (isActive !== undefined) where.isActive = isActive;
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { phone: { contains: search } },
+      { email: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const [parents, total] = await Promise.all([
+    prisma.parentUser.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: sortBy === 'name' ? { firstName: sortOrder } : { [sortBy]: sortOrder },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        name: true,
+        phone: true,
+        email: true,
+        isActive: true,
+        lastLoginAt: true,
+        createdAt: true,
+        _count: { select: { students: true } },
+      },
+    }),
+    prisma.parentUser.count({ where }),
+  ]);
+
+  return { parents, total };
+};
+
+// ─── Detail View ──────────────────────────────────────────────────────────────
+
+export const findById = (id) =>
+  prisma.parentUser.findUnique({
+    where: { id },
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
     select: {
       relation: true,
       isPrimary: true,
@@ -272,6 +370,7 @@ export const findCardByNumber = (cardNumber) =>
       },
     },
   });
+<<<<<<< HEAD
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STUDENT MANAGEMENT
@@ -357,3 +456,6 @@ export const getScanHistory = async (parentId, { studentId, page = 1, limit = 20
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
 =======
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+};
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6

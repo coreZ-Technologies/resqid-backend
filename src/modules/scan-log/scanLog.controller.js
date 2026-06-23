@@ -301,6 +301,12 @@ export const cleanup = asyncHandler(async (req, res) => {
   ApiResponse.ok(res, result, `${result.deleted} old scan logs cleaned up`);
 });
 
+<<<<<<< HEAD
+export const stats = asyncHandler(async (req, res) => {
+  const result = await service.getStats(req.schoolId);
+  ApiResponse.ok(res, result);
+});
+=======
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 function convertToCSV(data) {
@@ -318,6 +324,10 @@ function convertToCSV(data) {
   return csvRows.join('\n');
 }
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
 =======
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6

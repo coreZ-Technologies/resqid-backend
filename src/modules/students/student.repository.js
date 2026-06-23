@@ -1,4 +1,8 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // src/modules/m6-students/student.repository.js
 import { prisma } from '#config/prisma.js';
 
@@ -124,6 +128,11 @@ export class StudentRepository {
   }
 }
 =======
+<<<<<<< HEAD
+=======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // =============================================================================
 // modules/students/student.repository.js — RESQID
 // =============================================================================
@@ -396,4 +405,11 @@ export const updateCardVisibility = (studentId, visibility) =>
     create: { id: studentId, visibility },
     update: { visibility },
   });
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+<<<<<<< HEAD
+>>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6

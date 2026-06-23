@@ -1,7 +1,169 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+// src/modules/scan-log/scanLog.repository.js
+import { prisma } from '#config/prisma.js';
+
+export class ScanLogRepository {
+  async listScanLogs({ page, limit, result, search, startDate, endDate, schoolId }) {
+    const skip = (page - 1) * limit;
+    const where = { schoolId };
+
+    if (result && result !== 'ALL') {
+      where.result = result;
+    }
+
+    if (search) {
+      where.OR = [
+        { student: { firstName: { contains: search, mode: 'insensitive' } } },
+        { student: { lastName: { contains: search, mode: 'insensitive' } } },
+        { ip_city: { contains: search, mode: 'insensitive' } },
+        { token: { qrCode: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    if (startDate) {
+      where.created_at = { gte: new Date(startDate) };
+    }
+    if (endDate) {
+      where.created_at = { ...where.created_at, lte: new Date(endDate) };
+    }
+
+    const [scans, total] = await Promise.all([
+      prisma.scan.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { created_at: 'desc' },
+        include: {
+          student: {
+            select: {
+              firstName: true,
+              lastName: true,
+              grade: true,
+              section: true,
+            },
+          },
+          token: {
+            select: {
+              qrCode: true,
+              rfidUid: true,
+              type: true,
+            },
+          },
+        },
+      }),
+      prisma.scan.count({ where }),
+    ]);
+
+    return { scans, total };
+  }
+
+  async getTodayStats(schoolId) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const where = {
+      schoolId,
+      created_at: { gte: today, lt: tomorrow },
+    };
+
+    const [total, success, failed, avgResponse] = await Promise.all([
+      prisma.scan.count({ where }),
+      prisma.scan.count({ where: { ...where, result: 'SUCCESS' } }),
+      prisma.scan.count({
+        where: {
+          ...where,
+          result: { notIn: ['SUCCESS'] },
+        },
+      }),
+      prisma.scan.aggregate({
+        where,
+        _avg: { response_time_ms: true },
+      }),
+    ]);
+
+    return {
+      total,
+      success,
+      failed: total - success,
+      avgResponse: `${Math.round(avgResponse._avg.response_time_ms || 0)}ms`,
+    };
+  }
+
+  async getScanLogById(id, schoolId) {
+    return prisma.scan.findFirst({
+      where: { id, schoolId },
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            grade: true,
+            section: true,
+            photoUrl: true,
+          },
+        },
+        token: {
+          select: {
+            id: true,
+            qrCode: true,
+            rfidUid: true,
+            type: true,
+            status: true,
+          },
+        },
+      },
+    });
+  }
+
+  async exportScanLogs({ result, startDate, endDate, schoolId }) {
+    const where = { schoolId };
+
+    if (result && result !== 'ALL') {
+      where.result = result;
+    }
+
+    if (startDate) {
+      where.created_at = { gte: new Date(startDate) };
+    }
+    if (endDate) {
+      where.created_at = { ...where.created_at, lte: new Date(endDate) };
+    }
+
+    return prisma.scan.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      include: {
+        student: {
+          select: {
+            firstName: true,
+            lastName: true,
+            grade: true,
+            section: true,
+          },
+        },
+        token: {
+          select: {
+            qrCode: true,
+            rfidUid: true,
+            type: true,
+          },
+        },
+      },
+    });
+  }
+}
+=======
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // =============================================================================
 // modules/scan-log/scanLog.repository.js — RESQID
 // =============================================================================
@@ -197,6 +359,7 @@ export const getStats = async (schoolId) => {
   };
 };
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 // src/modules/scan-log/scanLog.repository.js
 import { prisma } from '#config/prisma.js';
@@ -357,3 +520,8 @@ export class ScanLogRepository {
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 =======
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6

@@ -3,7 +3,11 @@ import { Router } from 'express';
 <<<<<<< HEAD
 =======
 import { rateLimit } from 'express-rate-limit';
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 import { authenticate } from '#middleware/auth/authenticate.middleware.js';
 import { authorizeMin, ROLES } from '#middleware/auth/authorize.middleware.js';
 import { validate } from '#middleware/validate.middleware.js';
@@ -34,7 +38,11 @@ const exportLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // All routes require authentication and school admin role
 router.use(authenticate);
 router.use(authorizeMin(ROLES.SCHOOL_ADMIN));
@@ -48,7 +56,11 @@ router.get('/stats/today', getTodayStats);
 router.get('/export', validate(exportScanLogsQuerySchema, 'query'), exportScanLogs);
 =======
 router.get('/export', exportLimiter, validate(exportScanLogsQuerySchema, 'query'), exportScanLogs);
+<<<<<<< HEAD
 >>>>>>> c52277545acdf32472792738285dea3300df0ace
+=======
+>>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
+>>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 router.get('/:id', validate(getScanLogParamsSchema, 'params'), getScanLogById);
 
 export default router;
