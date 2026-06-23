@@ -1,11 +1,10 @@
-// =============================================================================
+//
 // modules/scan/scan.redirect.controller.js — RESQID
-<<<<<<< HEAD
 // Redirect endpoints for calls and WhatsApp from emergency profile.
-=======
 // Redirect endpoints for calls and WhatsApp from emergency QR scans.
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
-// =============================================================================
+
+// Redirect endpoints for calls and WhatsApp from emergency profile.
+//
 
 import { asyncHandler } from '#shared/response/asyncHandler.js';
 import { prisma } from '#config/prisma.js';
@@ -13,16 +12,14 @@ import { logger } from '#config/logger.js';
 import { decodeScanCode } from '#shared/helpers/token.helper.js';
 import { ApiError } from '#shared/response/ApiError.js';
 
-<<<<<<< HEAD
 // ─── Token Lookup (shared) ────────────────────────────────────────────────────
 
 /**
  * Find token by UUID or scan code.
  * Returns null if not found or revoked.
-=======
 /**
  * Find token by various identifiers (UUID, scan code, QR code, RFID)
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
  */
 const findToken = async (token) => {
   if (!token) return null;
@@ -46,9 +43,7 @@ const findToken = async (token) => {
     },
   });
 
-<<<<<<< HEAD
   // Try scan code decode (43-char base62)
-=======
   // Try QR code
   if (!record) {
     record = await prisma.token.findFirst({
@@ -92,7 +87,8 @@ const findToken = async (token) => {
   }
 
   // Try scan code decode (encrypted)
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
+  // Try scan code decode (43-char base62)
   if (!record && token.length === 43) {
     try {
       const uuid = decodeScanCode(token);
@@ -113,13 +109,13 @@ const findToken = async (token) => {
           },
         },
       });
-<<<<<<< HEAD
     } catch {
       // Invalid scan code — return null
-=======
     } catch (err) {
       logger.debug({ err: err.message, token: token.slice(0, 10) }, 'Invalid scan code');
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
+    } catch {
+      // Invalid scan code — return null
     }
   }
 
@@ -131,7 +127,6 @@ const findToken = async (token) => {
   return record;
 };
 
-<<<<<<< HEAD
 // ─── Dialer Page Renderer ─────────────────────────────────────────────────────
 
 const renderDialer = (res, phone, title, subtitle, color) => {
@@ -175,7 +170,6 @@ export const callContact = asyncHandler(async (req, res) => {
   if (!tokenRecord || tokenRecord.status === 'REVOKED') {
     return res.status(404).json({ error: 'Invalid or revoked token' });
   }
-=======
 /**
  * Check if token is valid for emergency actions
  */
@@ -304,9 +298,9 @@ const renderDialer = (res, phone, title, subtitle, color, studentName = null) =>
   `);
 };
 
-// =============================================================================
+//
 // CONTACT ENDPOINTS
-// =============================================================================
+//
 
 /**
  * GET /s/call/:contactId/:token
@@ -314,7 +308,7 @@ const renderDialer = (res, phone, title, subtitle, color, studentName = null) =>
  */
 export const callContact = asyncHandler(async (req, res) => {
   const { contactId, token } = req.params;
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
 
   // Validate token
   const tokenRecord = await findToken(token);
@@ -366,15 +360,13 @@ export const whatsappContact = asyncHandler(async (req, res) => {
     where: { id: contactId, isActive: true },
     select: { phone: true, name: true },
   });
-<<<<<<< HEAD
 
   if (!contact?.phone) {
     return res.status(404).json({ error: 'Contact not found' });
   }
 
   logger.info({ contactId, phone: contact.phone.slice(0, 6) + '…' }, '[scan] Call dialer opened');
-=======
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
 
   if (!contact?.phone) {
     return res.status(404).json({ error: 'Contact not found' });
@@ -389,7 +381,6 @@ export const whatsappContact = asyncHandler(async (req, res) => {
   return res.redirect(302, `https://wa.me/${cleanPhone}`);
 });
 
-<<<<<<< HEAD
 /**
  * GET /api/scan/whatsapp/:contactId/:token
  * Opens WhatsApp chat with emergency contact.
@@ -428,10 +419,9 @@ export const callSchool = asyncHandler(async (req, res) => {
   if (!tokenRecord || tokenRecord.status === 'REVOKED') {
     return res.status(404).json({ error: 'Invalid or revoked token' });
   }
-=======
-// =============================================================================
+//
 // SCHOOL ENDPOINTS
-// =============================================================================
+//
 
 /**
  * GET /s/call/school/:token
@@ -439,7 +429,7 @@ export const callSchool = asyncHandler(async (req, res) => {
  */
 export const callSchool = asyncHandler(async (req, res) => {
   const { token } = req.params;
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
 
   // Validate token
   const tokenRecord = await findToken(token);
@@ -453,15 +443,13 @@ export const callSchool = asyncHandler(async (req, res) => {
     where: { id: tokenRecord.schoolId },
     select: { phone: true, name: true },
   });
-<<<<<<< HEAD
 
   if (!school?.phone) {
     return res.status(404).json({ error: 'School phone not available' });
   }
 
   logger.info({ schoolId: tokenRecord.schoolId }, '[scan] School dialer opened');
-=======
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
 
   if (!school?.phone) {
     return res.status(404).json({ error: 'School phone number not available' });
@@ -481,7 +469,6 @@ export const callSchool = asyncHandler(async (req, res) => {
   );
 });
 
-<<<<<<< HEAD
 /**
  * GET /api/scan/call-doctor/:token
  * Opens phone dialer to call the student's doctor.
@@ -493,10 +480,9 @@ export const callDoctor = asyncHandler(async (req, res) => {
   if (!tokenRecord || tokenRecord.status === 'REVOKED') {
     return res.status(404).json({ error: 'Invalid or revoked token' });
   }
-=======
-// =============================================================================
+//
 // DOCTOR ENDPOINTS
-// =============================================================================
+//
 
 /**
  * GET /s/call/doctor/:token
@@ -504,7 +490,7 @@ export const callDoctor = asyncHandler(async (req, res) => {
  */
 export const callDoctor = asyncHandler(async (req, res) => {
   const { token } = req.params;
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
 
   // Validate token
   const tokenRecord = await findToken(token);
@@ -519,10 +505,8 @@ export const callDoctor = asyncHandler(async (req, res) => {
     select: {
       student: {
         select: {
-<<<<<<< HEAD
           emergencyProfile: {
             select: { doctorPhone: true, doctorName: true },
-=======
           firstName: true,
           lastName: true,
           emergencyProfile: {
@@ -530,14 +514,15 @@ export const callDoctor = asyncHandler(async (req, res) => {
               doctorPhone: true,
               doctorName: true,
             },
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
+          emergencyProfile: {
+            select: { doctorPhone: true, doctorName: true },
           },
         },
       },
     },
   });
 
-<<<<<<< HEAD
   const doctorPhone = tokenWithStudent?.student?.emergencyProfile?.doctorPhone;
   const doctorName = tokenWithStudent?.student?.emergencyProfile?.doctorName;
 
@@ -548,7 +533,6 @@ export const callDoctor = asyncHandler(async (req, res) => {
   logger.info({ tokenId: tokenRecord.id }, '[scan] Doctor dialer opened');
 
   renderDialer(res, doctorPhone, 'Calling Doctor', doctorName, '#10b981');
-=======
   const phone = tokenWithStudent?.student?.emergencyProfile?.doctorPhone;
   const doctorName = tokenWithStudent?.student?.emergencyProfile?.doctorName;
   const studentName = tokenWithStudent?.student 
@@ -567,12 +551,12 @@ export const callDoctor = asyncHandler(async (req, res) => {
     '#10b981',
     studentName
   );
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+
 });
 
-// =============================================================================
+//
 // UTILITY ENDPOINTS
-// =============================================================================
+//
 
 /**
  * GET /s/status/:token

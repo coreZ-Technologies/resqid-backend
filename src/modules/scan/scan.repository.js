@@ -1,12 +1,27 @@
-// src/modules/scan/scan.repository.js
+// =============================================================================
+// modules/scan/scan.repository.js — RESQID
+// All DB reads/writes for the public QR scan flow.
+// =============================================================================
+
 import { prisma } from '#config/prisma.js';
+import { logger } from '#config/logger.js';
 
-export class ScanRepository {
-  // ===========================================================================
-  // EXISTING SCAN METHODS
-  // ===========================================================================
+/**
+ * Find a token by UUID with all joined data for scan resolution.
+ * Single query — no N+1.
+ */
+export const findTokenForScan = async (tokenId) => {
+  return prisma.token.findUnique({
+    where: { id: tokenId },
+    select: {
+      id: true,
+      status: true,
+      expiresAt: true,
+      schoolId: true,
+      studentId: true,
 
-<<<<<<< HEAD
+=======
+
       school: {
         select: {
           id: true,
@@ -75,12 +90,15 @@ export class ScanRepository {
                     phone: true,
                     email: true,
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+=======
+
                   },
                 },
               },
             },
           },
-<<<<<<< HEAD
+=======
+
 
           cardVisibility: {
             select: { visibility: true },
@@ -573,3 +591,6 @@ export const findTokenStatus = async (tokenId) => {
   }
 }
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+=======
+};
+

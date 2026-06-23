@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "moduleName": "Classes Management",
   "description": "Manage school classes including class details, students, teacher assignment, and bulk import via CSV.",
   "dataModels": {
@@ -209,5 +210,160 @@
       "students": 45,
       "subjects": ["Mathematics", "Science", "English", "Social Studies", "Hindi"]
     }
+=======
+  "version": "1.0.0",
+  "description": "Backend data contract for Classes page – manage class groups, sections, teachers, student counts, subjects, and room assignments.",
+  "endpoints": {
+    "getStats": {
+      "method": "GET",
+      "path": "/api/v1/classes/stats",
+      "description": "Get summary statistics for the top cards (total classes, total students, active classes, grade group count).",
+      "response": {
+        "success": true,
+        "data": {
+          "totalClasses": "number",
+          "totalStudents": "number",
+          "activeClasses": "number",
+          "gradeGroups": "number (fixed at 4: Primary, Middle, Secondary, Senior)"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalClasses": 19,
+          "totalStudents": 2100,
+          "activeClasses": 18,
+          "gradeGroups": 4
+        }
+      }
+    },
+    "getClasses": {
+      "method": "GET",
+      "path": "/api/v1/classes",
+      "description": "Fetch list of classes with optional filtering and search.",
+      "queryParams": {
+        "gradeGroup": "string (optional, values: All, Primary, Middle, Secondary, Senior)",
+        "status": "string (optional, values: All, Active, Inactive)",
+        "search": "string (optional, searches grade, section, classTeacher)",
+        "limit": "number (default 100)",
+        "offset": "number (default 0)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "classes": [
+            {
+              "id": "string (e.g., c1)",
+              "grade": "string (e.g., 'Cls 1', 'Nursery', 'LKG', 'UKG', 'Cls 12')",
+              "section": "string (A-E)",
+              "classTeacher": "string (optional)",
+              "students": "number (enrolled students count)",
+              "subjects": ["string (subject names)"],
+              "room": "string (optional, e.g., 'R-01')",
+              "status": "enum: Active, Inactive"
+            }
+          ],
+          "pagination": {
+            "total": "number",
+            "limit": "number",
+            "offset": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "classes": [
+            {
+              "id": "c1",
+              "grade": "Nursery",
+              "section": "A",
+              "classTeacher": "Mrs. Meena Pillai",
+              "students": 30,
+              "subjects": ["English", "Hindi", "Maths"],
+              "room": "R-01",
+              "status": "Active"
+            }
+          ],
+          "pagination": { "total": 19, "limit": 100, "offset": 0 }
+        }
+      }
+    },
+    "createClass": {
+      "method": "POST",
+      "path": "/api/v1/classes",
+      "description": "Create a new class (grade + section combination).",
+      "requestBody": {
+        "grade": "string (required, e.g., 'Cls 5')",
+        "section": "string (required, A-E)",
+        "classTeacher": "string (optional)",
+        "room": "string (optional)",
+        "status": "enum: Active, Inactive (default Active)"
+      },
+      "response": {
+        "success": true,
+        "data": "Class object (same as getClasses response item, with auto-generated id and students=0, subjects=[])"
+      }
+    },
+    "updateClass": {
+      "method": "PUT",
+      "path": "/api/v1/classes/:id",
+      "description": "Update an existing class. Partial updates allowed (PATCH semantics).",
+      "pathParams": { "id": "string (required)" },
+      "requestBody": {
+        "grade": "string (optional)",
+        "section": "string (optional)",
+        "classTeacher": "string (optional)",
+        "room": "string (optional)",
+        "status": "enum: Active, Inactive (optional)"
+      },
+      "response": {
+        "success": true,
+        "data": "Updated class object"
+      }
+    },
+    "deleteClass": {
+      "method": "DELETE",
+      "path": "/api/v1/classes/:id",
+      "description": "Delete a class (if no students are enrolled or system allows).",
+      "pathParams": { "id": "string" },
+      "response": {
+        "success": true,
+        "message": "Class deleted successfully"
+      }
+    },
+    "getFilterOptions": {
+      "method": "GET",
+      "path": "/api/v1/classes/filter-options",
+      "description": "Available grade groups and statuses for filter dropdowns.",
+      "response": {
+        "success": true,
+        "data": {
+          "gradeGroups": ["Primary", "Middle", "Secondary", "Senior"],
+          "statuses": ["Active", "Inactive"]
+        }
+      }
+    },
+    "exportClasses": {
+      "method": "GET",
+      "path": "/api/v1/classes/export",
+      "description": "Export filtered classes as CSV (same query params as getClasses, no pagination).",
+      "queryParams": "Same as getClasses (limit/offset ignored)",
+      "response": "CSV file download with columns: id, grade, section, classTeacher, students, subjects (comma separated), room, status"
+    }
+  },
+  "enums": {
+    "GradeGroup": ["Primary", "Middle", "Secondary", "Senior"],
+    "Status": ["Active", "Inactive"],
+    "Grade": ["Nursery","LKG","UKG","Cls 1","Cls 2","Cls 3","Cls 4","Cls 5","Cls 6","Cls 7","Cls 8","Cls 9","Cls 10","Cls 11","Cls 12"],
+    "Section": ["A","B","C","D","E"]
+  },
+  "fieldNotes": {
+    "grade": "Must be one of the Grade enum values. Frontend maps 'Cls 1' to 'Cls 1', etc.",
+    "classTeacher": "Optional; can be null or empty string.",
+    "subjects": "Array of subject names (e.g., ['Mathematics','English']). Returned from backend; edit/update of subjects is not in this version of the UI.",
+    "students": "Dynamic count of enrolled students; backend may compute or accept as part of create/update.",
+    "room": "Optional room identifier."
+>>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
   }
 }

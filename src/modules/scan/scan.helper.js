@@ -230,6 +230,7 @@ export const applyVisibilityFilters = (profile) => {
  * Strip internal cache fields before sending to client.
  */
 <<<<<<< HEAD
+<<<<<<< HEAD
 export const formatScanResponse = (data) => {
   const { _schoolId, _parentTokens, _studentId, ...safe } = data;
 =======
@@ -237,11 +238,18 @@ export const formatScanResponse = (cached) => {
   if (!cached) return null;
   const { _schoolId, _parentTokens, _studentId, ...safe } = cached;
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+=======
+export const formatScanResponse = (data) => {
+  const { _schoolId, _parentTokens, _studentId, ...safe } = data;
+>>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
   return safe;
 };
 
 /**
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
  * Get severity label for display.
  */
 export const getSeverityLabel = (severity) => {
@@ -277,6 +285,7 @@ export const getIncidentTypeLabel = (type) => {
   };
   return labels[type] || type;
 };
+<<<<<<< HEAD
 =======
  * Calculate risk score for a scan based on various factors.
  * Returns score from 0 (safe) to 100 (high risk).
@@ -404,3 +413,5 @@ export const formatStatsResponse = (stats) => {
   };
 };
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+=======
+>>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612

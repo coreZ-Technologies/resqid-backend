@@ -1,31 +1,28 @@
-// src/modules/scan/scan.controller.js
-import { ScanService } from './scan.service.js';
-import { ApiResponse } from '#shared/response/ApiResponse.js';
-import { ApiError } from '#shared/response/ApiError.js';
+// =============================================================================
+// modules/scan/scan.controller.js — RESQID
+// Handles GET /s/:code — public QR scan endpoint. NO AUTH.
+// =============================================================================
+
+import crypto from 'crypto';
+import { resolveScan } from './scan.service.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { extractIp } from '#shared/network/extractIp.js';
 import { logger } from '#config/logger.js';
-import {
-  scanCodeParamsSchema,
-  listScanLogsQuerySchema,
-  exportScanLogsQuerySchema,
-  getScanLogParamsSchema,
-  scanSummaryQuerySchema,
-  dailyScanStatsQuerySchema,
-  peakHoursQuerySchema,
-  recentScansQuerySchema,
-  validateScanCodeQuerySchema,
-} from './scan.validation.js';
-import { Parser } from 'json2csv';
-import ExcelJS from 'exceljs';
-import { formatScanLogForResponse, formatStatsResponse } from './scan.helper.js';
 
-const service = new ScanService();
+export const scanQr = asyncHandler(async (req, res) => {
+  const { code } = req.params;
+  const ip = extractIp(req);
+  const userAgent = req.headers['user-agent'] || null;
+  const scanCount = req.scanCount || 1;
 
-// =============================================================================
-// EXISTING SCAN ENDPOINTS
-// =============================================================================
+  // GPS from query params (optional)
+  const lat = req.query.lat ? parseFloat(req.query.lat) : null;
+  const lng = req.query.lng ? parseFloat(req.query.lng) : null;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
   // Device hash for tracking
   const deviceHash = crypto
     .createHash('sha256')
@@ -84,6 +81,7 @@ const service = new ScanService();
   }
 
   return res.status(statusCode).json(result);
+<<<<<<< HEAD
 =======
 /**
  * GET /s/:code
@@ -404,3 +402,6 @@ const exportAsExcel = async (res, data, fileName) => {
     throw ApiError.internal('Failed to generate Excel export');
   }
 };
+=======
+});
+>>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612

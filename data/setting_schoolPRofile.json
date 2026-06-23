@@ -1,0 +1,259 @@
+{
+  "version": "1.0.0",
+  "description": "Backend data contract for Timetable Configuration page – school profile, constraints (hard/medium/soft), room setup, and generation trigger.",
+  "endpoints": {
+    "getConfig": {
+      "method": "GET",
+      "path": "/api/timetable/config",
+      "description": "Fetch the complete timetable configuration (profile) for the current school.",
+      "response": {
+        "success": true,
+        "data": {
+          "general": {
+            "schoolName": "string",
+            "schoolCode": "string",
+            "academicYear": "string (e.g., '2024-2025')",
+            "term": "string (e.g., 'Annual', 'Semester 1', 'Semester 2', 'Quarter 1', 'Quarter 2')"
+          },
+          "structure": {
+            "workingDays": ["string (Monday…Saturday)"],
+            "periodsPerDay": "number (4-10)",
+            "periodDuration": "number (minutes, 30-60)",
+            "breakDuration": "number (minutes, 5-30)",
+            "lunchDuration": "number (minutes, 15-60)",
+            "startTime": "string (HH:MM)",
+            "endTime": "string (HH:MM)",
+            "recessTime": "string (HH:MM)",
+            "lunchTime": "string (HH:MM)"
+          },
+          "teacherConstraints": {
+            "maxClassesPerDay": { "min": "number", "max": "number", "value": "number" },
+            "maxClassesPerWeek": { "min": "number", "max": "number", "value": "number" },
+            "maxConsecutiveClasses": { "min": "number", "max": "number", "value": "number" },
+            "minBreakBetweenClasses": { "min": "number", "max": "number", "value": "number" },
+            "maxFreePeriodsPerDay": { "min": "number", "max": "number", "value": "number" }
+          },
+          "classConstraints": {
+            "maxSubjectsPerDay": { "min": "number", "max": "number", "value": "number" },
+            "maxTheoryClassesPerDay": { "min": "number", "max": "number", "value": "number" },
+            "maxPracticalClassesPerDay": { "min": "number", "max": "number", "value": "number" },
+            "preferredMorningSubjects": ["string"],
+            "preferredAfternoonSubjects": ["string"]
+          },
+          "subjectConstraints": {
+            "minPeriodsPerWeek": { "min": "number", "max": "number", "value": "number" },
+            "maxPeriodsPerWeek": { "min": "number", "max": "number", "value": "number" },
+            "subjectPriority": {
+              "type": "object",
+              "description": "Map of subject names to priority (1 low, 5 critical)",
+              "additionalProperties": { "type": "number", "minimum": 1, "maximum": 5 },
+              "example": {
+                "Mathematics": 5,
+                "Science": 5,
+                "English": 4,
+                "Social Studies": 4,
+                "Computer Science": 3,
+                "Physical Education": 2,
+                "Arts": 2,
+                "Music": 2
+              }
+            },
+            "labRequired": ["string"],
+            "specialEquipment": ["string"]
+          },
+          "roomConstraints": {
+            "totalClassrooms": { "min": "number", "max": "number", "value": "number" },
+            "totalLabs": { "min": "number", "max": "number", "value": "number" },
+            "totalComputerLabs": { "min": "number", "max": "number", "value": "number" },
+            "totalSportsFacilities": { "min": "number", "max": "number", "value": "number" },
+            "roomCapacity": { "min": "number", "max": "number", "value": "number" }
+          },
+          "timePreferences": {
+            "morningPreference": ["string"],
+            "afternoonPreference": ["string"],
+            "avoidMondayMorning": ["string"],
+            "avoidFridayAfternoon": ["string"],
+            "preferLabAfterTheory": "boolean",
+            "balancedLoadAcrossWeek": "boolean"
+          },
+          "specialRequirements": {
+            "teacherFreeDay": "string (Monday…Saturday)",
+            "assemblyTime": "string (HH:MM)",
+            "assemblyDuration": "number (minutes)",
+            "clubActivitiesDay": "string",
+            "clubActivitiesPeriod": "number (1-based period index)",
+            "remedialClassesDay": "string",
+            "remedialClassesPeriod": "number"
+          }
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "general": {
+            "schoolName": "Springdale Public School",
+            "schoolCode": "SPR-2024",
+            "academicYear": "2024-2025",
+            "term": "Annual"
+          },
+          "structure": {
+            "workingDays": ["Monday","Tuesday","Wednesday","Thursday","Friday"],
+            "periodsPerDay": 7,
+            "periodDuration": 45,
+            "breakDuration": 15,
+            "lunchDuration": 30,
+            "startTime": "08:00",
+            "endTime": "14:30",
+            "recessTime": "10:30",
+            "lunchTime": "12:30"
+          },
+          "teacherConstraints": {
+            "maxClassesPerDay": { "min": 3, "max": 8, "value": 5 },
+            "maxClassesPerWeek": { "min": 15, "max": 35, "value": 28 },
+            "maxConsecutiveClasses": { "min": 1, "max": 4, "value": 3 },
+            "minBreakBetweenClasses": { "min": 0, "max": 2, "value": 1 },
+            "maxFreePeriodsPerDay": { "min": 0, "max": 4, "value": 2 }
+          },
+          "classConstraints": {
+            "maxSubjectsPerDay": { "min": 4, "max": 8, "value": 6 },
+            "maxTheoryClassesPerDay": { "min": 2, "max": 5, "value": 4 },
+            "maxPracticalClassesPerDay": { "min": 1, "max": 3, "value": 2 },
+            "preferredMorningSubjects": ["Mathematics","Science","English"],
+            "preferredAfternoonSubjects": ["Arts","Physical Education","Computer Science"]
+          },
+          "subjectConstraints": {
+            "minPeriodsPerWeek": { "min": 2, "max": 8, "value": 5 },
+            "maxPeriodsPerWeek": { "min": 3, "max": 12, "value": 8 },
+            "subjectPriority": {
+              "Mathematics": 5,
+              "Science": 5,
+              "English": 4,
+              "Social Studies": 4,
+              "Computer Science": 3,
+              "Physical Education": 2,
+              "Arts": 2,
+              "Music": 2
+            },
+            "labRequired": ["Science","Physics","Chemistry","Biology","Computer Science"],
+            "specialEquipment": ["Physical Education","Arts","Music"]
+          },
+          "roomConstraints": {
+            "totalClassrooms": { "min": 10, "max": 50, "value": 25 },
+            "totalLabs": { "min": 1, "max": 10, "value": 3 },
+            "totalComputerLabs": { "min": 1, "max": 5, "value": 2 },
+            "totalSportsFacilities": { "min": 1, "max": 3, "value": 2 },
+            "roomCapacity": { "min": 20, "max": 60, "value": 40 }
+          },
+          "timePreferences": {
+            "morningPreference": ["Mathematics","Science","English"],
+            "afternoonPreference": ["Arts","Physical Education","Music"],
+            "avoidMondayMorning": ["Physical Education","Arts"],
+            "avoidFridayAfternoon": ["Mathematics","Science"],
+            "preferLabAfterTheory": true,
+            "balancedLoadAcrossWeek": true
+          },
+          "specialRequirements": {
+            "teacherFreeDay": "Saturday",
+            "assemblyTime": "08:00",
+            "assemblyDuration": 15,
+            "clubActivitiesDay": "Friday",
+            "clubActivitiesPeriod": 6,
+            "remedialClassesDay": "Thursday",
+            "remedialClassesPeriod": 7
+          }
+        }
+      }
+    },
+    "updateConfig": {
+      "method": "PUT",
+      "path": "/api/timetable/config",
+      "description": "Update the full timetable configuration. Partial updates can be handled by sending only changed sections (PATCH semantics).",
+      "requestBody": "Same structure as getConfig (any fields omitted remain unchanged, but recommended to send full config to avoid overwrites).",
+      "response": {
+        "success": true,
+        "message": "Configuration saved successfully",
+        "data": "Updated configuration (same as getConfig)"
+      }
+    },
+    "validateConfig": {
+      "method": "POST",
+      "path": "/api/timetable/validate",
+      "description": "Run server-side validation on a given configuration (or current saved config if body omitted). Returns lists of hard, medium, soft issues.",
+      "requestBody": "Optional – partial or full config object (same structure as getConfig). If omitted, validates the currently stored config.",
+      "response": {
+        "success": true,
+        "data": {
+          "hard": ["string (hard constraint violations)"],
+          "medium": ["string"],
+          "soft": ["string"]
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "hard": ["Total periods/week (56) exceeds 60."],
+          "medium": ["Max classes/week (30) exceeds total available periods (28)."],
+          "soft": ["Club activities period (8) exceeds periods/day (7)."]
+        }
+      }
+    },
+    "generateTimetable": {
+      "method": "POST",
+      "path": "/api/timetable/generate",
+      "description": "Trigger asynchronous timetable generation using the current configuration. Returns a job ID to poll status.",
+      "requestBody": {
+        "configId": "string (optional, defaults to current school config)",
+        "options": {
+          "priority": "enum: speed, quality (default quality)",
+          "timeoutSeconds": "number (optional)"
+        }
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "jobId": "string",
+          "status": "pending",
+          "message": "Generation job queued"
+        }
+      }
+    },
+    "getGenerationStatus": {
+      "method": "GET",
+      "path": "/api/timetable/generate/:jobId",
+      "description": "Check status of a generation job.",
+      "response": {
+        "success": true,
+        "data": {
+          "jobId": "string",
+          "status": "enum: pending, running, completed, failed",
+          "progress": "number (0-100, optional)",
+          "resultUrl": "string (optional, URL to download generated timetable)",
+          "errorMessage": "string (if failed)"
+        }
+      }
+    }
+  },
+  "enums": {
+    "Weekday": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],
+    "Term": ["Annual","Semester 1","Semester 2","Quarter 1","Quarter 2"],
+    "GenerationPriority": ["speed","quality"]
+  },
+  "fieldNotes": {
+    "general.schoolCode": "Unique school identifier used in reports and exports.",
+    "structure.workingDays": "List of weekdays school is open. Frontend uses Saturday by default as free day for teachers.",
+    "structure.periodsPerDay": "Total number of teaching periods (excluding assembly, breaks).",
+    "teacherConstraints.maxClassesPerDay": "Hard limit – teacher cannot teach more than this many periods per day.",
+    "teacherConstraints.maxClassesPerWeek": "Hard limit across all days.",
+    "teacherConstraints.maxConsecutiveClasses": "Cannot have more than this many periods back‑to‑back.",
+    "teacherConstraints.minBreakBetweenClasses": "Minimum number of free periods between two assigned classes (0 = no requirement).",
+    "classConstraints.maxSubjectsPerDay": "Class cannot see more than this many different subjects in one day.",
+    "classConstraints.preferredMorning/AfternoonSubjects": "Soft preferences; used by solver to place subjects in optimal slots.",
+    "subjectConstraints.subjectPriority": "Integer 1 (low) to 5 (critical). Higher priority subjects scheduled first and in better time slots.",
+    "subjectConstraints.labRequired": "Subjects that require a laboratory room.",
+    "roomConstraints": "Number of available rooms/facilities; used to check feasibility and avoid overbooking.",
+    "timePreferences.balancedLoadAcrossWeek": "When true, solver will try to spread periods of the same subject evenly across the week.",
+    "specialRequirements.assemblyTime": "Start of school day; not part of teaching periods.",
+    "specialRequirements.clubActivitiesPeriod": "Period index (1‑based) reserved for club activities on the designated day.",
+    "specialRequirements.remedialClassesPeriod": "Period index reserved for remedial classes."
+  }
+}

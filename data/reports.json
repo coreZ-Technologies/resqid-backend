@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "moduleName": "Reports & Analytics",
   "description": "School-wide analytics dashboard showing attendance trends, student demographics, class performance, enrollment history, and high absenteeism alerts.",
   "dataModels": {
@@ -152,5 +153,189 @@
         "Daily attendance summary → update analytics cache"
       ]
     }
+=======
+  "version": "1.0.0",
+  "description": "Backend data contract for Reports & Analytics page – KPIs, attendance trends, demographics, class-wise performance, enrollment trends, high absenteeism, and export endpoints.",
+  "endpoints": {
+    "getKpis": {
+      "method": "GET",
+      "path": "/api/reports/kpis",
+      "description": "Get key performance indicators for the dashboard header (total students, total teachers, average attendance, at-risk students).",
+      "queryParams": {
+        "dateRange": "enum: This Week, This Month, This Term, This Year (optional, default This Month)"
+      },
+      "response": {
+        "success": true,
+        "data": {
+          "totalStudents": "number",
+          "totalStudentsChange": "string (e.g., '+5.2%')",
+          "totalTeachers": "number",
+          "totalTeachersChange": "string (e.g., '+2 new')",
+          "avgAttendance": "string (e.g., '91.4%')",
+          "avgAttendanceChange": "string (e.g., '+1.2%')",
+          "atRiskStudents": "number",
+          "atRiskStudentsChange": "string (e.g., '+3 more')"
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "totalStudents": 614,
+          "totalStudentsChange": "+5.2%",
+          "totalTeachers": 42,
+          "totalTeachersChange": "+2 new",
+          "avgAttendance": "91.4%",
+          "avgAttendanceChange": "+1.2%",
+          "atRiskStudents": 23,
+          "atRiskStudentsChange": "+3 more"
+        }
+      }
+    },
+    "getAttendanceTrend": {
+      "method": "GET",
+      "path": "/api/reports/attendance-trend",
+      "description": "Get monthly attendance trend (present vs absent) for the academic year.",
+      "queryParams": {
+        "dateRange": "enum: This Week, This Month, This Term, This Year (optional, default This Year)"
+      },
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "month": "string (e.g., 'Aug')",
+            "present": "number (percentage 0-100)",
+            "absent": "number (percentage 0-100)"
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          { "month": "Aug", "present": 92, "absent": 8 },
+          { "month": "Sep", "present": 88, "absent": 12 },
+          { "month": "Oct", "present": 95, "absent": 5 }
+        ]
+      }
+    },
+    "getDemographics": {
+      "method": "GET",
+      "path": "/api/reports/demographics",
+      "description": "Get student demographics – gender distribution.",
+      "response": {
+        "success": true,
+        "data": {
+          "gender": [
+            { "name": "Male", "value": "number" },
+            { "name": "Female", "value": "number" },
+            { "name": "Other", "value": "number" }
+          ]
+        }
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": {
+          "gender": [
+            { "name": "Male", "value": 312 },
+            { "name": "Female", "value": 288 },
+            { "name": "Other", "value": 14 }
+          ]
+        }
+      }
+    },
+    "getClassWiseAttendance": {
+      "method": "GET",
+      "path": "/api/reports/class-attendance",
+      "description": "Get average attendance rate per class (for bar chart).",
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "class": "string (e.g., 'Class 1')",
+            "rate": "number (percentage 0-100)"
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          { "class": "Class 1", "rate": 94 },
+          { "class": "Class 2", "rate": 88 },
+          { "class": "Class 3", "rate": 96 }
+        ]
+      }
+    },
+    "getEnrollmentTrend": {
+      "method": "GET",
+      "path": "/api/reports/enrollment-trend",
+      "description": "Get year-over-year total student enrollment.",
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "year": "string (e.g., '2020')",
+            "students": "number"
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          { "year": "2020", "students": 480 },
+          { "year": "2021", "students": 512 }
+        ]
+      }
+    },
+    "getHighAbsenteeism": {
+      "method": "GET",
+      "path": "/api/reports/high-absenteeism",
+      "description": "Get list of students with the most absences (for alert table).",
+      "queryParams": {
+        "limit": "number (default 10)",
+        "dateRange": "enum: This Week, This Month, This Term, This Year (optional, default This Term)"
+      },
+      "response": {
+        "success": true,
+        "data": [
+          {
+            "studentId": "string",
+            "name": "string",
+            "class": "string",
+            "absences": "number",
+            "trend": "enum: up, down (compared to previous period)"
+          }
+        ]
+      },
+      "exampleResponse": {
+        "success": true,
+        "data": [
+          { "studentId": "STU001", "name": "Riya Sharma", "class": "Class 5A", "absences": 18, "trend": "up" },
+          { "studentId": "STU002", "name": "Arjun Mehta", "class": "Class 7B", "absences": 15, "trend": "down" }
+        ]
+      }
+    },
+    "exportReport": {
+      "method": "GET",
+      "path": "/api/reports/export",
+      "description": "Export a specific report in CSV/PDF format.",
+      "queryParams": {
+        "type": "enum: attendance, studentList, teacherSummary, academicReport (required)",
+        "format": "enum: csv, pdf (default csv)",
+        "dateRange": "enum (optional, if applicable)"
+      },
+      "response": "File download (CSV or PDF)."
+    }
+  },
+  "enums": {
+    "DateRange": ["This Week", "This Month", "This Term", "This Year"],
+    "ExportType": ["attendance", "studentList", "teacherSummary", "academicReport"],
+    "ExportFormat": ["csv", "pdf"]
+  },
+  "fieldNotes": {
+    "KPIs": "Change values are relative strings (e.g., '+5.2%', '+2 new', '-3 less') – frontend uses them directly with icon and color.",
+    "attendanceTrend": "Present + Absent should sum to 100 for each month.",
+    "classWiseAttendance": "Classes are sorted by grade (Nursery to 12). Backend may send any order; frontend uses as received.",
+    "highAbsenteeism.trend": "Indicates whether absences increased ('up') or decreased ('down') compared to previous period.",
+    "exportReport": "The backend should generate the appropriate file based on type and filters."
+>>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
   }
 }
