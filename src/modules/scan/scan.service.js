@@ -1,23 +1,28 @@
-// =============================================================================
-// modules/scan/scan.service.js — RESQID
-// Core business logic for QR scan resolution.
-// =============================================================================
-
-import { decodeScanCode } from '#shared/helpers/token.helper.js';
+// src/modules/scan/scan.service.js
+import { ScanRepository } from './scan.repository.js';
+import { ApiError } from '#shared/response/ApiError.js';
 import { logger } from '#config/logger.js';
+<<<<<<< HEAD
 import * as repo from './scan.repository.js';
 import { getCachedEmergencyProfile, cacheEmergencyProfile } from '#shared/cache/scan.cache.js';
 import { evaluateScan } from '#shared/anomaly/anomaly.evaluator.js';
 import { publishNotification } from '#orchestrator/notifications/notification.publisher.js';
 import { EVENTS } from '#orchestrator/events/event.types.js';
+=======
+import { extractIp } from '#shared/network/extractIp.js';
+import { parseUserAgent } from '#shared/network/userAgent.js';
+import { extractLocation } from '#shared/network/extractLocation.js';
+import { SCAN_RESULTS, SCAN_PURPOSE, SCAN_TYPES } from './scan.constants.js';
+>>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 import {
-  maskPhone,
-  isSuspiciousUserAgent,
-  buildScanLogPayload,
-  formatScanResponse,
-  formatBloodGroup,
+  maskTokenHash,
+  formatRelativeTime,
+  humanizeEnum,
+  calculateRiskScore,
+  isUnusualScanTime,
 } from './scan.helper.js';
 
+<<<<<<< HEAD
 // ─── Cache TTLs ───────────────────────────────────────────────────────────────
 
 const ACTIVE_CACHE_TTL = 300; // 5 minutes
@@ -56,20 +61,22 @@ export const resolveScan = async ({
     });
     return buildResponse('INVALID', 'This QR code could not be verified.');
   }
+=======
+const repo = new ScanRepository();
 
-  // ── 2. Redis cache check ─────────────────────────────────────────────────
-  const cached = await getCachedEmergencyProfile(tokenId);
-  if (cached) {
-    logScan({
-      tokenId,
-      schoolId: cached._schoolId || SENTINEL_ID,
-      result: cached.state === 'ACTIVE' ? 'ACTIVE' : cached.state,
-      ip,
-      userAgent,
-      latitude,
-      longitude,
-    });
+export class ScanService {
+  // ===========================================================================
+  // EXISTING SCAN LOGIC
+  // ===========================================================================
+>>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 
+  async processScan(scanCode, req) {
+    const startTime = Date.now();
+    const ip = extractIp(req);
+    const userAgent = parseUserAgent(req);
+    const location = await extractLocation(req);
+
+<<<<<<< HEAD
     if (cached.state === 'ACTIVE') {
       fireNotification(cached);
       fireAnomalyCheck({
@@ -79,35 +86,75 @@ export const resolveScan = async ({
         ip,
         scanCount,
       });
+=======
+    // Find token by scan code
+    const token = await repo.findTokenByCode(scanCode);
+    
+    let result = 'INVALID';
+    let student = null;
+    let scanPurpose = SCAN_PURPOSE.UNKNOWN;
+
+    if (!token) {
+      result = 'INVALID';
+    } else if (token.status === 'EXPIRED') {
+      result = 'EXPIRED';
+    } else if (token.status === 'REVOKED') {
+      result = 'REVOKED';
+    } else if (token.status === 'ACTIVE' || token.status === 'ISSUED') {
+      result = 'SUCCESS';
+      student = token.student;
+      scanPurpose = SCAN_PURPOSE.EMERGENCY;
+>>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
     }
 
-    return formatScanResponse(cached);
-  }
+    const responseTimeMs = Date.now() - startTime;
 
-  // ── 3. DB query ──────────────────────────────────────────────────────────
-  const token = await repo.findTokenForScan(tokenId);
-
-  if (!token) {
-    logScan({
-      tokenId: SENTINEL_ID,
-      schoolId: SENTINEL_ID,
-      result: 'INVALID',
-      ip,
-      userAgent,
-      latitude,
-      longitude,
+    // Calculate risk score
+    const riskScore = calculateRiskScore({
+      isSuspiciousUA: userAgent.isBot,
+      isNewDevice: false,
+      unusualLocation: location.country !== 'IN',
+      unusualTime: isUnusualScanTime(),
+      rapidScanCount: req.scanCount || 1,
     });
-    return buildResponse('INVALID', 'This QR code could not be verified.');
-  }
 
-  const schoolId = token.schoolId;
-  const student = token.student;
+    // Create scan log
+    const scan = await repo.createScan({
+      tokenId: token?.id,
+      studentId: student?.id,
+      schoolId: token?.schoolId,
+      result,
+      type: SCAN_TYPES.QR_EMERGENCY,
+      status: result === 'SUCCESS' ? 'SUCCESS' : 'FAILED',
+      deviceIp: ip,
+      userAgent: userAgent.raw,
+      locationLat: location.lat,
+      locationLng: location.lon,
+      initiatedBy: 'public_scan',
+      metadata: {
+        scanPurpose,
+        city: location.city,
+        country: location.country,
+        device: userAgent.device,
+        os: userAgent.os,
+        browser: userAgent.browser,
+        responseTimeMs,
+        riskScore,
+        userAgentParsed: userAgent,
+      },
+      createdAt: new Date(),
+    });
 
-  // Extract parent Expo tokens
-  const parentTokens = (student?.parentLinks || [])
-    .flatMap((l) => l.parent?.devices?.map((d) => d.expoPushToken) || [])
-    .filter(Boolean);
+    logger.info({
+      scanId: scan.id,
+      result,
+      studentId: student?.id,
+      schoolId: token?.schoolId,
+      riskScore,
+      responseTimeMs,
+    }, 'Scan processed');
 
+<<<<<<< HEAD
   // Extract parent phones for SMS
   const parentPhones = (student?.parentLinks || []).map((l) => l.parent?.phone).filter(Boolean);
 
@@ -180,43 +227,26 @@ export const resolveScan = async ({
 
 const validateTokenState = (token) => {
   if (token.expiresAt && new Date(token.expiresAt) < new Date()) {
+=======
+>>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
     return {
-      state: 'EXPIRED',
-      school: safeSchool(token.school),
-      message: 'This card has expired.',
+      success: result === 'SUCCESS',
+      result,
+      student: student ? {
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`,
+        grade: student.grade,
+        section: student.section,
+        photoUrl: student.photoUrl,
+        emergencyProfile: student.emergencyProfile,
+      } : null,
+      scanId: scan.id,
+      responseTimeMs,
+      riskScore,
     };
   }
-  if (token.status === 'REVOKED') {
-    return {
-      state: 'REVOKED',
-      school: safeSchool(token.school),
-      message: 'This card has been revoked.',
-    };
-  }
-  if (token.status === 'INACTIVE' || token.status === 'LOST') {
-    return {
-      state: 'INACTIVE',
-      school: safeSchool(token.school),
-      message: 'This card is currently inactive.',
-    };
-  }
-  if (token.status === 'UNREGISTERED') {
-    return {
-      state: 'UNREGISTERED',
-      school: safeSchool(token.school),
-      message: 'This card has not been registered yet.',
-    };
-  }
-  if (token.status === 'ISSUED') {
-    return {
-      state: 'ISSUED',
-      school: safeSchool(token.school),
-      message: 'This card has been issued but not yet activated.',
-    };
-  }
-  return null; // ACTIVE
-};
 
+<<<<<<< HEAD
 // =============================================================================
 // PROFILE BUILDER
 // =============================================================================
@@ -243,10 +273,172 @@ const buildProfile = (student, emergency, visibility) => {
       bloodGroup: formatBloodGroup(emergency?.bloodGroup),
       primaryContact: primary
         ? { name: primary.name, relation: primary.relation, phone: maskPhone(primary.phone) }
+=======
+  // ===========================================================================
+  // SCAN LOGS METHODS
+  // ===========================================================================
+
+  async listScanLogs(query, schoolId) {
+    const { scans, total } = await repo.listScanLogs({ ...query, schoolId });
+
+    const transformedScans = scans.map(scan => ({
+      id: scan.id,
+      token_hash: maskTokenHash(scan.token?.qrCode || scan.token?.rfidUid || 'Unknown'),
+      result: scan.result,
+      result_label: humanizeEnum(scan.result),
+      student_name: scan.student
+        ? `${scan.student.firstName} ${scan.student.lastName}`
+        : null,
+      student_id: scan.student?.id || null,
+      student_class: scan.student?.grade || null,
+      student_section: scan.student?.section || null,
+      ip_address: scan.deviceIp,
+      ip_city: scan.metadata?.city || null,
+      device: scan.metadata?.device || 'Unknown',
+      scan_purpose: scan.metadata?.scanPurpose || 'UNKNOWN',
+      scan_purpose_label: humanizeEnum(scan.metadata?.scanPurpose || 'UNKNOWN'),
+      response_time_ms: scan.metadata?.responseTimeMs || null,
+      relative_time: formatRelativeTime(scan.createdAt),
+      created_at: scan.createdAt,
+      risk_score: scan.metadata?.riskScore || 0,
+    }));
+
+    const totalPages = Math.ceil(total / query.limit);
+
+    return {
+      data: transformedScans,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages,
+        hasNext: query.page < totalPages,
+        hasPrev: query.page > 1,
+      },
+    };
+  }
+
+  async getTodayStats(schoolId) {
+    const stats = await repo.getTodayStats(schoolId);
+    
+    return {
+      ...stats,
+      successRate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0,
+      failureRate: stats.total ? Math.round((stats.failed / stats.total) * 100) : 0,
+    };
+  }
+
+  async getScanLogById(id, schoolId) {
+    const scan = await repo.getScanLogById(id, schoolId);
+    if (!scan) {
+      throw ApiError.notFound('Scan log not found');
+    }
+    
+    return {
+      ...scan,
+      relative_time: formatRelativeTime(scan.createdAt),
+      result_label: humanizeEnum(scan.result),
+      scan_purpose_label: humanizeEnum(scan.metadata?.scanPurpose || 'UNKNOWN'),
+      token_masked: maskTokenHash(scan.token?.qrCode || scan.token?.rfidUid),
+    };
+  }
+
+  async exportScanLogs(query, schoolId) {
+    const scans = await repo.exportScanLogs({ ...query, schoolId });
+
+    const exportData = scans.map(scan => ({
+      'Scan ID': scan.id,
+      'Student Name': scan.student
+        ? `${scan.student.firstName} ${scan.student.lastName}`
+        : 'Unknown',
+      'Class': scan.student?.grade || 'N/A',
+      'Section': scan.student?.section || 'N/A',
+      'Token': scan.token?.qrCode || scan.token?.rfidUid || 'Unknown',
+      'Token Type': scan.token?.type || 'Unknown',
+      'Result': scan.result,
+      'IP Address': scan.deviceIp,
+      'City': scan.metadata?.city || 'N/A',
+      'Country': scan.metadata?.country || 'N/A',
+      'Device': scan.metadata?.device || 'Unknown',
+      'Browser': scan.metadata?.browser || 'Unknown',
+      'OS': scan.metadata?.os || 'Unknown',
+      'Scan Purpose': scan.metadata?.scanPurpose || 'UNKNOWN',
+      'Response Time (ms)': scan.metadata?.responseTimeMs || 'N/A',
+      'Risk Score': scan.metadata?.riskScore || 0,
+      'Scanned At': scan.createdAt,
+    }));
+
+    return exportData;
+  }
+
+  // ===========================================================================
+  // ADDITIONAL STATISTICS METHODS
+  // ===========================================================================
+
+  async getScanSummary(startDate, schoolId) {
+    return repo.getScanSummary(startDate, schoolId);
+  }
+
+  async getDailyScanStats(days, schoolId) {
+    return repo.getDailyScanStats(days, schoolId);
+  }
+
+  async getResultDistribution(schoolId) {
+    return repo.getResultDistribution(schoolId);
+  }
+
+  async getPeakScanHours(schoolId, days = 7) {
+    return repo.getPeakScanHours(schoolId, days);
+  }
+
+  async getRecentScans(limit = 10, schoolId) {
+    const scans = await repo.getRecentScans(limit, schoolId);
+    
+    return scans.map(scan => ({
+      id: scan.id,
+      result: scan.result,
+      student_name: scan.student
+        ? `${scan.student.firstName} ${scan.student.lastName}`
+        : 'Unknown',
+      token_masked: maskTokenHash(scan.token?.qrCode),
+      relative_time: formatRelativeTime(scan.createdAt),
+    }));
+  }
+
+  // ===========================================================================
+  // UTILITY METHODS
+  // ===========================================================================
+
+  async validateScanCode(scanCode) {
+    const token = await repo.findTokenByCode(scanCode);
+    
+    if (!token) {
+      return { valid: false, reason: 'INVALID_CODE' };
+    }
+    
+    if (token.status === 'REVOKED') {
+      return { valid: false, reason: 'TOKEN_REVOKED' };
+    }
+    
+    if (token.status === 'EXPIRED') {
+      return { valid: false, reason: 'TOKEN_EXPIRED' };
+    }
+    
+    if (token.status === 'INACTIVE') {
+      return { valid: false, reason: 'TOKEN_INACTIVE' };
+    }
+    
+    return {
+      valid: true,
+      studentId: token.studentId,
+      studentName: token.student 
+        ? `${token.student.firstName} ${token.student.lastName}`
+>>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
         : null,
     };
   }
 
+<<<<<<< HEAD
   // PUBLIC
   return {
     ...base,
@@ -340,3 +532,15 @@ const fireAnomalyCheck = (data) => {
     scanId: data.tokenId,
   }).catch((err) => logger.error({ err: err.message }, '[scan] Anomaly check failed'));
 };
+=======
+  async getScanCountByDateRange(startDate, endDate, schoolId) {
+    return repo.getScanCountByDateRange(startDate, endDate, schoolId);
+  }
+
+  async cleanupOldScans(daysOld = 90) {
+    const result = await repo.deleteOldScans(daysOld);
+    logger.info({ deletedCount: result.count, daysOld }, 'Old scans cleaned up');
+    return result;
+  }
+}
+>>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0

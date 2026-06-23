@@ -1,5 +1,9 @@
+// template.routes.js
 import { Router } from 'express';
 import * as ctrl from './template.controller.js';
+
+import { requireSchoolAuth } from '#middleware/auth/index.js';
+
 import { requireSchoolAuth } from '#middleware/auth/index.js';
 
 const router = Router();
