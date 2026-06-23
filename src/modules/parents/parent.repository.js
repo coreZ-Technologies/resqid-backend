@@ -1,5 +1,6 @@
 // =============================================================================
 // modules/parents/parent.repository.js — RESQID
+<<<<<<< HEAD
 // All DB queries — ownership-gated, index-optimized.
 // =============================================================================
 
@@ -98,6 +99,30 @@ export const getParentHome = async (parentId) => {
 =======
       },
     },
+=======
+// Purpose-built queries for each use case.
+// =============================================================================
+
+import { prisma } from '#config/prisma.js';
+
+// ─── List (School Admin) ──────────────────────────────────────────────────────
+
+export const findBySchool = async (schoolId, query = {}) => {
+  const {
+    page = 1,
+    limit = 20,
+    search,
+    isActive,
+    sortBy = 'createdAt',
+    sortOrder = 'desc',
+  } = query;
+
+  // Get all parent IDs linked to students in this school
+  const parentIds = await prisma.parentStudent.findMany({
+    where: { student: { schoolId }, isActive: true },
+    select: { parentId: true },
+    distinct: ['parentId'],
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
   });
 
   if (!parent) return null;
@@ -328,4 +353,7 @@ export const getScanHistory = async (parentId, { studentId, page = 1, limit = 20
 
   return { scans: rows, total, page, limit };
 };
+<<<<<<< HEAD
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace

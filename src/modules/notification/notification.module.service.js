@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 // =============================================================================
 // notification.module.service.js — RESQID
 // Business logic for the notification module.
@@ -110,6 +113,7 @@ export const fanOutNotification = async ({
     if (eventSlug && !isEventEnabled(prefs, eventSlug)) {
       logger.debug({ parentId, eventSlug }, 'Notification suppressed by parent preference');
       return { count: 0 };
+<<<<<<< HEAD
 =======
 // src/modules/notification/notification.service.js
 import { NotificationRepository } from './notification.repository.js';
@@ -146,6 +150,8 @@ export class NotificationService {
     } else if (recipientType === 'individual' && selectedParents?.length) {
       recipientIds = selectedParents;
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
     }
 
     if (!recipientIds.length) throw new Error('No recipients found');
@@ -154,6 +160,9 @@ export class NotificationService {
     const channels = Array.isArray(channel) ? channel : [channel];
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
   const jsonData = buildNotificationData(type, data);
 
   const rows = activeChannels.map((channel) => ({
@@ -1381,6 +1390,7 @@ export default {
   // System
   notifySchoolRenewalDue,
   notifyInternalAlert,
+<<<<<<< HEAD
 };
 =======
     // Create notification record (one per recipient? Better to create one with batch)
@@ -1516,3 +1526,6 @@ export default {
   }
 }
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+=======
+};
+>>>>>>> c52277545acdf32472792738285dea3300df0ace

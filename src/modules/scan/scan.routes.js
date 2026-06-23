@@ -14,7 +14,7 @@ import {
   detectSuspiciousActivity,
   validateScanCodeFormat,
   addScanSecurityHeaders,
-} from '#middleware/security/scan.middleware.js';
+} from './scan.middleware.js';  // ✅ Fixed path
 import {
   handleScan,
   listScanLogs,
@@ -49,8 +49,11 @@ import {
 } from './scan.redirect.controller.js';
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 import { validate } from '#middleware/validate.middleware.js';
 import { perTokenScanLimit } from '#middleware/security/rateLimit.middleware.js';
 import {
@@ -100,6 +103,7 @@ router.get('/doctor-call/:token', validate(tokenOnlyParamsSchema), callDoctor);
  * Decrypts code, fetches emergency profile, returns to responder.
  */
 router.get('/:code', validate(scanCodeParamsSchema), perTokenScanLimit, scanQr);
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 
@@ -166,6 +170,8 @@ router.get(
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 
 /**
  * GET /s/call/doctor/:token

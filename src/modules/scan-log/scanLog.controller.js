@@ -1,5 +1,6 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 // =============================================================================
 // modules/scan-log/scanLog.controller.js — RESQID
 // =============================================================================
@@ -123,6 +124,8 @@ export const exportScanLogs = asyncHandler(async (req, res) => {
 });
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 =======
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 // =============================================================================
 // modules/scan-log/scanLog.controller.js — RESQID
 // Scan Log Controller — HTTP request handlers for scan history/audit
@@ -314,4 +317,7 @@ function convertToCSV(data) {
   }
   return csvRows.join('\n');
 }
+<<<<<<< HEAD
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace

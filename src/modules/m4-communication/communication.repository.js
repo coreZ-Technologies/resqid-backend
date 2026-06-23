@@ -292,4 +292,8 @@ export const listCampaigns = (schoolId) =>
 export const findCampaign = (id, schoolId) =>
   prisma.communicationCampaign.findFirst({
     where: { id, schoolId },
+<<<<<<< HEAD
   });
+=======
+  });
+>>>>>>> c52277545acdf32472792738285dea3300df0ace

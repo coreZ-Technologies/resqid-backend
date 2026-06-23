@@ -25,11 +25,7 @@ router.get('/preferences', authorize([ROLES.PARENT]), controller.getPreferences)
 router.patch('/preferences', authorize([ROLES.PARENT]), controller.updatePreferences);
 
 // School admin view (all notifications within school)
-router.get(
-  '/school',
-  authorize([ROLES.SCHOOL_ADMIN, ROLES.TEACHER]),
-  controller.getSchoolNotifications
-);
+router.get('/school', authorize([ROLES.SCHOOL_ADMIN, ROLES.TEACHER]), controller.getSchoolNotifications);
 
 // Webhook (no role, but should be secured with secret in production)
 router.post('/webhook/failure', controller.webhookDeliveryFailure);

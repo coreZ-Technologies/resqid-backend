@@ -7,13 +7,17 @@ import { decodeScanCode } from '#shared/helpers/token.helper.js';
 import { logger } from '#config/logger.js';
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 import * as repo from './scan.repository.js';
 import { getCachedEmergencyProfile, cacheEmergencyProfile } from '#shared/cache/scan.cache.js';
 import { evaluateScan } from '#shared/anomaly/anomaly.evaluator.js';
 import { publishNotification } from '#orchestrator/notifications/notification.publisher.js';
 import { EVENTS } from '#orchestrator/events/event.types.js';
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 import { extractIp } from '#shared/network/extractIp.js';
@@ -23,6 +27,8 @@ import { SCAN_RESULTS, SCAN_PURPOSE, SCAN_TYPES } from './scan.constants.js';
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 import {
   maskPhone,
   isSuspiciousUserAgent,
@@ -33,8 +39,11 @@ import {
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 // ─── Cache TTLs ───────────────────────────────────────────────────────────────
 
 const ACTIVE_CACHE_TTL = 300; // 5 minutes
@@ -74,6 +83,7 @@ export const resolveScan = async ({
     return buildResponse('INVALID', 'This QR code could not be verified.');
   }
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 const repo = new ScanRepository();
 
@@ -102,6 +112,22 @@ export class ScanService {
 <<<<<<< HEAD
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+
+  // ── 2. Redis cache check ─────────────────────────────────────────────────
+  const cached = await getCachedEmergencyProfile(tokenId);
+  if (cached) {
+    logScan({
+      tokenId,
+      schoolId: cached._schoolId || SENTINEL_ID,
+      result: cached.state === 'ACTIVE' ? 'ACTIVE' : cached.state,
+      ip,
+      userAgent,
+      latitude,
+      longitude,
+    });
+
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
     if (cached.state === 'ACTIVE') {
       fireNotification(cached);
       fireAnomalyCheck({
@@ -111,6 +137,7 @@ export class ScanService {
         ip,
         scanCount,
       });
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
     // Find token by scan code
@@ -133,6 +160,8 @@ export class ScanService {
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
     }
 
     return formatScanResponse(cached);
@@ -164,8 +193,11 @@ export class ScanService {
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
   // Extract parent phones for SMS
   const parentPhones = (student?.parentLinks || []).map((l) => l.parent?.phone).filter(Boolean);
 
@@ -239,16 +271,20 @@ export class ScanService {
 const validateTokenState = (token) => {
   if (token.expiresAt && new Date(token.expiresAt) < new Date()) {
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
     return {
       state: 'EXPIRED',
       school: safeSchool(token.school),
       message: 'This card has expired.',
     };
   }
+<<<<<<< HEAD
 <<<<<<< HEAD
 
 <<<<<<< HEAD
@@ -313,6 +349,9 @@ const buildProfile = (student, emergency, visibility) => {
 =======
   if (token.status === 'REVOKED') {
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+  if (token.status === 'REVOKED') {
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
     return {
       state: 'REVOKED',
       school: safeSchool(token.school),
@@ -336,12 +375,15 @@ const buildProfile = (student, emergency, visibility) => {
   if (token.status === 'ISSUED') {
     return {
 <<<<<<< HEAD
+<<<<<<< HEAD
       valid: true,
       studentId: token.studentId,
       studentName: token.student 
         ? `${token.student.firstName} ${token.student.lastName}`
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
 =======
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
       state: 'ISSUED',
       school: safeSchool(token.school),
       message: 'This card has been issued but not yet activated.',
@@ -376,15 +418,21 @@ const buildProfile = (student, emergency, visibility) => {
       bloodGroup: formatBloodGroup(emergency?.bloodGroup),
       primaryContact: primary
         ? { name: primary.name, relation: primary.relation, phone: maskPhone(primary.phone) }
+<<<<<<< HEAD
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
         : null,
     };
   }
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
   // PUBLIC
   return {
     ...base,
@@ -478,6 +526,7 @@ const fireAnomalyCheck = (data) => {
     scanId: data.tokenId,
   }).catch((err) => logger.error({ err: err.message }, '[scan] Anomaly check failed'));
 <<<<<<< HEAD
+<<<<<<< HEAD
 };
 =======
   async getScanCountByDateRange(startDate, endDate, schoolId) {
@@ -494,3 +543,6 @@ const fireAnomalyCheck = (data) => {
 =======
 };
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+};
+>>>>>>> c52277545acdf32472792738285dea3300df0ace

@@ -1,17 +1,26 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 // =============================================================================
 // modules/scan-log/scanLog.service.js — RESQID
 // =============================================================================
 
+<<<<<<< HEAD
 =======
 // src/modules/scan-log/scanLog.service.js
 import { ScanLogRepository } from './scanLog.repository.js';
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 import { ApiError } from '#shared/response/ApiError.js';
 import * as repo from './scanLog.repository.js';
 import { prisma } from '#config/prisma.js';
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
 // ─── List (Role-based) ────────────────────────────────────────────────────────
 
 export const list = async (req) => {
@@ -78,6 +87,7 @@ export const cleanupOld = async (beforeDate) => {
 export const getStats = async (schoolId) => {
   return repo.getStats(schoolId);
 };
+<<<<<<< HEAD
 =======
 const repo = new ScanLogRepository();
 
@@ -153,3 +163,5 @@ export class ScanLogService {
   }
 }
 >>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace

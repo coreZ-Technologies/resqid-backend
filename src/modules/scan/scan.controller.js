@@ -21,8 +21,11 @@ export const scanQr = asyncHandler(async (req, res) => {
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
   // Device hash for tracking
   const deviceHash = crypto
     .createHash('sha256')
@@ -81,6 +84,7 @@ export const scanQr = asyncHandler(async (req, res) => {
   }
 
   return res.status(statusCode).json(result);
+<<<<<<< HEAD
 <<<<<<< HEAD
 =======
 /**
@@ -405,3 +409,6 @@ const exportAsExcel = async (res, data, fileName) => {
 =======
 });
 >>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
+=======
+});
+>>>>>>> c52277545acdf32472792738285dea3300df0ace

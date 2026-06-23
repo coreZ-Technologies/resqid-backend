@@ -144,5 +144,52 @@ export const setActiveStudent = async (parentId, studentId) => {
 // SCAN HISTORY
 // ═══════════════════════════════════════════════════════════════════════════════
 
+<<<<<<< HEAD
 export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
   repo.getScanHistory(parentId, { studentId, page, limit, filter });
+=======
+  // Parent self-update — restricted fields
+  if (role === 'PARENT') {
+    if (req.user.id !== id) throw ApiError.forbidden('Can only edit own profile');
+    const allowed = [
+      'firstName',
+      'lastName',
+      'email',
+      'address',
+      'city',
+      'state',
+      'pincode',
+      'occupation',
+      'photoUrl',
+      'canCall',
+      'canWhatsapp',
+      'canEmail',
+      'canSMS',
+    ];
+    const safeData = {};
+    for (const key of allowed) {
+      if (data[key] !== undefined) safeData[key] = data[key];
+    }
+    return repo.update(id, safeData);
+  }
+
+  // Admin update — full access
+  const parent = await repo.findById(id);
+  if (!parent) throw ApiError.notFound('Parent not found');
+  return repo.update(id, data);
+};
+
+export const remove = async (id, schoolId) => {
+  const parent = await repo.findById(id);
+  if (!parent) throw ApiError.notFound('Parent not found');
+  return repo.remove(id);
+};
+
+export const getStats = async (schoolId) => {
+  return repo.getStats(schoolId);
+};
+
+export const exportList = async (schoolId, filters) => {
+  return repo.findForExport(schoolId, filters);
+};
+>>>>>>> c52277545acdf32472792738285dea3300df0ace
