@@ -1,8 +1,6 @@
-// =============================================================================
-// modules/scan/scan.helper.js — RESQID
+// // modules/scan/scan.helper.js — RESQID
 // Pure helper functions — stateless, side-effect free.
-// =============================================================================
-
+//
 /**
  * Mask phone number for public display.
  * Only last 2 digits visible — RBI/UIDAI convention.
@@ -31,7 +29,7 @@ export const maskTokenHash = (token) => {
  */
 export const formatRelativeTime = (isoDate) => {
   if (!isoDate) return '';
-  
+
   const date = new Date(isoDate);
   const now = new Date();
   const diffMs = now - date;
@@ -39,12 +37,12 @@ export const formatRelativeTime = (isoDate) => {
   const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
-  
+
   if (diffSecs < 60) return 'Just now';
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  
+
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
@@ -57,13 +55,14 @@ export const humanizeEnum = (str) => {
   return str
     .replace(/_/g, ' ')
     .toLowerCase()
-    .replace(/\b\w/g, c => c.toUpperCase());
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
 /**
  * Bot/crawler detection for anomaly scoring.
  */
-const BOT_PATTERNS = /bot|crawl|spider|slurp|curl|wget|python|java|go-http|axios|insomnia|postman|scrapy|headless/i;
+const BOT_PATTERNS =
+  /bot|crawl|spider|slurp|curl|wget|python|java|go-http|axios|insomnia|postman|scrapy|headless/i;
 
 export const isSuspiciousUserAgent = (ua) => {
   if (!ua || typeof ua !== 'string') return true;
@@ -229,200 +228,181 @@ export const applyVisibilityFilters = (profile) => {
 /**
  * Strip internal cache fields before sending to client.
  */
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 export const formatScanResponse = (data) => {
   const { _schoolId, _parentTokens, _studentId, ...safe } = data;
-=======
-export const formatScanResponse = (cached) => {
-  if (!cached) return null;
-  const { _schoolId, _parentTokens, _studentId, ...safe } = cached;
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
-=======
-export const formatScanResponse = (data) => {
-  const { _schoolId, _parentTokens, _studentId, ...safe } = data;
->>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
-=======
-export const formatScanResponse = (data) => {
-  const { _schoolId, _parentTokens, _studentId, ...safe } = data;
->>>>>>> c52277545acdf32472792738285dea3300df0ace
-  return safe;
-};
+  export const formatScanResponse = (cached) => {
+    if (!cached) return null;
+    const { _schoolId, _parentTokens, _studentId, ...safe } = cached;
 
-/**
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
-=======
->>>>>>> c52277545acdf32472792738285dea3300df0ace
- * Get severity label for display.
- */
-export const getSeverityLabel = (severity) => {
-  const labels = {
-    LOW: 'Low',
-    MEDIUM: 'Medium',
-    HIGH: 'High',
-    CRITICAL: 'Critical',
-  };
-  return labels[severity] || severity;
-};
+    export const formatScanResponse = (data) => {
+      const { _schoolId, _parentTokens, _studentId, ...safe } = data;
 
-/**
- * Get incident type label for display.
- */
-export const getIncidentTypeLabel = (type) => {
-  const labels = {
-    INJURY: 'Injury',
-    ILLNESS: 'Illness',
-    ALLERGIC_REACTION: 'Allergic Reaction',
-    ASTHMA_ATTACK: 'Asthma Attack',
-    ACCIDENT: 'Accident',
-    SEIZURE: 'Seizure',
-    FAINTING: 'Fainting',
-    BLEEDING: 'Bleeding',
-    FRACTURE: 'Fracture',
-    BURN: 'Burn',
-    POISONING: 'Poisoning',
-    HEAD_INJURY: 'Head Injury',
-    BREATHING_DIFFICULTY: 'Breathing Difficulty',
-    DIABETIC_EMERGENCY: 'Diabetic Emergency',
-    OTHER: 'Other',
-  };
-  return labels[type] || type;
-};
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
- * Calculate risk score for a scan based on various factors.
- * Returns score from 0 (safe) to 100 (high risk).
- */
-export const calculateRiskScore = ({
-  isSuspiciousUA,
-  isNewDevice,
-  unusualLocation,
-  unusualTime,
-  rapidScanCount,
-}) => {
-  let score = 0;
-  
-  if (isSuspiciousUA) score += 30;
-  if (isNewDevice) score += 20;
-  if (unusualLocation) score += 25;
-  if (unusualTime) score += 15;
-  if (rapidScanCount > 5) score += Math.min(30, (rapidScanCount - 5) * 3);
-  
-  return Math.min(100, score);
-};
+      export const formatScanResponse = (data) => {
+        const { _schoolId, _parentTokens, _studentId, ...safe } = data;
 
-/**
- * Check if scan time is unusual (outside 6 AM - 10 PM).
- */
-export const isUnusualScanTime = (timestamp = new Date()) => {
-  const hour = timestamp.getHours();
-  return hour < 6 || hour > 22;
-};
+        return safe;
+      };
 
-/**
- * Generate a unique scan ID.
- */
-export const generateScanId = () => {
-  return `SCN-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-};
+      /**
+       * Get severity label for display.
+       */
+      export const getSeverityLabel = (severity) => {
+        const labels = {
+          LOW: 'Low',
+          MEDIUM: 'Medium',
+          HIGH: 'High',
+          CRITICAL: 'Critical',
+        };
+        return labels[severity] || severity;
+      };
 
-/**
- * Validate scan result.
- */
-export const isValidScanResult = (result) => {
-  const validResults = ['SUCCESS', 'INVALID', 'REVOKED', 'EXPIRED', 'RATE_LIMITED', 'ERROR'];
-  return validResults.includes(result);
-};
+      /**
+       * Get incident type label for display.
+       */
+      export const getIncidentTypeLabel = (type) => {
+        const labels = {
+          INJURY: 'Injury',
+          ILLNESS: 'Illness',
+          ALLERGIC_REACTION: 'Allergic Reaction',
+          ASTHMA_ATTACK: 'Asthma Attack',
+          ACCIDENT: 'Accident',
+          SEIZURE: 'Seizure',
+          FAINTING: 'Fainting',
+          BLEEDING: 'Bleeding',
+          FRACTURE: 'Fracture',
+          BURN: 'Burn',
+          POISONING: 'Poisoning',
+          HEAD_INJURY: 'Head Injury',
+          BREATHING_DIFFICULTY: 'Breathing Difficulty',
+          DIABETIC_EMERGENCY: 'Diabetic Emergency',
+          OTHER: 'Other',
+        };
+        return labels[type] || type;
+      };
 
-/**
- * Get result style for frontend display.
- */
-export const getResultStyle = (result) => {
-  const styles = {
-    SUCCESS: { bg: '#ECFDF5', color: '#047857', label: 'Success', icon: 'check' },
-    INVALID: { bg: '#FEF2F2', color: '#B91C1C', label: 'Invalid', icon: 'x' },
-    REVOKED: { bg: '#FEF2F2', color: '#B91C1C', label: 'Revoked', icon: 'x' },
-    EXPIRED: { bg: '#FFFBEB', color: '#B45309', label: 'Expired', icon: 'clock' },
-    RATE_LIMITED: { bg: '#FEF3C7', color: '#92400E', label: 'Rate Limited', icon: 'clock' },
-    ERROR: { bg: '#FEF2F2', color: '#B91C1C', label: 'Error', icon: 'alert' },
-  };
-  return styles[result] || styles.ERROR;
-};
+      export const calculateRiskScore = ({
+        isSuspiciousUA,
+        isNewDevice,
+        unusualLocation,
+        unusualTime,
+        rapidScanCount,
+      }) => {
+        let score = 0;
 
-/**
- * Truncate string to max length.
- */
-export const truncate = (str, maxLength = 100, suffix = '...') => {
-  if (!str) return '';
-  if (str.length <= maxLength) return str;
-  return str.slice(0, maxLength - suffix.length) + suffix;
-};
+        if (isSuspiciousUA) score += 30;
+        if (isNewDevice) score += 20;
+        if (unusualLocation) score += 25;
+        if (unusualTime) score += 15;
+        if (rapidScanCount > 5) score += Math.min(30, (rapidScanCount - 5) * 3);
 
-/**
- * Parse User-Agent into structured object.
- */
-export const parseUserAgent = (userAgent) => {
-  if (!userAgent) {
-    return {
-      raw: null,
-      browser: 'Unknown',
-      os: 'Unknown',
-      device: 'Unknown',
-      isBot: false,
+        return Math.min(100, score);
+      };
+
+      /**
+       * Check if scan time is unusual (outside 6 AM - 10 PM).
+       */
+      export const isUnusualScanTime = (timestamp = new Date()) => {
+        const hour = timestamp.getHours();
+        return hour < 6 || hour > 22;
+      };
+
+      /**
+       * Generate a unique scan ID.
+       */
+      export const generateScanId = () => {
+        return `SCN-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      };
+
+      /**
+       * Validate scan result.
+       */
+      export const isValidScanResult = (result) => {
+        const validResults = ['SUCCESS', 'INVALID', 'REVOKED', 'EXPIRED', 'RATE_LIMITED', 'ERROR'];
+        return validResults.includes(result);
+      };
+
+      /**
+       * Get result style for frontend display.
+       */
+      export const getResultStyle = (result) => {
+        const styles = {
+          SUCCESS: { bg: '#ECFDF5', color: '#047857', label: 'Success', icon: 'check' },
+          INVALID: { bg: '#FEF2F2', color: '#B91C1C', label: 'Invalid', icon: 'x' },
+          REVOKED: { bg: '#FEF2F2', color: '#B91C1C', label: 'Revoked', icon: 'x' },
+          EXPIRED: { bg: '#FFFBEB', color: '#B45309', label: 'Expired', icon: 'clock' },
+          RATE_LIMITED: { bg: '#FEF3C7', color: '#92400E', label: 'Rate Limited', icon: 'clock' },
+          ERROR: { bg: '#FEF2F2', color: '#B91C1C', label: 'Error', icon: 'alert' },
+        };
+        return styles[result] || styles.ERROR;
+      };
+
+      /**
+       * Truncate string to max length.
+       */
+      export const truncate = (str, maxLength = 100, suffix = '...') => {
+        if (!str) return '';
+        if (str.length <= maxLength) return str;
+        return str.slice(0, maxLength - suffix.length) + suffix;
+      };
+
+      /**
+       * Parse User-Agent into structured object.
+       */
+      export const parseUserAgent = (userAgent) => {
+        if (!userAgent) {
+          return {
+            raw: null,
+            browser: 'Unknown',
+            os: 'Unknown',
+            device: 'Unknown',
+            isBot: false,
+          };
+        }
+
+        const isBot = BOT_PATTERNS.test(userAgent);
+
+        return {
+          raw: userAgent,
+          browser: getBrowserName(userAgent),
+          os: getOsName(userAgent),
+          device: getDeviceType(userAgent),
+          isBot,
+          isMobile: isMobileDevice(userAgent),
+        };
+      };
+
+      /**
+       * Format scan log for API response.
+       */
+      export const formatScanLogForResponse = (scan) => {
+        return {
+          id: scan.id,
+          token_hash: scan.token?.qrCode || scan.token?.rfidUid || 'Unknown',
+          result: scan.result,
+          student_name: scan.student ? `${scan.student.firstName} ${scan.student.lastName}` : null,
+          student_id: scan.student?.id || null,
+          ip_address: scan.deviceIp,
+          ip_city: scan.metadata?.city || null,
+          device: scan.metadata?.device || 'Unknown',
+          scan_purpose: scan.metadata?.scanPurpose || 'UNKNOWN',
+          response_time_ms: scan.metadata?.responseTimeMs || null,
+          created_at: scan.createdAt,
+        };
+      };
+
+      /**
+       * Format stats for frontend dashboard.
+       */
+      export const formatStatsResponse = (stats) => {
+        return {
+          total: stats.total || 0,
+          success: stats.success || 0,
+          failed: stats.failed || 0,
+          avgResponse: stats.avgResponse || '0ms',
+          successRate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0,
+        };
+      };
     };
-  }
-  
-  const isBot = BOT_PATTERNS.test(userAgent);
-  
-  return {
-    raw: userAgent,
-    browser: getBrowserName(userAgent),
-    os: getOsName(userAgent),
-    device: getDeviceType(userAgent),
-    isBot,
-    isMobile: isMobileDevice(userAgent),
   };
 };
-
-/**
- * Format scan log for API response.
- */
-export const formatScanLogForResponse = (scan) => {
-  return {
-    id: scan.id,
-    token_hash: scan.token?.qrCode || scan.token?.rfidUid || 'Unknown',
-    result: scan.result,
-    student_name: scan.student ? `${scan.student.firstName} ${scan.student.lastName}` : null,
-    student_id: scan.student?.id || null,
-    ip_address: scan.deviceIp,
-    ip_city: scan.metadata?.city || null,
-    device: scan.metadata?.device || 'Unknown',
-    scan_purpose: scan.metadata?.scanPurpose || 'UNKNOWN',
-    response_time_ms: scan.metadata?.responseTimeMs || null,
-    created_at: scan.createdAt,
-  };
-};
-
-/**
- * Format stats for frontend dashboard.
- */
-export const formatStatsResponse = (stats) => {
-  return {
-    total: stats.total || 0,
-    success: stats.success || 0,
-    failed: stats.failed || 0,
-    avgResponse: stats.avgResponse || '0ms',
-    successRate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0,
-  };
-};
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
-=======
->>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
-=======
->>>>>>> c52277545acdf32472792738285dea3300df0ace

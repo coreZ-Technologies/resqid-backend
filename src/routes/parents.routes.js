@@ -7,10 +7,31 @@ import { ROLES } from '#shared/constants/roles.js';
 import * as parentCtrl from '#modules/parents/parent.controller.js';
 import { validate } from '#middleware/validate.middleware.js';
 import { updateOwnProfileSchema } from '#modules/parents/parent.validation.js';
+import { authSlowDown } from '#middleware/security/slowDown.middleware.js';
+import { authLimiter, otpLimiter } from '#middleware/security/rateLimit.middleware.js';
+import {
+  registerInitSchema,
+  registerParentSchema,
+  sendOtpSchema,
+  verifyOtpSchema,
+} from '#modules/auth/auth.validation.js';
+import { registerInit, registerParent, sendOtp, verifyOtp } from '#modules/auth/auth.controller.js';
 
 const router = Router();
-router.use(authenticate, authorize(ROLES.PARENT));
 
+// parent login routes for Mobile Auth
+router.post('/send-otp', authSlowDown, otpLimiter, validate(sendOtpSchema), sendOtp);
+router.post('/verify-otp', authSlowDown, authLimiter, validate(verifyOtpSchema), verifyOtp);
+router.post('/register/init', authSlowDown, otpLimiter, validate(registerInitSchema), registerInit);
+router.post(
+  '/register/verify',
+  authSlowDown,
+  authLimiter,
+  validate(registerParentSchema),
+  registerParent
+);
+
+router.use(authenticate, authorize(ROLES.PARENT));
 // =============================================================================
 // SELF-SERVICE
 // =============================================================================

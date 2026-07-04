@@ -1,16 +1,5 @@
-// =============================================================================
-// modules/parents/parent.repository.js — RESQID
-<<<<<<< HEAD
-<<<<<<< HEAD
-// All DB queries — ownership-gated, index-optimized.
-=======
-// Purpose-built queries for each use case.
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
-// =============================================================================
-
 import { prisma } from '#config/prisma.js';
 
-<<<<<<< HEAD
 // ═══════════════════════════════════════════════════════════════════════════════
 // OWNERSHIP GUARD
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -47,70 +36,10 @@ export const getParentHome = async (parentId) => {
           onEmergency: true,
           onAnnouncement: true,
         },
-<<<<<<< HEAD
-      });
-    }
-    return prefs;
-  }
-
-  async updatePreferences(parentId, data) {
-    return prisma.notificationPreference.update({
-      where: { parentId },
-      data,
-    });
-  }
-
-  // ─── Stats ────────────────────────────────────────────────────
-  async getStats(schoolId) {
-    const parents = await prisma.parentUser.findMany({
-      where: { students: { some: { student: { schoolId } } }, isActive: true },
-      include: { students: true },
-    });
-    const total = parents.length;
-    const totalChildren = parents.reduce((acc, p) => acc + p.students.length, 0);
-    // Engagement is calculated in service based on last login, notification reads, etc.
-    // For now, return raw data; service will compute.
-    return { total, totalChildren, parents };
-  }
-
-  // ─── Available Students (not yet linked to any parent) ────────
-  async getAvailableStudents(schoolId, excludeParentId = null) {
-    const linkedStudentIds = excludeParentId
-      ? await prisma.parentStudent
-          .findMany({
-            where: { parentId: excludeParentId },
-            select: { studentId: true },
-          })
-          .then((links) => links.map((l) => l.studentId))
-      : [];
-    return prisma.student.findMany({
-      where: {
-        schoolId,
-        isActive: true,
-        id: { notIn: linkedStudentIds },
-      },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        grade: true,
-        section: true,
-        rfidTagNumber: true,
-      },
-    });
-  }
-}
-=======
       },
     },
-=======
-// Purpose-built queries for each use case.
-// =============================================================================
 
-import { prisma } from '#config/prisma.js';
 
-=======
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // ─── List (School Admin) ──────────────────────────────────────────────────────
 
 export const findBySchool = async (schoolId, query = {}) => {
@@ -128,18 +57,11 @@ export const findBySchool = async (schoolId, query = {}) => {
     where: { student: { schoolId }, isActive: true },
     select: { parentId: true },
     distinct: ['parentId'],
-<<<<<<< HEAD
->>>>>>> c52277545acdf32472792738285dea3300df0ace
-=======
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
+
   });
 
   if (!parent) return null;
 
-<<<<<<< HEAD
-  const studentLinks = await prisma.parentStudent.findMany({
-    where: { parentId },
-=======
   if (isActive !== undefined) where.isActive = isActive;
   if (search) {
     where.OR = [
@@ -226,7 +148,6 @@ export const findAll = async (query = {}) => {
 export const findById = (id) =>
   prisma.parentUser.findUnique({
     where: { id },
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
     select: {
       relation: true,
       isPrimary: true,
@@ -370,7 +291,6 @@ export const findCardByNumber = (cardNumber) =>
       },
     },
   });
-<<<<<<< HEAD
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STUDENT MANAGEMENT
@@ -452,10 +372,5 @@ export const getScanHistory = async (parentId, { studentId, page = 1, limit = 20
 
   return { scans: rows, total, page, limit };
 };
-<<<<<<< HEAD
->>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
-=======
->>>>>>> c52277545acdf32472792738285dea3300df0ace
-=======
+
 };
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6

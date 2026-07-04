@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> c52277545acdf32472792738285dea3300df0ace
-=======
 // src/modules/scan-log/scanLog.repository.js
 import { prisma } from '#config/prisma.js';
 
@@ -160,10 +154,6 @@ export class ScanLogRepository {
     });
   }
 }
-=======
-=======
->>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 // =============================================================================
 // modules/scan-log/scanLog.repository.js — RESQID
 // =============================================================================
@@ -358,9 +348,7 @@ export const getStats = async (schoolId) => {
     avgResponseMs: Math.round(avgResponse._avg?.responseTimeMs || 0),
   };
 };
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
+
 // src/modules/scan-log/scanLog.repository.js
 import { prisma } from '#config/prisma.js';
 
@@ -517,11 +505,3 @@ export class ScanLogRepository {
     });
   }
 }
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
-=======
->>>>>>> c52277545acdf32472792738285dea3300df0ace
-=======
->>>>>>> 2306bae69da370bc7bfb048c15cfd0f99e474bff
-=======
->>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6

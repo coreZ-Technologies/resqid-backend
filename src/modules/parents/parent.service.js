@@ -1,42 +1,5 @@
 // =============================================================================
 // modules/parents/parent.service.js — RESQID
-<<<<<<< HEAD
-// Business logic — emergency profile management moved to m2-emergency.
-// =============================================================================
-
-import { ApiError } from '#shared/response/ApiError.js';
-import { logger } from '#config/logger.js';
-import { middlewareRedis as redis } from '#config/redis.js';
-import * as repo from './parent.repository.js';
-import { publishNotification } from '#orchestrator/notifications/notification.publisher.js';
-import { EVENTS } from '#orchestrator/events/event.types.js';
-import { invalidateScanCache } from '#shared/cache/scan.cache.js';
-
-const HOME_CACHE_KEY = (id) => `parent:home:${id}`;
-const HOME_CACHE_TTL = 5 * 60;
-
-const invalidateHomeCache = async (parentId) => {
-  await redis.del(HOME_CACHE_KEY(parentId)).catch(() => {});
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// HOME
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const getParentHome = async (parentId) => {
-  try {
-    const cached = await redis.get(HOME_CACHE_KEY(parentId));
-    if (cached) return JSON.parse(cached);
-  } catch {
-    /* cache miss */
-  }
-
-  const data = await repo.getParentHome(parentId);
-  if (data) {
-    await redis
-      .set(HOME_CACHE_KEY(parentId), JSON.stringify(data), 'EX', HOME_CACHE_TTL)
-      .catch(() => {});
-=======
 // Business logic for parents (CRUD + self‑service)
 // =============================================================================
 
@@ -53,41 +16,8 @@ export const list = async (req) => {
 
   if (role === 'SUPER_ADMIN') {
     return repo.findAll(req.query);
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
   }
 
-<<<<<<< HEAD
-// ═══════════════════════════════════════════════════════════════════════════════
-// PROFILE
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const updateParentProfile = async (parentId, { name }) => {
-  await repo.updateParentProfile(parentId, { name });
-  await invalidateHomeCache(parentId);
-  return { success: true };
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CARD VISIBILITY
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const updateVisibility = async (parentId, studentId, visibility) => {
-  await repo.verifyStudentOwnership(parentId, studentId);
-  await repo.updateCardVisibility(studentId, visibility);
-  await invalidateScanCache(studentId);
-  await invalidateHomeCache(parentId);
-  return { success: true };
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// NOTIFICATIONS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const updateNotifications = async (parentId, prefs) => {
-  await repo.upsertNotificationPrefs(parentId, prefs);
-  await invalidateHomeCache(parentId);
-  return { success: true };
-=======
   if (role === 'SCHOOL_ADMIN') {
     if (!schoolId) throw ApiError.tenantRequired();
     return repo.findBySchool(schoolId, req.query);
@@ -116,14 +46,12 @@ export const getOne = async (id, req) => {
   }
 
   return parent;
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LOCK CARD
 // ═══════════════════════════════════════════════════════════════════════════════
 
-<<<<<<< HEAD
 export const lockCard = async (parentId, studentId) => {
   await repo.verifyStudentOwnership(parentId, studentId);
   const result = await repo.lockStudentCard(studentId);
@@ -193,12 +121,9 @@ export const setActiveStudent = async (parentId, studentId) => {
 // SCAN HISTORY
 // ═══════════════════════════════════════════════════════════════════════════════
 
-<<<<<<< HEAD
+
 export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
   repo.getScanHistory(parentId, { studentId, page, limit, filter });
-=======
-  // Parent self-update — restricted fields
-=======
   // Check duplicate phone / email
   const existing = await prisma.parentUser.findFirst({
     where: {
@@ -229,13 +154,7 @@ export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
 export const update = async (id, data, req) => {
   const { role, id: userId, schoolId } = req.user;
 
-<<<<<<< HEAD
-  // Parent self‑update — restricted fields
-  if (role === 'PARENT') {
-    if (userId !== id) throw ApiError.forbidden('Can only edit own profile');
-=======
   // Parent self‑update — restricted fields + email uniqueness
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
   if (role === 'PARENT') {
     if (req.user.id !== id) throw ApiError.forbidden('Can only edit own profile');
 
@@ -250,7 +169,6 @@ export const update = async (id, data, req) => {
       if (existing) throw ApiError.conflict('Email already used by another parent');
     }
 
->>>>>>> 2486c963b630c5536708957167d372145ac148b4
     const allowed = [
       'name',
       'email',
@@ -312,11 +230,6 @@ export const exportList = async (schoolId, filters) => {
   // Legacy export (kept for backward compatibility)
   return repo.findForExport(schoolId, filters);
 };
-<<<<<<< HEAD
->>>>>>> c52277545acdf32472792738285dea3300df0ace
-=======
-<<<<<<< HEAD
-<<<<<<< HEAD
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARENT SELF‑SERVICE (called by parent.controller.js)
@@ -372,9 +285,6 @@ export const setActiveStudent = async (parentId, studentId) => {
 
 export const getScanHistory = (parentId, { studentId, page, limit, filter }) =>
   repo.getScanHistory(parentId, { studentId, page, limit, filter });
-=======
->>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
-=======
 
 // ─── Streaming CSV Export ─────────────────────────────────────────────────────
 export const exportCsvStream = async (schoolId, filters, res) => {
@@ -382,5 +292,3 @@ export const exportCsvStream = async (schoolId, filters, res) => {
   res.setHeader('Content-Disposition', `attachment; filename=parents-${Date.now()}.csv`);
   await repo.streamExport(schoolId, filters, res);
 };
->>>>>>> 2486c963b630c5536708957167d372145ac148b4
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6

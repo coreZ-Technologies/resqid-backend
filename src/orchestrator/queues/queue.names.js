@@ -2,26 +2,26 @@
 
 export const QUEUE_NAMES = Object.freeze({
   // Priority 1 Critical (processed first)
-  EMERGENCY_ALERTS: 'resqid:emergency',
-  CRISIS_HANDLING: 'resqid:crisis',
+  EMERGENCY_ALERTS: 'resqid-emergency',
+  CRISIS_HANDLING: 'resqid-crisis',
 
   // Priority 2 High
-  ATTENDANCE_BULK: 'resqid:attendance',
-  TIMETABLE_SWAP: 'resqid:swap',
+  ATTENDANCE_BULK: 'resqid-attendance',
+  TIMETABLE_SWAP: 'resqid-swap',
 
   // Priority 3 Normal
-  NOTIFICATIONS: 'resqid:notifications',
-  TIMETABLE_VALIDATE: 'resqid:validate',
-  BULK_UPLOAD: 'resqid:bulk-upload', // ← NEW
+  NOTIFICATIONS: 'resqid-notifications',
+  TIMETABLE_VALIDATE: 'resqid-validate',
+  BULK_UPLOAD: 'resqid-bulk-upload',
 
   // Priority 4 Low
-  TIMETABLE_GENERATE: 'resqid:timetable',
+  TIMETABLE_GENERATE: 'resqid-timetable',
 
   // Priority 5 Background
-  MAINTENANCE: 'resqid:maintenance',
+  MAINTENANCE: 'resqid-maintenance',
 
   // Dead Letter Queue
-  DLQ: 'resqid:dlq',
+  DLQ: 'resqid-dlq',
 });
 
 export const QUEUE_PRIORITIES = {

@@ -12,7 +12,7 @@
 
 // ─── Core ────────────────────────────────────────────────────────────────────
 export { requestId } from '#middleware/requestId.middleware.js';
-export { errorHandler, notFoundHandler } from '#middleware/error.middleware.js';
+export { globalErrorHandler, notFoundHandler } from '#middleware/error.middleware.js';
 export { apiVersion } from '#middleware/apiVersion.middleware.js';
 export { maintenanceMode } from '#middleware/maintenanceMode.middleware.js';
 export { enforceContentType } from '#middleware/contentType.middleware.js';
@@ -72,7 +72,7 @@ export {
 } from '#middleware/security/csrf.middleware.js';
 export { hppProtection } from '#middleware/security/hpp.middleware.js';
 export { sanitizeXss } from '#middleware/security/xss.middleware.js';
-export { sanitizeNoSql, sanitizeDeep } from '#middleware/security/sanitize.middleware.js';
+// export { sanitizeNoSql, sanitizeDeep } from '#middleware/security/sanitize.middleware.js';
 export {
   publicEmergencyLimiter,
   authLimiter,
@@ -102,13 +102,27 @@ export {
   recordFailedAuth,
   recordSuccessfulAuth,
 } from '#middleware/security/behavioralSecurity.middleware.js';
-export { verifyDevice } from '#middleware/security/deviceFingerprint.middleware.js';
+export { verifyDevice } from '#middleware/deviceFingerprint.middleware.js';
 
 // ─── Logging ─────────────────────────────────────────────────────────────────
 export { httpLogger } from '#middleware/logging/httpLogger.middleware.js';
 export { auditLog } from '#middleware/logging/auditLog.middleware.js';
 export { attackLogger } from '#middleware/logging/attackLogger.middleware.js';
 
+import { maintenanceMode } from '#middleware/maintenanceMode.middleware.js';
+import { cloudflareOnly } from '#middleware/security/cloudflare.middleware.js';
+import { helmetMiddleware } from '#middleware/security/helmet.middleware.js';
+import { corsMiddleware } from '#middleware/security/cors.middleware.js';
+import { requestId } from '#middleware/requestId.middleware.js';
+import { httpLogger } from '#middleware/logging/httpLogger.middleware.js';
+import { enforceRequestSize } from '#middleware/security/requestSize.middleware.js';
+import { enforceContentType } from '#middleware/contentType.middleware.js';
+import { hppProtection } from '#middleware/security/hpp.middleware.js';
+import { sanitizeXss } from '#middleware/security/xss.middleware.js';
+import { ipBlockMiddleware } from '#middleware/security/ipBlock.middleware.js';
+import { checkIpReputation } from '#middleware/security/ipReputation.middleware.js';
+import { geoBlock } from '#middleware/security/geoBlock.middleware.js';
+import { attackLogger } from '#middleware/logging/attackLogger.middleware.js';
 // =============================================================================
 // PIPELINE BUILDERS
 // =============================================================================
@@ -150,8 +164,8 @@ export function buildGlobalPipeline() {
     enforceContentType,
     hppProtection,
     sanitizeXss,
-    sanitizeNoSql,
-    sanitizeDeep,
+    // sanitizeNoSql,
+    // sanitizeDeep,
     ipBlockMiddleware,
     checkIpReputation,
     geoBlock,
@@ -289,4 +303,4 @@ export function buildAuthRoutesPipeline() {
 //
 // // 7. Error handling (LAST)
 // app.use(notFoundHandler);
-// app.use(errorHandler);
+// app.use(globalErrorHandler);

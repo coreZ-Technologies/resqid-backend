@@ -64,6 +64,7 @@ const gracefulShutdown = async (signal) => {
 
 const start = async () => {
   try {
+    console.log('Step 1: Validating config...');
     // 1. Validate runtime config (Redis, DB, secrets)
     const configCheck = await validateRuntimeConfig();
     if (!configCheck.valid) {
@@ -71,17 +72,21 @@ const start = async () => {
       process.exit(1);
     }
 
+    console.log('Step 2: Connecting to database...');
     // 2. Connect to database (with retry logic)
     await connectPrisma(3, 2000);
 
     // 3. Initialize infrastructure (cache, email, sms, storage)
+    console.log('Step 3: Initializing infrastructure...');
     await initializeInfrastructure();
     logger.info('Infrastructure initialized');
 
+    console.log('Step 4: Initializing queues...');
     // 4. Initialize BullMQ queues
-    initQueues();
-    logger.info('Queues initialized');
+    // initQueues();
+    // logger.info('Queues initialized');
 
+    console.log('Step 5: Starting HTTP server...');
     // 5. Start HTTP server
     server = app.listen(PORT, () => {
       printStartupBanner();

@@ -1,11 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-// =============================================================================
->>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
-=======
-// =============================================================================
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 // infrastructure/storage/storage.paths.js — RESQID
 //
 // Provider-agnostic path builder.
@@ -19,16 +11,8 @@ import { ENV } from '#config/env.js';
 // Helpers
 const year = () => new Date().getFullYear().toString();
 const ts = () => Date.now();
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 const hex = (n = 4) => crypto.randomBytes(n).toString('hex');
-const ext = (contentType) => {
-  const map = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
-  return map[contentType] ?? 'jpg';
-=======
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
-const hex = (n = 6) => crypto.randomBytes(n).toString('hex');
 
 const MIME_MAP = {
   'image/jpeg': 'jpg',
@@ -42,10 +26,6 @@ const MIME_MAP = {
   'text/csv': 'csv',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'application/vnd.ms-excel': 'xls',
-<<<<<<< HEAD
->>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
 };
 
 const ext = (contentType) => MIME_MAP[contentType] || 'bin';
@@ -82,7 +62,6 @@ export const StoragePath = {
     `schools/${schoolId}/students/${studentId}/documents/${year()}/${documentType}/${ts()}-${hex()}.${ext(contentType)}`,
 
   // Bulk Orders
-
   /**
    * Bulk card PDF for an order
    * → schools/{schoolId}/bulk/{year}/{orderId}/cards-batch.pdf
@@ -110,7 +89,6 @@ export const StoragePath = {
   schoolBanner: (schoolId, contentType) => `schools/${schoolId}/assets/banner.${ext(contentType)}`,
 
   // Parent
-
   /**
    * Parent profile avatar
    * → schools/{schoolId}/parents/{parentId}/avatar/{year}/{ts}-{hex}.jpg
@@ -152,7 +130,6 @@ export const StoragePath = {
     `schools/${schoolId}/emergency/${incidentId}/${ts()}-${hex()}.${ext(contentType)}`,
 
   // General
-
   /**
    * Temporary upload (auto-cleaned after 24h)
    * → temp/{year}/{userId}/{ts}-{hex}.{ext}
@@ -161,7 +138,6 @@ export const StoragePath = {
 };
 
 // URL Resolver
-
 /**
  * Resolve a stored key or legacy full URL to a full public URL.
  * @param {string|null} keyOrUrl - Storage key or full URL
@@ -169,15 +145,8 @@ export const StoragePath = {
  */
 export function resolveAssetUrl(keyOrUrl) {
   if (!keyOrUrl) return null;
-<<<<<<< HEAD
-<<<<<<< HEAD
+
   if (keyOrUrl.startsWith('http')) return keyOrUrl; // legacy full URL, return as-is
-  return `${process.env.CDN_BASE_URL}/${keyOrUrl}`;
-}
-=======
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37
-  if (keyOrUrl.startsWith('http')) return keyOrUrl; // Legacy full URL
 
   const cdnBase = ENV.R2_CDN_DOMAIN || ENV.CDN_BASE_URL || process.env.CDN_BASE_URL;
 
@@ -215,7 +184,3 @@ export function parseKeyFromUrl(url) {
 export function isTempKey(key) {
   return key?.startsWith('temp/');
 }
-<<<<<<< HEAD
->>>>>>> 989f84374cc56136e3a7e027fd44e5110bf99e81
-=======
->>>>>>> e1eb068325d908062de8f8336fd7958f7fb3ca37

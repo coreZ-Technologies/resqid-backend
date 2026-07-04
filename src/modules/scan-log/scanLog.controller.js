@@ -1,9 +1,6 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-// =============================================================================
+//
 // modules/scan-log/scanLog.controller.js — RESQID
-// =============================================================================
+//
 
 import { ApiResponse } from '#shared/response/ApiResponse.js';
 import { ApiError } from '#shared/response/ApiError.js';
@@ -49,7 +46,7 @@ export const stats = asyncHandler(async (req, res) => {
   const result = await service.getStats(req.schoolId);
   ApiResponse.ok(res, result);
 });
-=======
+
 // src/modules/scan-log/scanLog.controller.js
 import { ScanLogService } from './scanLog.service.js';
 import { ApiResponse } from '#shared/response/ApiResponse.js';
@@ -72,7 +69,7 @@ export const listScanLogs = asyncHandler(async (req, res) => {
 
 export const getTodayStats = asyncHandler(async (req, res) => {
   const stats = await service.getTodayStats(req.schoolId);
-  res.json(ApiResponse.success('Today\'s stats', stats));
+  res.json(ApiResponse.success("Today's stats", stats));
 });
 
 export const getScanLogById = asyncHandler(async (req, res) => {
@@ -103,7 +100,7 @@ export const exportScanLogs = asyncHandler(async (req, res) => {
       const worksheet = workbook.addWorksheet('Scan Logs');
 
       if (exportData.length > 0) {
-        const columns = Object.keys(exportData[0]).map(key => ({
+        const columns = Object.keys(exportData[0]).map((key) => ({
           header: key,
           key: key,
           width: 20,
@@ -112,7 +109,10 @@ export const exportScanLogs = asyncHandler(async (req, res) => {
         worksheet.addRows(exportData);
       }
 
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
       res.setHeader('Content-Disposition', `attachment; filename=scan-logs-${Date.now()}.xlsx`);
       await workbook.xlsx.write(res);
       return res.end();
@@ -122,23 +122,20 @@ export const exportScanLogs = asyncHandler(async (req, res) => {
       return res.json(exportData);
   }
 });
->>>>>>> 8077b3074a48cb1da7a7cf9128d6f67564a49aa0
-=======
-=======
->>>>>>> c52277545acdf32472792738285dea3300df0ace
-// =============================================================================
+
+//
 // modules/scan-log/scanLog.controller.js — RESQID
 // Scan Log Controller — HTTP request handlers for scan history/audit
-// =============================================================================
+//
 
 import * as scanLogService from './scanLog.service.js';
 import { ApiError } from '#shared/response/ApiError.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
 import { ApiResponse } from '#shared/response/ApiResponse.js';
 
-// =============================================================================
+//
 // QUERY OPERATIONS
-// =============================================================================
+//
 
 /**
  * GET /api/scan-logs
@@ -188,9 +185,9 @@ export const getByStudent = asyncHandler(async (req, res) => {
   ApiResponse.ok(res, result);
 });
 
-// =============================================================================
+//
 // CREATE OPERATIONS
-// =============================================================================
+//
 
 /**
  * POST /api/scan-logs
@@ -202,9 +199,9 @@ export const create = asyncHandler(async (req, res) => {
   ApiResponse.created(res, scan, 'Scan logged');
 });
 
-// =============================================================================
+//
 // STATISTICS
-// =============================================================================
+//
 
 /**
  * GET /api/scan-logs/stats
@@ -239,9 +236,9 @@ export const anomalies = asyncHandler(async (req, res) => {
   ApiResponse.ok(res, result);
 });
 
-// =============================================================================
+//
 // EXPORT
-// =============================================================================
+//
 
 /**
  * GET /api/scan-logs/export
@@ -260,9 +257,9 @@ export const exportScans = asyncHandler(async (req, res) => {
   return res.send(csv);
 });
 
-// =============================================================================
+//
 // DELETE OPERATIONS
-// =============================================================================
+//
 
 /**
  * DELETE /api/scan-logs/:scanId
@@ -301,12 +298,11 @@ export const cleanup = asyncHandler(async (req, res) => {
   ApiResponse.ok(res, result, `${result.deleted} old scan logs cleaned up`);
 });
 
-<<<<<<< HEAD
 export const stats = asyncHandler(async (req, res) => {
   const result = await service.getStats(req.schoolId);
   ApiResponse.ok(res, result);
 });
-=======
+
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 function convertToCSV(data) {
@@ -323,11 +319,3 @@ function convertToCSV(data) {
   }
   return csvRows.join('\n');
 }
-<<<<<<< HEAD
-<<<<<<< HEAD
->>>>>>> 2814621d9524a2a306c8895cfd0633fd1bb10612
-=======
->>>>>>> c52277545acdf32472792738285dea3300df0ace
-=======
->>>>>>> fc2f457f3fe5f95777ea9ced16e959883f9d995e
->>>>>>> a989dfa23342d0ba3fdc249932bb5a39fd301af6
