@@ -1,0 +1,265 @@
+### School User Auth API Tests
+### Base URL: http://localhost:3000/api/auth/user
+
+@baseUrl = http://localhost:3000/api/auth/user
+@email = teacher@school.com
+@password = Teacher@1234
+
+### 1. LOGIN (Role auto-detected from DB)
+### Login - Teacher
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Login - School Admin
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "admin@school.com",
+  "password": "Admin@1234"
+}
+
+### Login - Remember Me
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "rememberMe": true
+}
+
+### Login - Wrong Password
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "WrongPass@123"
+}
+
+### Login - Invalid Email
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "notfound@school.com",
+  "password": "{{password}}"
+}
+
+### Login - Inactive User
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "inactive@school.com",
+  "password": "Inactive@123"
+}
+
+### Login - Missing Password
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+### Login - Missing Email
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "password": "{{password}}"
+}
+
+### 2. FORGOT PASSWORD
+### Forgot Password - Success
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+### Forgot Password - Email Not Found (same response)
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "notfound@school.com"
+}
+
+### Forgot Password - Invalid Email
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "invalid-email"
+}
+
+### 3. RESET PASSWORD
+### Reset Password - Success
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "newPassword": "NewStrong@1234"
+}
+
+### Reset Password - Weak Password
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "newPassword": "weak"
+}
+
+### Reset Password - Invalid Token
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "invalid_token",
+  "newPassword": "ValidPass@123"
+}
+
+### Reset Password - Expired Token
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{expiredToken}}",
+  "newPassword": "ValidPass@123"
+}
+
+### 4. CHANGE PASSWORD (Authenticated)
+### Change Password - Success
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "NewPass@1234",
+  "confirmPassword": "NewPass@1234"
+}
+
+### Change Password - Wrong Current
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "WrongCurrent@123",
+  "newPassword": "NewPass@1234",
+  "confirmPassword": "NewPass@1234"
+}
+
+### Change Password - Mismatch
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "NewPass@1234",
+  "confirmPassword": "Different@1234"
+}
+
+### Change Password - Same as Current
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "{{password}}",
+  "confirmPassword": "{{password}}"
+}
+
+### Change Password - No Token
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "NewPass@1234",
+  "confirmPassword": "NewPass@1234"
+}
+
+### 5. REFRESH TOKEN
+### Refresh Token - Success
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### Refresh Token - Invalid
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "invalid_token_here"
+}
+
+### Refresh Token - Missing
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{}
+
+### 6. GET PROFILE (Authenticated)
+### Get Profile - Teacher
+GET {{baseUrl}}/me
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+### Get Profile - School Admin
+GET {{baseUrl}}/me
+Content-Type: application/json
+Authorization: Bearer {{adminAccessToken}}
+
+### Get Profile - No Token
+GET {{baseUrl}}/me
+Content-Type: application/json
+
+### 7. LOGOUT (Authenticated)
+### Logout - Success
+POST {{baseUrl}}/logout
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+### Logout - No Token
+POST {{baseUrl}}/logout
+Content-Type: application/json
+
+### 8. ROLE-BASED ACCESS TEST
+### Test: Check response includes correct role from DB
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "admin@school.com",
+  "password": "Admin@1234"
+}
+# Response should have: "role": "SCHOOL_ADMIN"
+# Response should have: "school": { "id": "...", "name": "..." }
+
+###
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "teacher@school.com",
+  "password": "Teacher@1234"
+}
+# Response should have: "role": "TEACHER"
