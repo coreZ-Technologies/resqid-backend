@@ -1,0 +1,277 @@
+
+### Parent User Auth API Tests
+### Base URL: http://localhost:3000/api/auth/parent
+
+@baseUrl = http://localhost:3000/api/auth/parent
+@phone = 9876543210
+@otp = 123456
+@cardNumber = RESQID-ABC123
+
+### 1. SEND OTP (Login)
+### Send OTP - Login
+POST {{baseUrl}}/send-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "purpose": "login"
+}
+
+### Send OTP - Register (with card number)
+POST {{baseUrl}}/send-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "cardNumber": "{{cardNumber}}",
+  "purpose": "register"
+}
+
+### Send OTP - Invalid Phone
+POST {{baseUrl}}/send-otp
+Content-Type: application/json
+
+{
+  "phone": "12345"
+}
+
+### Send OTP - Missing Phone
+POST {{baseUrl}}/send-otp
+Content-Type: application/json
+
+{
+  "purpose": "login"
+}
+
+### Send OTP - Cooldown Test (run quickly after first)
+POST {{baseUrl}}/send-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "purpose": "login"
+}
+
+### 2. VERIFY OTP & LOGIN
+### Verify OTP - Login
+POST {{baseUrl}}/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "otp": "{{otp}}"
+}
+
+### Verify OTP - Wrong OTP
+POST {{baseUrl}}/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "otp": "000000"
+}
+
+### Verify OTP - Missing OTP
+POST {{baseUrl}}/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}"
+}
+
+### Verify OTP - Expired OTP (after 10 min)
+POST {{baseUrl}}/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "otp": "{{otp}}"
+}
+
+### 3. REGISTER INIT (Step 1 - Validate Card + Send OTP)
+### Register Init - Success
+POST {{baseUrl}}/register/init
+Content-Type: application/json
+
+{
+  "cardNumber": "{{cardNumber}}",
+  "phone": "8888777766"
+}
+
+### Register Init - Invalid Card
+POST {{baseUrl}}/register/init
+Content-Type: application/json
+
+{
+  "cardNumber": "INVALID-CARD",
+  "phone": "8888777766"
+}
+
+### Register Init - Phone Already Registered
+POST {{baseUrl}}/register/init
+Content-Type: application/json
+
+{
+  "cardNumber": "{{cardNumber}}",
+  "phone": "{{phone}}"
+}
+
+### 4. REGISTER COMPLETE (Step 2 - Verify OTP + Create Profile)
+### Register Complete - Success
+POST {{baseUrl}}/register/verify
+Content-Type: application/json
+
+{
+  "phone": "8888777766",
+  "otp": "{{registerOtp}}",
+  "firstName": "Rahul",
+  "lastName": "Sharma",
+  "email": "rahul.sharma@email.com"
+}
+
+### Register Complete - Without LastName & Email
+POST {{baseUrl}}/register/verify
+Content-Type: application/json
+
+{
+  "phone": "8888777766",
+  "otp": "{{registerOtp}}",
+  "firstName": "Priya"
+}
+
+### Register Complete - Invalid Name
+POST {{baseUrl}}/register/verify
+Content-Type: application/json
+
+{
+  "phone": "8888777766",
+  "otp": "123456",
+  "firstName": "A"
+}
+
+### Register Complete - Wrong OTP
+POST {{baseUrl}}/register/verify
+Content-Type: application/json
+
+{
+  "phone": "8888777766",
+  "otp": "000000",
+  "firstName": "Test",
+  "lastName": "User"
+}
+
+### 5. REFRESH TOKEN
+### Refresh Token - Success
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### Refresh Token - Invalid
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "invalid_token"
+}
+
+### Refresh Token - Missing
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{}
+
+### 6. GET PROFILE (Authenticated)
+### Get Profile - With Students
+GET {{baseUrl}}/me
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+### Get Profile - No Token
+GET {{baseUrl}}/me
+Content-Type: application/json
+
+### 7. UPDATE PROFILE (Authenticated)
+### Update Profile - All Fields
+PATCH {{baseUrl}}/profile
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "firstName": "Rahul",
+  "lastName": "Sharma",
+  "email": "rahul.new@email.com",
+  "address": "123, MG Road",
+  "city": "Mumbai",
+  "state": "Maharashtra",
+  "pincode": "400001",
+  "occupation": "Engineer"
+}
+
+### Update Profile - Partial
+PATCH {{baseUrl}}/profile
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "city": "Pune",
+  "state": "Maharashtra"
+}
+
+### Update Profile - Invalid Email
+PATCH {{baseUrl}}/profile
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "email": "invalid-email"
+}
+
+### Update Profile - No Token
+PATCH {{baseUrl}}/profile
+Content-Type: application/json
+
+{
+  "firstName": "Test"
+}
+
+### 8. LOGOUT (Authenticated)
+### Logout - Success
+POST {{baseUrl}}/logout
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+### Logout - No Token
+POST {{baseUrl}}/logout
+Content-Type: application/json
+
+### 9. FULL FLOW TEST
+### Step 1: Send OTP
+POST {{baseUrl}}/send-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "purpose": "login"
+}
+
+### Step 2: Verify OTP (use OTP from dev response)
+POST {{baseUrl}}/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "otp": "{{otp}}"
+}
+
+### Step 3: Get Profile
+GET {{baseUrl}}/me
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+### Step 4: Logout
+POST {{baseUrl}}/logout
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
