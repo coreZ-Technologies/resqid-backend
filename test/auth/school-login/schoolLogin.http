@@ -1,0 +1,193 @@
+### =============================================================================
+### School Auth API Tests
+### Base URL: http://localhost:3000/api/auth/school
+### =============================================================================
+
+@baseUrl = http://localhost:3000/api/auth/school
+@schoolCode = TEST001
+@schoolPassword = Test@1234
+@schoolEmail = school@test.com
+
+###
+### 1. SCHOOL LOGIN
+###
+
+### Login - Success
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "code": "{{schoolCode}}",
+  "password": "{{schoolPassword}}",
+  "rememberMe": false
+}
+
+### Login - Remember Me
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "code": "{{schoolCode}}",
+  "password": "{{schoolPassword}}",
+  "rememberMe": true
+}
+
+### Login - Wrong Password
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "code": "{{schoolCode}}",
+  "password": "WrongPass@123"
+}
+
+### Login - Invalid Code
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "code": "INVALID",
+  "password": "{{schoolPassword}}"
+}
+
+### Login - Missing Fields
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "code": "{{schoolCode}}"
+}
+
+###
+### 2. VERIFY SCHOOL TOKEN
+###
+
+### Verify Token - Valid
+GET {{baseUrl}}/verify
+Authorization: Bearer {{schoolToken}}
+
+### Verify Token - No Token
+GET {{baseUrl}}/verify
+
+### Verify Token - Invalid Token
+GET {{baseUrl}}/verify
+Authorization: Bearer invalid_token_here
+
+###
+### 3. SCHOOL PROFILE
+###
+
+### Get Profile - Valid Token
+GET {{baseUrl}}/profile
+Authorization: Bearer {{schoolToken}}
+
+### Get Profile - No Token
+GET {{baseUrl}}/profile
+
+###
+### 4. FORGOT PASSWORD
+###
+
+### Forgot Password - Success
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{schoolEmail}}",
+  "code": "{{schoolCode}}"
+}
+
+### Forgot Password - Wrong Email
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "wrong@test.com",
+  "code": "{{schoolCode}}"
+}
+
+### Forgot Password - Wrong Code
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{schoolEmail}}",
+  "code": "WRONG_CODE"
+}
+
+### Forgot Password - Missing Fields
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{schoolEmail}}"
+}
+
+###
+### 5. RESET PASSWORD
+###
+
+### Reset Password - Success
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "newPassword": "NewStrong@123"
+}
+
+### Reset Password - Weak Password (no uppercase)
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "newPassword": "weakpassword1!"
+}
+
+### Reset Password - Weak Password (no special char)
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "newPassword": "NoSpecialChar123"
+}
+
+### Reset Password - Invalid Token
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "invalid_token",
+  "newPassword": "ValidPass@123"
+}
+
+### Reset Password - Missing Fields
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}"
+}
+
+###
+### 6. LOGOUT
+###
+### Logout - Valid Token
+POST {{baseUrl}}/logout
+Content-Type: application/json
+Authorization: Bearer {{schoolToken}}
+
+### Logout - No Token
+POST {{baseUrl}}/logout
+
+###
+### 7. HEALTH CHECK
+###
+
+### Health Check
+GET http://localhost:3000/monitoring/health
+
+### Metrics
+GET http://localhost:3000/monitoring/metrics

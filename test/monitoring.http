@@ -1,0 +1,10 @@
+### variables
+@baseUrl = http://localhost:3000/monitoring
+
+### Health check
+GET {{baseUrl}}/health
+Content-Type: application/json
+
+### Metrics
+GET {{baseUrl}}/metrics
+Content-Type: application/json

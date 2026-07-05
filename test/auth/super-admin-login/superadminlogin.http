@@ -1,0 +1,219 @@
+### =============================================================================
+### Super Admin Auth API Tests
+### Base URL: http://localhost:3000/api/auth/super-admin
+### =============================================================================
+
+@baseUrl = http://localhost:3000/api/auth/super-admin
+@email = admin@resqid.com
+@password = Admin@1234
+
+### 1. LOGIN
+
+### Login - Success
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Login - Wrong Password
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "WrongPass@123"
+}
+
+### Login - Invalid Email
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "notfound@test.com",
+  "password": "{{password}}"
+}
+
+### Login - Missing Password
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+### 2. FORGOT PASSWORD
+
+### Forgot Password - Success
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+### Forgot Password - Wrong Email
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "notfound@test.com"
+}
+
+### Forgot Password - Invalid Email Format
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "invalid-email"
+}
+
+### 3. RESET PASSWORD
+
+### Reset Password - Success
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "newPassword": "NewStrong@1234"
+}
+
+### Reset Password - Weak Password (no uppercase)
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "newPassword": "weakpassword1!"
+}
+
+### Reset Password - Weak Password (no special char)
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "{{resetToken}}",
+  "newPassword": "NoSpecialChar123"
+}
+
+### Reset Password - Invalid Token
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "token": "invalid_token_here",
+  "newPassword": "ValidPass@123"
+}
+
+### Reset Password - Missing Token
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "newPassword": "ValidPass@123"
+}
+
+### 4. CHANGE PASSWORD (Authenticated)
+
+### Change Password - Success
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "NewPass@1234",
+  "confirmPassword": "NewPass@1234"
+}
+
+### Change Password - Wrong Current Password
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "WrongPass@123",
+  "newPassword": "NewPass@1234",
+  "confirmPassword": "NewPass@1234"
+}
+
+### Change Password - Mismatch Confirm
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "NewPass@1234",
+  "confirmPassword": "Different@1234"
+}
+
+### Change Password - Same as Current
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "{{password}}",
+  "confirmPassword": "{{password}}"
+}
+
+### Change Password - No Token
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+
+{
+  "currentPassword": "{{password}}",
+  "newPassword": "NewPass@1234",
+  "confirmPassword": "NewPass@1234"
+}
+
+### 5. REFRESH TOKEN
+
+### Refresh Token - Success
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### Refresh Token - Invalid
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "invalid_token"
+}
+
+### Refresh Token - Missing
+POST {{baseUrl}}/refresh
+Content-Type: application/json
+
+{}
+
+### 6. GET PROFILE (Authenticated)
+
+### Get Profile - Success
+GET {{baseUrl}}/me
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+### Get Profile - No Token
+GET {{baseUrl}}/me
+Content-Type: application/json
+
+### 7. LOGOUT (Authenticated)
+
+### Logout - Success
+POST {{baseUrl}}/logout
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+### Logout - No Token
+POST {{baseUrl}}/logout
+Content-Type: application/json
